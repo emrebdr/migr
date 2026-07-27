@@ -35,6 +35,7 @@ linters:
     - noctx
 
     # CLAUDE.md invariants, made mechanical.
+    - depguard # #1 and #2: import boundaries
     - errorlint # #9: wrap with %w
     - forbidigo # #8: deterministic planning; #9: no panic in library code
     - exhaustive # total switches over the IR operation set
@@ -57,6 +58,47 @@ linters:
       alias:
         - pkg: runtime
           alias: stdruntime
+
+    # Invariant #1: only cmd/migr may import a concrete driver or runtime.
+    #
+    # Stated as a blanket deny with cmd/migr carved out, rather than as a list of
+    # core packages. depguard sees only direct imports, so covering everything
+    # except the wiring layer is what closes the transitive path -- a route from
+    # core to a driver through some intermediate package is caught at that
+    # intermediate package. It also means a new core package or a fourth driver is
+    # governed the day it is created rather than the day someone updates a list.
+    #
+    # The trailing slashes are load-bearing. deny is a prefix match, so
+    # ".../internal/driver/" covers every driver package while leaving
+    # ".../internal/driver" -- the Driver interface that core legitimately depends
+    # on -- importable. Dropping a slash would deny the contract itself.
+    #
+    # list-mode lax lets a longer allow prefix beat a shorter deny, which is how
+    # internal/runtime/protocol stays importable: it is shared wire-protocol code,
+    # not a language implementation.
+    #
+    # If a driver ever grows a subpackage (internal/driver/postgres/lock), this
+    # blanket deny will block the driver from importing its own child; that driver
+    # then needs a negated files entry here.
+    depguard:
+      rules:
+        implementations:
+          list-mode: lax
+          files:
+            - "**/*.go"
+            - "!**/cmd/migr/**"
+          allow:
+            - github.com/emrebdr/migr/internal/runtime/protocol
+          deny:
+            - pkg: github.com/emrebdr/migr/internal/driver/
+              desc: >-
+                only cmd/migr may import a concrete driver; core reaches drivers
+                through the registry (CLAUDE.md invariant #1). Drivers must not
+                import one another (invariant #2)
+            - pkg: github.com/emrebdr/migr/internal/runtime/
+              desc: >-
+                only cmd/migr may import a concrete language runtime; core reaches
+                runtimes through the registry (CLAUDE.md invariant #1)
 
     # Listing rules REPLACES revive's defaults rather than extending them, so this
     # set is complete rather than incremental.

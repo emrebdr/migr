@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -44,6 +45,8 @@ type Conn interface {
 	Exec(ctx context.Context, stmt Statement) error
 	// Lock acquires the migration lock, returning the release that must always run.
 	Lock(ctx context.Context) (Unlock, error)
+	// Capabilities reports what this server can do, resolved against its detected version.
+	Capabilities() capability.Set
 	// Close releases the session and anything it holds.
 	Close(ctx context.Context) error
 }

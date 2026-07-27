@@ -1,5 +1,9 @@
 package config
 
+import (
+	"github.com/emrebdr/migr/internal/capability"
+)
+
 // Version is the only supported migr.yaml schema version.
 const Version = 1
 
@@ -40,12 +44,12 @@ type Lock struct {
 
 // Safety holds the thresholds that gate zero-downtime checks.
 type Safety struct {
-	LockTimeout         Duration   `yaml:"lock_timeout"          json:"lock_timeout"`
-	LockRetries         int        `yaml:"lock_retries"          json:"lock_retries"`
-	StatementTimeout    Duration   `yaml:"statement_timeout"     json:"statement_timeout"`
-	MaxLockImpact       LockImpact `yaml:"max_lock_impact"       json:"max_lock_impact"`
-	AutoRewrite         bool       `yaml:"auto_rewrite"          json:"auto_rewrite"`
-	ReplicaLagThreshold Duration   `yaml:"replica_lag_threshold" json:"replica_lag_threshold"`
+	LockTimeout         Duration              `yaml:"lock_timeout"          json:"lock_timeout"`
+	LockRetries         int                   `yaml:"lock_retries"          json:"lock_retries"`
+	StatementTimeout    Duration              `yaml:"statement_timeout"     json:"statement_timeout"`
+	MaxLockImpact       capability.LockImpact `yaml:"max_lock_impact"       json:"max_lock_impact"`
+	AutoRewrite         bool                  `yaml:"auto_rewrite"          json:"auto_rewrite"`
+	ReplicaLagThreshold Duration              `yaml:"replica_lag_threshold" json:"replica_lag_threshold"`
 }
 
 // Validation configures pre-execution checks.
@@ -72,22 +76,8 @@ const (
 	LockFile     LockStrategy = "file"
 )
 
-// LockImpact is the cost an operation imposes on a live database.
-type LockImpact string
-
-// Lock impact verdicts, ordered from cheapest to most disruptive.
-const (
-	LockFree       LockImpact = "lock_free"
-	BriefExclusive LockImpact = "brief_exclusive"
-	LongExclusive  LockImpact = "long_exclusive"
-	TableRewrite   LockImpact = "table_rewrite"
-)
-
 // languages lists every accepted Language, for validation and error text.
 var languages = []Language{LanguageGo, LanguageTypeScript}
 
 // lockStrategies lists every accepted LockStrategy.
 var lockStrategies = []LockStrategy{LockAdvisory, LockTable, LockFile}
-
-// lockImpacts lists every accepted LockImpact, cheapest first.
-var lockImpacts = []LockImpact{LockFree, BriefExclusive, LongExclusive, TableRewrite}

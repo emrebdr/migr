@@ -25,9 +25,23 @@
 //
 // # Lock impact
 //
-// The four LockImpact verdicts are owned by internal/capability from M2-T2
-// onward. Config keeps its own copy so it can validate the YAML today without
-// depending on a package that does not exist yet.
+// internal/capability owns the LockImpact verdicts from M2-T2 onward; the four
+// spellings this package froze in its testdata are the ones it adopted.
+// safety.max_lock_impact validates against capability.Ceilings rather than a
+// list kept here, so a verdict renamed on either side fails a test instead of
+// leaving migr.yaml accepting a word no driver reports.
+//
+// Ceilings is deliberately narrower than the full verdict set: a driver may
+// report an unresolved lock impact, but "block anything worse than unknown" is
+// not a threshold with a meaning, so max_lock_impact: unknown is refused by the
+// same path as a typo.
+//
+// capability.LockImpact deliberately implements no encoding.TextUnmarshaler.
+// goccy honors one during decode, which runs before the validator below, so an
+// unrecognized value would abort the parse rather than joining the accumulated
+// report — costing the "every problem at once" property that
+// TestMissingRequiredFieldsAreAllReportedWithPaths and
+// TestValidationErrorReportsEveryProblemAtOnce exist to hold.
 //
 // # Secrets
 //

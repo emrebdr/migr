@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -42,8 +43,62 @@ func (d *fakeDriver) constructor() Constructor {
 	return func(Options) (Driver, error) { return d, nil }
 }
 
-// compile-time proof that the fake satisfies the contract it is standing in for.
-var _ Driver = (*fakeDriver)(nil)
+// fakeConn is a session with no database, carrying the capability set a driver resolves at Open.
+type fakeConn struct {
+	caps capability.Set
+}
+
+// Exec reports that this fake has no database to run a statement against.
+func (c *fakeConn) Exec(context.Context, Statement) error {
+	return errors.New("the fake connection has no database")
+}
+
+// Lock hands back a release that succeeds, so a caller's deferred unlock has something to call.
+func (c *fakeConn) Lock(context.Context) (Unlock, error) {
+	return func(context.Context) error { return nil }, nil
+}
+
+// Capabilities returns the set this session was opened with.
+func (c *fakeConn) Capabilities() capability.Set {
+	return c.caps
+}
+
+// Close releases nothing, since this fake holds nothing.
+func (c *fakeConn) Close(context.Context) error {
+	return nil
+}
+
+// compile-time proof that the fakes satisfy the contracts they are standing in for.
+var (
+	_ Driver = (*fakeDriver)(nil)
+	_ Conn   = (*fakeConn)(nil)
+)
+
+func TestASessionReportsTheCapabilitiesOfItsServer(t *testing.T) {
+	rules := make(map[ir.Kind]capability.Rule, len(ir.Kinds()))
+	for _, kind := range ir.Kinds() {
+		rules[kind] = capability.Fixed(capability.Native(capability.LockUnknown))
+	}
+
+	set, err := capability.NewSet(capability.Facts{Driver: "fake", Server: "16.2"}, rules)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+
+	var conn Conn = &fakeConn{caps: set}
+
+	if got := conn.Capabilities().Server(); got != "16.2" {
+		t.Errorf("Capabilities().Server() = %q, want the version the session was opened against", got)
+	}
+
+	if !conn.Capabilities().Resolve(ir.DropTable{Table: "users"}).Allowed() {
+		t.Error("the session reported a capability its set does not hold")
+	}
+
+	t.Log("Capabilities sits on the session rather than the driver because a lock verdict is")
+	t.Log("derived from the connected server's version (invariant #13), which a driver holding")
+	t.Log("no connection cannot know. A set is built inside Open, so it is bound to one server.")
+}
 
 func TestCompilingNeedsNoConnection(t *testing.T) {
 	d := newFake("fake")

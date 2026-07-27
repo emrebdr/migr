@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/emrebdr/migr/internal/capability"
 )
 
 // env builds a lookup function over a fixed set of variables.
@@ -55,7 +57,7 @@ func TestExampleFromClaudeMDLoads(t *testing.T) {
 		{field: "lock.timeout", got: cfg.Lock.Timeout.Duration(), want: 30 * time.Second},
 		{field: "safety.lock_timeout", got: cfg.Safety.LockTimeout.Duration(), want: 3 * time.Second},
 		{field: "safety.lock_retries", got: cfg.Safety.LockRetries, want: 5},
-		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: BriefExclusive},
+		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: capability.BriefExclusive},
 		{field: "safety.auto_rewrite", got: cfg.Safety.AutoRewrite, want: true},
 		{field: "validation.allow_destructive", got: cfg.Validation.AllowDestructive, want: false},
 	}
@@ -121,6 +123,57 @@ func TestMissingRequiredFieldsAreAllReportedWithPaths(t *testing.T) {
 	}
 }
 
+// loadWithCeiling parses a minimal valid document carrying one max_lock_impact setting.
+func loadWithCeiling(t *testing.T, ceiling string) (*Config, error) {
+	t.Helper()
+
+	src := []byte(`
+version: 1
+migrations:
+  language: go
+databases:
+  default:
+    driver: postgres
+    dsn: postgres://localhost/db
+safety:
+  max_lock_impact: ` + ceiling + "\n")
+
+	return parse(src, "inline.yaml", env(nil))
+}
+
+func TestTheAcceptedCeilingsAreTheOnesCapabilityDefines(t *testing.T) {
+	for _, ceiling := range capability.Ceilings() {
+		cfg, err := loadWithCeiling(t, string(ceiling))
+		if err != nil {
+			t.Errorf("max_lock_impact: %s was rejected: %v", ceiling, err)
+
+			continue
+		}
+
+		if cfg.Safety.MaxLockImpact != ceiling {
+			t.Errorf("max_lock_impact: %s loaded as %q", ceiling, cfg.Safety.MaxLockImpact)
+		}
+	}
+
+	t.Log("Config validates against capability.Ceilings() rather than a list of its own, so")
+	t.Log("renaming or removing a verdict on either side fails here instead of leaving")
+	t.Log("migr.yaml quietly accepting a word no driver reports.")
+}
+
+func TestAnUnresolvedLockVerdictIsNotAValidCeiling(t *testing.T) {
+	_, err := loadWithCeiling(t, string(capability.LockUnknown))
+	if err == nil {
+		t.Fatal("max_lock_impact: unknown was accepted")
+	}
+
+	if !strings.Contains(err.Error(), "safety.max_lock_impact") {
+		t.Errorf("error does not name the offending field:\n%s", err)
+		t.Log("\"Block anything worse than unknown\" has no meaning. Unknown is a verdict a driver")
+		t.Log("reports, never a threshold an operator sets, and keeping Ceilings() separate from")
+		t.Log("Impacts() is what enforces that here without a special case.")
+	}
+}
+
 func TestValidationErrorReportsEveryProblemAtOnce(t *testing.T) {
 	_, err := loadFixture(t, "missing_required.yaml", nil)
 	if err == nil {
@@ -160,7 +213,7 @@ databases:
 		{field: "safety.lock_timeout", got: cfg.Safety.LockTimeout.Duration(), want: 3 * time.Second},
 		{field: "safety.lock_retries", got: cfg.Safety.LockRetries, want: 5},
 		{field: "safety.statement_timeout", got: cfg.Safety.StatementTimeout.Duration(), want: 30 * time.Second},
-		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: BriefExclusive},
+		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: capability.BriefExclusive},
 		{field: "safety.replica_lag_threshold", got: cfg.Safety.ReplicaLagThreshold.Duration(), want: 5 * time.Second},
 	}
 

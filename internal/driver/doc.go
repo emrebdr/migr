@@ -4,7 +4,8 @@
 // govern this subtree: drivers never import one another — shared logic moves up into this
 // package — and raw SQL appears nowhere else in the codebase (CLAUDE.md invariants #2 and #3).
 //
-// Status: contract and registry complete (M2-T1). See docs/adr/0011-driver-contract.md.
+// Status: contract and registry complete (M2-T1); capabilities added (M2-T2). See
+// docs/adr/0011-driver-contract.md and docs/adr/0012-capability-resolution.md.
 //
 // # The split: a Driver answers what needs no database
 //
@@ -21,15 +22,30 @@
 // print statements without touching a database, what lets golden tests run with no engine
 // installed, and what the Compiler interface exists to name.
 //
+// # Capabilities belong to the session
+//
+// Capabilities returns what the connected server can do, on both axes, already resolved against
+// its detected version. It sits here rather than on Driver because invariant #13 requires a lock
+// verdict derived from the server rather than from documentation, and a driver holding no
+// connection cannot know which server it will be asked about.
+//
+// A driver builds its set inside Open, after detecting the version, so the method takes no context
+// and returns no error. A set that will not build fails the connection instead. What a driver
+// declares is authoritative: Compile must refuse exactly the operations the set refuses, and M2-T4
+// is what proves the two agree. See internal/capability and
+// docs/adr/0012-capability-resolution.md.
+//
 // # Deferred, but decided
 //
-// Four methods belong on Conn and are not written yet, because their types do not exist. They
+// Three methods belong on Conn and are not written yet, because their types do not exist. They
 // are recorded here so the tasks that add them inherit a decision rather than a blank page:
 //
-//	Capabilities() capability.Set                 M2-T2
 //	History() history.Store                       M2-T5
 //	Introspect(ctx) (*schema.Snapshot, error)     M11-T1
 //	ServerVersion() string                        M3-T1
+//
+// ServerVersion and capability.Set.Server report the same fact, so a driver must derive both from
+// one detection inside Open or they can disagree.
 //
 // They are not stubbed. A method whose only possible implementation returns a plausible empty
 // value is worse than a missing one, and the conformance suite's "no third possibility" rule

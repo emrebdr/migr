@@ -278,6 +278,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0009](docs/adr/0009-migration-checksum.md) | A migration checksum is a scheme-versioned pair |
 | [0010](docs/adr/0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" |
 | [0011](docs/adr/0011-driver-contract.md) | The driver contract: a session-scoped connection and an explicitly wired registry |
+| [0012](docs/adr/0012-capability-resolution.md) | Capability resolution: one rule per operation, resolved against one server |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

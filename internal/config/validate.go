@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/emrebdr/migr/internal/capability"
 )
 
 // FieldError is one problem, located by its path within the YAML document.
@@ -142,8 +144,9 @@ func validateLock(v *validator, l Lock) {
 
 // validateSafety checks the zero-downtime thresholds.
 func validateSafety(v *validator, s Safety) {
-	if !contains(lockImpacts, s.MaxLockImpact) {
-		v.add("safety.max_lock_impact", "%q is not valid (expected: %s)", s.MaxLockImpact, join(lockImpacts))
+	if !contains(capability.Ceilings(), s.MaxLockImpact) {
+		v.add("safety.max_lock_impact", "%q is not valid (expected: %s)",
+			string(s.MaxLockImpact), join(capability.Ceilings()))
 	}
 
 	if s.LockTimeout <= 0 {

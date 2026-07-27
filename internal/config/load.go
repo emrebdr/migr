@@ -11,6 +11,8 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
 	"github.com/goccy/go-yaml/parser"
+
+	"github.com/emrebdr/migr/internal/capability"
 )
 
 // DefaultFilename is the config file looked for when --config is not given.
@@ -96,7 +98,7 @@ func applyDefaults(cfg *Config) {
 	}
 
 	if cfg.Safety.MaxLockImpact == "" {
-		cfg.Safety.MaxLockImpact = BriefExclusive
+		cfg.Safety.MaxLockImpact = capability.BriefExclusive
 	}
 }
 

@@ -124,14 +124,29 @@ func fixtures(t *testing.T) []fixture {
 			json: `{"op":"add_unique","table":"users","name":"uq_users_email","columns":["email"]}`,
 		},
 		{
+			kind: KindDropUnique,
+			op:   DropUnique{Table: "users", Name: "uq_users_email"},
+			json: `{"op":"drop_unique","table":"users","name":"uq_users_email"}`,
+		},
+		{
 			kind: KindAddCheck,
 			op:   AddCheck{Table: "orders", Name: "ck_orders_total", Expression: "total >= 0"},
 			json: `{"op":"add_check","table":"orders","name":"ck_orders_total","expression":"total >= 0"}`,
 		},
 		{
+			kind: KindDropCheck,
+			op:   DropCheck{Table: "orders", Name: "ck_orders_total"},
+			json: `{"op":"drop_check","table":"orders","name":"ck_orders_total"}`,
+		},
+		{
 			kind: KindAddPrimaryKey,
 			op:   AddPrimaryKey{Table: "legacy", Name: "pk_legacy", Columns: []string{"id"}},
 			json: `{"op":"add_primary_key","table":"legacy","name":"pk_legacy","columns":["id"]}`,
+		},
+		{
+			kind: KindDropPrimaryKey,
+			op:   DropPrimaryKey{Table: "legacy", Name: "pk_legacy"},
+			json: `{"op":"drop_primary_key","table":"legacy","name":"pk_legacy"}`,
 		},
 		{
 			kind: KindCreateView,
@@ -196,8 +211,10 @@ func TestEveryKindHasAFixture(t *testing.T) {
 		covered[f.kind] = true
 	}
 
-	if len(Kinds()) != 17 {
-		t.Fatalf("CLAUDE.md §4.1 declares 17 operations, Kinds() has %d", len(Kinds()))
+	const declared = 20
+
+	if len(Kinds()) != declared {
+		t.Fatalf("the v1 operation set has %d operations, Kinds() has %d", declared, len(Kinds()))
 	}
 
 	for _, k := range Kinds() {

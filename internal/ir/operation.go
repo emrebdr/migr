@@ -10,6 +10,7 @@ import (
 type Operation interface {
 	Kind() Kind
 	Destructive() bool
+	Reverse() (Operation, error)
 	Validate() error
 	isOperation()
 }
@@ -137,10 +138,16 @@ func decodeKind(k Kind, data []byte) (Operation, error) {
 		return decodeOp[DropForeignKey](data)
 	case KindAddUnique:
 		return decodeOp[AddUnique](data)
+	case KindDropUnique:
+		return decodeOp[DropUnique](data)
 	case KindAddCheck:
 		return decodeOp[AddCheck](data)
+	case KindDropCheck:
+		return decodeOp[DropCheck](data)
 	case KindAddPrimaryKey:
 		return decodeOp[AddPrimaryKey](data)
+	case KindDropPrimaryKey:
+		return decodeOp[DropPrimaryKey](data)
 	case KindCreateView:
 		return decodeOp[CreateView](data)
 	case KindDropView:

@@ -17,6 +17,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0005](0005-logical-type-encoding.md) | Encode logical types as canonical strings in the IR | Accepted | How a logical type is written down inside an IR document |
 | [0006](0006-ir-operation-shape.md) | Flat discriminated operations, one representation per schema fact | Accepted | The shape of an operation document, and where destructiveness is decided |
 | [0007](0007-ir-document-envelope.md) | A versioned document envelope, outside the checksum boundary | Accepted | What an IR document is, and which bytes a migration checksum covers |
+| [0008](0008-reverse-operations.md) | Every operation declares an inverse or a reason it has none | Accepted | How rollback is derived, and the three drop operations the set was missing |
 
 ## When to write one
 

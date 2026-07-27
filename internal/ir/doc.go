@@ -7,8 +7,8 @@
 // golden file per driver, a defined reverse operation, and a docs/ir.md entry. See
 // CLAUDE.md invariant #4.
 //
-// Status: the v1 operation set (M1-T2), the recorder (M1-T3), and the versioned envelope
-// (M1-T4) are complete. Reverse operations are M1-T5.
+// Status: the v1 operation set (M1-T2), the recorder (M1-T3), the versioned envelope (M1-T4),
+// and reverse operations (M1-T5) are complete. The checksum is M1-T6.
 //
 // # The versioned document
 //
@@ -79,6 +79,33 @@
 // an operation. Policy lives elsewhere: destructive-operation gating, capability
 // preflight, and reference integrity are all M10, against a driver and a live schema this
 // package has no access to.
+//
+// # Reversal
+//
+// Reverse sits on the interface beside Destructive, so a new operation cannot compile without
+// answering what undoes it. It returns either an operation or an *IrreversibleError carrying a
+// reason — never a bare "irreversible", which tells an operator nothing about whether the
+// situation was avoidable.
+//
+// Every add or create has a matching drop. M1-T5 found the original set had none for unique,
+// check, or primary key, which would have made adding a unique constraint permanently
+// un-rollbackable and blocked every migration batched with it.
+//
+// Operations that destroy information they do not otherwise record carry an optional From
+// payload holding what they replaced. Supplied, they invert exactly; absent, they are
+// irreversible with a reason naming the field that would fix it. A schema differ knows both
+// sides of a change and can always populate it; a hand-written migration often cannot, and then
+// says so rather than guessing. Note that From is trust rather than proof — nothing yet verifies
+// a recorded prior definition against the live schema.
+//
+// Two cases are easy to get subtly wrong. Reversing "set a default" must restore "no default" as
+// an explicit DropDefault, because an omitted field means "leave the default alone" and would
+// leave the new one in place after rollback. And create_view with OrReplace does not assume the
+// view was new: it may have overwritten an existing definition, so it inverts to a restoration
+// when the prior query was recorded and refuses otherwise.
+//
+// ReverseAll inverts a list and reverses its order, but only if every operation in it can be
+// inverted. A partial reversal that stops halfway is worse than refusing to start.
 //
 // # Destructiveness
 //

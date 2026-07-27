@@ -21,6 +21,11 @@ func (o CreateTable) Kind() Kind { return KindCreateTable }
 // Destructive reports whether the operation can lose data.
 func (o CreateTable) Destructive() bool { return false }
 
+// Reverse returns the operation that undoes this one.
+func (o CreateTable) Reverse() (Operation, error) {
+	return DropTable{Table: o.Table}, nil
+}
+
 func (o CreateTable) isOperation() {}
 
 // MarshalJSON renders the operation with its discriminator first.
@@ -70,7 +75,8 @@ func validatePrimaryKey(key []string, columns map[string]bool) error {
 
 // DropTable removes a table and everything in it.
 type DropTable struct {
-	Table string `json:"table"`
+	Table string    `json:"table"`
+	From  *TableDef `json:"from,omitempty"`
 }
 
 // Kind returns the operation's discriminator.
@@ -78,6 +84,19 @@ func (o DropTable) Kind() Kind { return KindDropTable }
 
 // Destructive reports whether the operation can lose data.
 func (o DropTable) Destructive() bool { return true }
+
+// Reverse recreates the table when its prior definition was recorded.
+func (o DropTable) Reverse() (Operation, error) {
+	if o.From == nil {
+		return nil, missingFrom(KindDropTable, "table definition")
+	}
+
+	return CreateTable{
+		Table:      o.Table,
+		Columns:    o.From.Columns,
+		PrimaryKey: o.From.PrimaryKey,
+	}, nil
+}
 
 func (o DropTable) isOperation() {}
 
@@ -90,7 +109,11 @@ func (o DropTable) MarshalJSON() ([]byte, error) {
 
 // Validate reports whether the operation names a table.
 func (o DropTable) Validate() error {
-	return requireName("table", o.Table)
+	if err := requireName("table", o.Table); err != nil {
+		return err
+	}
+
+	return o.From.Validate()
 }
 
 // RenameTable renames a table, preserving its contents.
@@ -104,6 +127,11 @@ func (o RenameTable) Kind() Kind { return KindRenameTable }
 
 // Destructive reports whether the operation can lose data.
 func (o RenameTable) Destructive() bool { return false }
+
+// Reverse renames the table back, which makes this operation its own inverse.
+func (o RenameTable) Reverse() (Operation, error) {
+	return RenameTable{From: o.To, To: o.From}, nil
+}
 
 func (o RenameTable) isOperation() {}
 
@@ -148,6 +176,11 @@ func (o AddColumn) Kind() Kind { return KindAddColumn }
 // Destructive reports whether the operation can lose data.
 func (o AddColumn) Destructive() bool { return false }
 
+// Reverse returns the operation that undoes this one.
+func (o AddColumn) Reverse() (Operation, error) {
+	return DropColumn{Table: o.Table, Column: o.Column.Name}, nil
+}
+
 func (o AddColumn) isOperation() {}
 
 // MarshalJSON renders the operation with its discriminator first.
@@ -168,8 +201,9 @@ func (o AddColumn) Validate() error {
 
 // DropColumn removes a column and the data it holds.
 type DropColumn struct {
-	Table  string `json:"table"`
-	Column string `json:"column"`
+	Table  string  `json:"table"`
+	Column string  `json:"column"`
+	From   *Column `json:"from,omitempty"`
 }
 
 // Kind returns the operation's discriminator.
@@ -177,6 +211,15 @@ func (o DropColumn) Kind() Kind { return KindDropColumn }
 
 // Destructive reports whether the operation can lose data.
 func (o DropColumn) Destructive() bool { return true }
+
+// Reverse re-adds the column when its prior definition was recorded.
+func (o DropColumn) Reverse() (Operation, error) {
+	if o.From == nil {
+		return nil, missingFrom(KindDropColumn, "column definition")
+	}
+
+	return AddColumn{Table: o.Table, Column: *o.From}, nil
+}
 
 func (o DropColumn) isOperation() {}
 
@@ -193,7 +236,15 @@ func (o DropColumn) Validate() error {
 		return err
 	}
 
-	return requireName("column", o.Column)
+	if err := requireName("column", o.Column); err != nil {
+		return err
+	}
+
+	if o.From == nil {
+		return nil
+	}
+
+	return o.From.Validate()
 }
 
 // RenameColumn renames a column, preserving its data.
@@ -208,6 +259,11 @@ func (o RenameColumn) Kind() Kind { return KindRenameColumn }
 
 // Destructive reports whether the operation can lose data.
 func (o RenameColumn) Destructive() bool { return false }
+
+// Reverse renames the column back, which makes this operation its own inverse.
+func (o RenameColumn) Reverse() (Operation, error) {
+	return RenameColumn{Table: o.Table, From: o.To, To: o.From}, nil
+}
 
 func (o RenameColumn) isOperation() {}
 
@@ -235,6 +291,7 @@ type AlterColumn struct {
 	Nullable    *bool        `json:"nullable,omitempty"`
 	Default     *Default     `json:"default,omitempty"`
 	DropDefault bool         `json:"drop_default,omitempty"`
+	From        *ColumnState `json:"from,omitempty"`
 }
 
 // Kind returns the operation's discriminator.
@@ -242,6 +299,38 @@ func (o AlterColumn) Kind() Kind { return KindAlterColumn }
 
 // Destructive reports true for any retype, since this op cannot tell if one narrows.
 func (o AlterColumn) Destructive() bool { return o.Type != nil }
+
+// Reverse restores the recorded prior state of the column.
+func (o AlterColumn) Reverse() (Operation, error) {
+	if o.From.Empty() {
+		return nil, missingFrom(KindAlterColumn, "previous column state")
+	}
+
+	return AlterColumn{
+		Table:       o.Table,
+		Column:      o.Column,
+		Type:        o.From.Type,
+		Nullable:    o.From.Nullable,
+		Default:     o.From.Default,
+		DropDefault: o.restoresNoDefault(),
+		From:        o.currentState(),
+	}, nil
+}
+
+// restoresNoDefault reports whether undoing this change means removing a default.
+func (o AlterColumn) restoresNoDefault() bool {
+	return o.From.Default == nil && o.Default != nil
+}
+
+// currentState records what this operation is setting, so its inverse inverts too.
+func (o AlterColumn) currentState() *ColumnState {
+	state := &ColumnState{Type: o.Type, Nullable: o.Nullable, Default: o.Default}
+	if state.Empty() {
+		return nil
+	}
+
+	return state
+}
 
 func (o AlterColumn) isOperation() {}
 
@@ -271,6 +360,10 @@ func (o AlterColumn) Validate() error {
 	}
 
 	if err := o.Default.Validate(); err != nil {
+		return err
+	}
+
+	if err := o.From.Validate(); err != nil {
 		return err
 	}
 

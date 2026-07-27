@@ -22,8 +22,11 @@ const (
 	KindAddForeignKey  Kind = "add_foreign_key"
 	KindDropForeignKey Kind = "drop_foreign_key"
 	KindAddUnique      Kind = "add_unique"
+	KindDropUnique     Kind = "drop_unique"
 	KindAddCheck       Kind = "add_check"
+	KindDropCheck      Kind = "drop_check"
 	KindAddPrimaryKey  Kind = "add_primary_key"
+	KindDropPrimaryKey Kind = "drop_primary_key"
 	KindCreateView     Kind = "create_view"
 	KindDropView       Kind = "drop_view"
 	KindRaw            Kind = "raw"
@@ -35,7 +38,9 @@ var kinds = []Kind{
 	KindAddColumn, KindDropColumn, KindRenameColumn, KindAlterColumn,
 	KindAddIndex, KindDropIndex,
 	KindAddForeignKey, KindDropForeignKey,
-	KindAddUnique, KindAddCheck, KindAddPrimaryKey,
+	KindAddUnique, KindDropUnique,
+	KindAddCheck, KindDropCheck,
+	KindAddPrimaryKey, KindDropPrimaryKey,
 	KindCreateView, KindDropView,
 	KindRaw,
 }

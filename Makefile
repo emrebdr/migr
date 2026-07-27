@@ -13,6 +13,10 @@ MODULES          := . sdk/go
 BIN              := bin/migr
 TSDIR            := sdk/typescript
 COMPOSE          := test/docker-compose.yml
+# The fallback is load-bearing: git can fail inside a container whose ownership
+# does not match the build user, and a build should not die over a version string.
+VERSION          ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS          := -X github.com/emrebdr/migr/internal/version.Version=$(VERSION)
 GOLANGCI_VERSION := v2.11.4
 GOLANGCI         := $(CURDIR)/bin/golangci-lint
 # Absolute, because the loop below cd's into each module. Relying on golangci-lint's
@@ -82,8 +86,8 @@ help:
 # (git config --global --add safe.directory <path>) or pass -buildvcs=false.
 build:
 	$(call go_each,go build ./...)
-	@echo "==> go build -o $(BIN) ./cmd/migr"
-	@go build -o $(BIN) ./cmd/migr
+	@echo "==> go build -o $(BIN) ./cmd/migr  ($(VERSION))"
+	@go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/migr
 	$(call ts_run,npm run build)
 
 test:

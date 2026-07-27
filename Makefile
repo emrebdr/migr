@@ -75,6 +75,11 @@ help:
 	@echo "  check             lint + test, the CLAUDE.md §10 gate"
 	@echo "  clean             remove build output and tear down containers"
 
+# `go build` stamps VCS info from git by default. If .git is present but git
+# refuses to read it -- a container copy whose ownership does not match the build
+# user is the usual cause -- the build fails with "error obtaining VCS status"
+# rather than skipping the stamp. Either fix the ownership
+# (git config --global --add safe.directory <path>) or pass -buildvcs=false.
 build:
 	$(call go_each,go build ./...)
 	@echo "==> go build -o $(BIN) ./cmd/migr"

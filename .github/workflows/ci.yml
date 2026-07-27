@@ -1,0 +1,81 @@
+# CI runs the same Makefile targets a developer runs locally, rather than
+# reimplementing them in YAML. That keeps the local gate and the remote gate
+# identical, and means the multi-module loop is inherited for free -- a bare
+# `go test ./...` here would silently skip the nested sdk/go module.
+#
+# macos-latest is not redundant with ubuntu-latest: GitHub's macOS runners ship
+# GNU Make 3.81, so it is the only leg that exercises the 3.81 compatibility the
+# Makefile was written for.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  # PR branches are covered here; limiting push to main avoids duplicate runs.
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # A failure on one OS must not hide the other's result.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # Neither module has a go.sum yet -- there are no dependencies. The
+          # default '**/go.sum' glob resolves to nothing and errors, so key the
+          # cache off files that exist. Covers both modules.
+          cache-dependency-path: "**/go.mod"
+
+      - name: Report toolchain
+        run: |
+          make --version | head -1
+          go version
+
+      # Read the pinned version out of the Makefile rather than restating it.
+      # Hard-coding it here would recreate the two-places-to-update drift that
+      # choosing `make tools` over golangci-lint-action was meant to avoid.
+      - name: Resolve pinned tool version
+        id: tools
+        run: echo "version=$(awk '/^GOLANGCI_VERSION/ {print $3}' Makefile)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache dev tools
+        id: cache-tools
+        uses: actions/cache@v4
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-${{ steps.tools.outputs.version }}
+
+      - name: Install dev tools
+        if: steps.cache-tools.outputs.cache-hit != 'true'
+        run: make tools
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+      - name: Build
+        run: make build
+
+      - name: Smoke run
+        run: ./bin/migr

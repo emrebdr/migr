@@ -7,8 +7,8 @@
 // golden file per driver, a defined reverse operation, and a docs/ir.md entry. See
 // CLAUDE.md invariant #4.
 //
-// Status: the v1 operation set is complete (M1-T2). The recorder is M1-T3, the irVersion
-// envelope M1-T4, reverse operations M1-T5.
+// Status: the v1 operation set (M1-T2) and the recorder (M1-T3) are complete. The irVersion
+// envelope is M1-T4, reverse operations M1-T5.
 //
 // # Document shape
 //
@@ -58,6 +58,48 @@
 // type change is requested. That is conservative and sometimes wrong in the safe
 // direction: over-reporting costs an --allow-destructive flag, under-reporting costs data.
 // M11 introspection can compare against the live schema and refine it.
+//
+// # Recording
+//
+// A Recorder collects the operations of one migration execution, in arrival order. It is what
+// the host callback server writes into when a migration running in another process calls
+// host.schema.apply, and it is the single place operations accumulate in both plan and apply
+// mode — which is what lets those two modes be provably identical rather than merely similar.
+//
+// Seal closes it and returns a Recording. Downstream signatures take *Recording, so the
+// compiler enforces that a list handed to the planner is closed, rather than a review comment.
+// An empty recording is legal: a migration whose Down records nothing still ran.
+//
+// Immutability is enforced rather than asserted. Operations hold slices, so a shallow copy
+// would let a caller reach into a sealed recording through CreateTable.Columns. Append and the
+// read accessors clone each operation through its canonical form instead. That reuses the
+// round-trip this package already proves exact, and buys a second property: an operation that
+// could not be serialized is rejected at Append, with its call site attached, rather than
+// failing later in a compile step that has lost the context.
+//
+// # Attribution stays out of the document
+//
+// Each entry carries where it came from — file, line, and optionally function — supplied by the
+// SDK over the protocol, since the migration runs in a different process. The migration ID and
+// direction are held once by the recording, because migration.execute already names them once.
+//
+// None of it reaches the wire. A call site is a machine-specific path: in the IR it would make
+// a migration hash differently on CI than on a laptop, breaking checksum stability, and the Go
+// and TypeScript SDKs report call sites differently for the same migration, breaking the
+// byte-identical-IR guarantee of ADR 0003. A Recording therefore marshals to exactly the
+// operations array, and attribution serves error messages and plan output only.
+//
+// OpError is how CLAUDE.md invariant #9 — every user-facing error names the migration and the
+// offending operation — becomes mechanical. Recording.Wrap attaches the full context to a
+// failure discovered later by a driver or the executor, so no caller has to reassemble it.
+//
+// # Concurrency
+//
+// The recorder is mutex-guarded and race-free. The contract is narrower than the
+// implementation: JSON-RPC over stdio is line-delimited and sequential, so operations arrive in
+// one order, and the lock exists so a misbehaving runtime cannot corrupt state — not so callers
+// may append in parallel. Invariant #8 requires deterministic planning paths, and parallel
+// appends would reorder IR between runs and move the checksum with it.
 //
 // # Where dialect leaks in
 //

@@ -277,6 +277,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0008](docs/adr/0008-reverse-operations.md) | Every operation declares an inverse or a reason it has none |
 | [0009](docs/adr/0009-migration-checksum.md) | A migration checksum is a scheme-versioned pair |
 | [0010](docs/adr/0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" |
+| [0011](docs/adr/0011-driver-contract.md) | The driver contract: a session-scoped connection and an explicitly wired registry |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".
@@ -299,7 +300,9 @@ modules, then unit and golden tests. CI runs the identical targets on Linux and 
 - **Core never imports a concrete implementation.** `ir`, `schema`, `plan`, `engine`,
   `validate`, `capability`, `history`, and `checksum` must not import `internal/driver/<name>`
   or `internal/runtime/<name>`, and drivers must not import one another. Wiring happens through
-  the registry, with blank imports only in `cmd/migr`. Enforced by `depguard`.
+  a registry that `cmd/migr` builds explicitly — a driver exports a constructor rather than
+  registering itself from an `init`, so a duplicate name is an error someone can act on.
+  Enforced by `depguard`.
 - **No raw SQL outside a driver package.** Not in the engine, not in tests above the driver.
 - **Adding an IR operation is a five-part change**, all in one PR: the op type plus a JSON
   round-trip test, a `Compile` in *every* driver or an explicit `Unsupported` with a reason, a

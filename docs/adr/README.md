@@ -20,6 +20,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0008](0008-reverse-operations.md) | Every operation declares an inverse or a reason it has none | Accepted | How rollback is derived, and the three drop operations the set was missing |
 | [0009](0009-migration-checksum.md) | A migration checksum is a scheme-versioned pair: normalized source and emitted IR | Accepted | What a checksum covers, which half decides drift, and how its own format versions |
 | [0010](0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" | Accepted | How an `alter_column` records what it replaced, and when `irVersion` 1 freezes |
+| [0011](0011-driver-contract.md) | The driver contract: a session-scoped connection and an explicitly wired registry | Accepted | What a driver must implement, where connection-scoped work lives, and how a driver reaches the binary |
 
 ## When to write one
 

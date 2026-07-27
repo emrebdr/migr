@@ -7,8 +7,41 @@
 // golden file per driver, a defined reverse operation, and a docs/ir.md entry. See
 // CLAUDE.md invariant #4.
 //
-// Status: the v1 operation set (M1-T2) and the recorder (M1-T3) are complete. The irVersion
-// envelope is M1-T4, reverse operations M1-T5.
+// Status: the v1 operation set (M1-T2), the recorder (M1-T3), and the versioned envelope
+// (M1-T4) are complete. Reverse operations are M1-T5.
+//
+// # The versioned document
+//
+// A Document is the unit an SDK emits and the engine reads:
+//
+//	{"irVersion":1,"operations":[{"op":"create_table","table":"users",...}]}
+//
+// A Recording marshals to one, so nothing can emit operations without a version attached, and
+// an unstamped Document refuses to marshal rather than writing "irVersion":0. Nothing else goes
+// in the envelope: the migration ID and direction are already named by migration.execute and
+// held by the Recording, and duplicating them here would create fields that can disagree with
+// their own container.
+//
+// UnmarshalDocument checks the version *before* decoding operations, and the ordering is the
+// point. A document from a future version very likely contains an operation this build has
+// never heard of; decoding first would report that unknown operation, which is true, useless,
+// and points at the wrong problem. Version-first reports an unreadable irVersion, which tells
+// the operator to upgrade the CLI. A missing irVersion is its own error and is never defaulted
+// to 1 — assuming a version is the lenient behavior ADR 0003 rejected, because it is how a
+// mismatch becomes a migration that reports success having done less than it said.
+//
+// irVersion is the one camelCase key in an otherwise snake_case format. CLAUDE.md §4.1,
+// invariant #5, and ADR 0003 all name it that way, and ADRs are immutable records, so renaming
+// it would leave a committed document describing a key that does not exist. The inconsistency
+// is deliberate and documented rather than quietly corrected.
+//
+// # The checksum boundary
+//
+// Operations() is the hashable unit; the envelope sits outside it. ADR 0003 recorded, without
+// being able to settle, that an irVersion bump would change every applied migration's checksum
+// and fire drift detection across every installation. Keeping the version out of the hashed
+// bytes narrows that to bumps which genuinely reshape operations — where the checksum *should*
+// change, because the emitted IR really did. See docs/adr/0007-ir-document-envelope.md.
 //
 // # Document shape
 //

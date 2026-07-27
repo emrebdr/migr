@@ -16,6 +16,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0004](0004-safety-model.md) | Lock impact as a capability axis; zero-downtime as a v0.1 correctness property | Accepted | How the cost of an operation against a live database is modelled |
 | [0005](0005-logical-type-encoding.md) | Encode logical types as canonical strings in the IR | Accepted | How a logical type is written down inside an IR document |
 | [0006](0006-ir-operation-shape.md) | Flat discriminated operations, one representation per schema fact | Accepted | The shape of an operation document, and where destructiveness is decided |
+| [0007](0007-ir-document-envelope.md) | A versioned document envelope, outside the checksum boundary | Accepted | What an IR document is, and which bytes a migration checksum covers |
 
 ## When to write one
 

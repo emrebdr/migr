@@ -217,9 +217,14 @@ func (r *Recording) Wrap(index int, err error) error {
 	return attribute(r.migration, r.direction, entry, err)
 }
 
-// MarshalJSON renders only the operations. Attribution is engine-side and never on the wire.
+// Document wraps the recorded operations in the versioned envelope that goes on the wire.
+func (r *Recording) Document() *Document {
+	return NewDocument(r.Operations())
+}
+
+// MarshalJSON renders the versioned document. Attribution is engine-side, never on the wire.
 func (r *Recording) MarshalJSON() ([]byte, error) {
-	return Marshal(r.Operations())
+	return Marshal(r.Document())
 }
 
 // cloneOp copies an operation through its canonical form, so no slice stays shared.

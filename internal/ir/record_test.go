@@ -102,8 +102,8 @@ func TestEmptyRecordingSeals(t *testing.T) {
 		t.Fatalf("marshaling an empty recording: %v", err)
 	}
 
-	if string(encoded) != "[]" {
-		t.Errorf("empty recording marshals to %s, want []", encoded)
+	if string(encoded) != `{"irVersion":1,"operations":[]}` {
+		t.Errorf("empty recording marshals to %s, want a versioned empty envelope", encoded)
 	}
 }
 
@@ -255,14 +255,14 @@ func TestAttributionNeverReachesTheDocument(t *testing.T) {
 		}
 	}
 
-	ops, err := Marshal(sealed.Operations())
+	doc, err := Marshal(sealed.Document())
 	if err != nil {
-		t.Fatalf("marshaling the operations: %v", err)
+		t.Fatalf("marshaling the document: %v", err)
 	}
 
-	if string(encoded) != string(ops) {
-		t.Errorf("a recording must marshal exactly as its operations do:\n got %s\nwant %s",
-			encoded, ops)
+	if string(encoded) != string(doc) {
+		t.Errorf("a recording must marshal exactly as its document does:\n got %s\nwant %s",
+			encoded, doc)
 	}
 }
 
@@ -286,18 +286,22 @@ func TestRecordingRoundTripsThroughTheWireForm(t *testing.T) {
 		t.Fatalf("marshaling: %v", err)
 	}
 
-	var back Operations
-	if err := Unmarshal(encoded, &back); err != nil {
+	doc, err := UnmarshalDocument(encoded)
+	if err != nil {
 		t.Fatalf("decoding: %v", err)
 	}
 
-	if !reflect.DeepEqual(back, sealed.Operations()) {
+	if doc.IRVersion != Version {
+		t.Errorf("document carries irVersion %d, want %d", doc.IRVersion, Version)
+	}
+
+	if !reflect.DeepEqual(doc.Operations, sealed.Operations()) {
 		t.Error("the recording does not survive a trip through its own wire form")
 	}
 
 	for i, f := range all {
-		if !reflect.DeepEqual(back[i], f.op) {
-			t.Errorf("operation %d (%s) changed: got %#v, want %#v", i, f.kind, back[i], f.op)
+		if !reflect.DeepEqual(doc.Operations[i], f.op) {
+			t.Errorf("operation %d (%s) changed: got %#v, want %#v", i, f.kind, doc.Operations[i], f.op)
 		}
 	}
 }

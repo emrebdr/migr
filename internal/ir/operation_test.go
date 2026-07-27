@@ -318,6 +318,53 @@ func TestLogicalTypesReachTheWireAsStrings(t *testing.T) {
 	}
 }
 
+func TestNoOperationFieldReachesTheWireAsAFloat(t *testing.T) {
+	for _, f := range fixtures(t) {
+		t.Run(string(f.kind), func(t *testing.T) {
+			if path := findFloat(reflect.TypeOf(f.op), string(f.kind), 0); path != "" {
+				t.Errorf("%s is a floating-point field", path)
+				t.Log("Go renders floats with the shortest representation that round-trips and")
+				t.Log("switches to exponent form at its own thresholds; JavaScript's Number")
+				t.Log("formatting agrees on many values and not on all of them. One float on the")
+				t.Log("wire would break byte-identical IR across SDKs and move the checksum with")
+				t.Log("it. Every v1 field is a string, a bool, or a list of them, and a logical")
+				t.Log("type marshals as text -- no JSON number reaches the hashed bytes at all.")
+			}
+		})
+	}
+}
+
+// findFloat returns the path to the first floating-point field in a type, or empty.
+func findFloat(typ reflect.Type, path string, depth int) string {
+	const maxDepth = 8
+	if depth > maxDepth {
+		return ""
+	}
+
+	switch typ.Kind() {
+	case reflect.Float32, reflect.Float64:
+		return path
+	case reflect.Pointer, reflect.Slice, reflect.Array:
+		return findFloat(typ.Elem(), path+"[]", depth+1)
+	case reflect.Struct:
+		return findFloatInStruct(typ, path, depth)
+	default:
+		return ""
+	}
+}
+
+// findFloatInStruct walks a struct's fields, returning the first floating-point path.
+func findFloatInStruct(typ reflect.Type, path string, depth int) string {
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		if found := findFloat(field.Type, path+"."+field.Name, depth+1); found != "" {
+			return found
+		}
+	}
+
+	return ""
+}
+
 // mustType parses a canonical type string that the test author knows is valid.
 func mustType(t *testing.T, s string) schema.Type {
 	t.Helper()

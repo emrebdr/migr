@@ -18,6 +18,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0006](0006-ir-operation-shape.md) | Flat discriminated operations, one representation per schema fact | Accepted | The shape of an operation document, and where destructiveness is decided |
 | [0007](0007-ir-document-envelope.md) | A versioned document envelope, outside the checksum boundary | Accepted | What an IR document is, and which bytes a migration checksum covers |
 | [0008](0008-reverse-operations.md) | Every operation declares an inverse or a reason it has none | Accepted | How rollback is derived, and the three drop operations the set was missing |
+| [0009](0009-migration-checksum.md) | A migration checksum is a scheme-versioned pair: normalized source and emitted IR | Accepted | What a checksum covers, which half decides drift, and how its own format versions |
 
 ## When to write one
 
@@ -27,6 +28,7 @@ An ADR is required for any change to:
 - the runtime protocol between the engine and a language SDK
 - the database driver contract
 - the capability model, on either the support or the lock-impact axis
+- the migration checksum scheme — what it covers, how it is composed, or how it is spelled
 
 The test is whether a future contributor would otherwise ask "why is it like this?" and have no
 way to find out. Routine implementation choices do not need one.

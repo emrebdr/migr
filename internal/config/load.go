@@ -18,7 +18,7 @@ const DefaultFilename = "migr.yaml"
 
 // Load reads, expands, defaults, and validates the config at path.
 func Load(path string) (*Config, error) {
-	src, err := os.ReadFile(path) //nolint:gosec // the path is operator-supplied by design
+	src, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("no config file at %s (create one with `migr init`): %w", path, err)

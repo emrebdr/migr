@@ -71,7 +71,7 @@ help:
 	@echo "  build             compile both modules and emit $(BIN)"
 	@echo "  test              unit + golden tests, no Docker required"
 	@echo "  test-integration  Docker-backed tests (build tag: integration)"
-	@echo "  lint              golangci-lint across both modules"
+	@echo "  lint              comment rules + golangci-lint across both modules"
 	@echo "  golden-update     regenerate golden files -- read the diff before committing"
 	@echo ""
 	@echo "  tools             install pinned dev tools into ./bin"
@@ -106,7 +106,18 @@ test-integration:
 	  echo "    containers left running; 'make clean' tears them down"; \
 	fi
 
+# commentlint takes a single path where every other target loops MODULES, and that is
+# deliberate: it walks the filesystem rather than loading packages, so it descends into
+# sdk/go on its own. This is the exact inverse of the `go build ./...` trap above -- a
+# walk does not know modules exist. Passing both roots would double-report every finding.
+#
+# The walk is also why it sees files behind //go:build integration, conformance, and
+# zerodowntime, which a default golangci-lint run skips entirely.
+#
+# It runs first because it is the cheaper of the two gates.
 lint:
+	@echo "==> commentlint ./..."
+	@go run ./internal/lint/cmd .
 	$(call golangci_each,run ./...)
 	$(call ts_run,npm run lint)
 

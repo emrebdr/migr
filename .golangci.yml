@@ -40,6 +40,11 @@ linters:
     - forbidigo # #8: deterministic planning; #9: no panic in library code
     - exhaustive # total switches over the IR operation set
 
+    # Guards the //nolint: exemption in internal/lint (M0-T10). That check skips any
+    # comment beginning //nolint:, so without nolintlint a bare directive would smuggle
+    # arbitrary commentary into a function body.
+    - nolintlint
+
     # Cheap, low false-positive correctness checks.
     - misspell
     - copyloopvar
@@ -164,6 +169,17 @@ linters:
             return an error instead; panic only in main for unrecoverable
             startup failures (CLAUDE.md invariant #9)
 
+    # CLAUDE.md §9 requires a nolint inside a function to name the linter and give a
+    # reason on the same line. These three settings are that rule, mechanically:
+    # require-specific rejects a bare //nolint, require-explanation rejects one without a
+    # reason, and allow-unused false stops a stale directive outliving the issue it
+    # silenced. The machine-readable form ("//nolint", never "// nolint") is checked by
+    # default and is what golangci-lint itself requires.
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
     exhaustive:
       default-signifies-exhaustive: true
 
@@ -205,9 +221,6 @@ linters:
           - gosec
           - errcheck
           - noctx
-
-  # M0-T4 adds a depguard block here to enforce invariant #1: core packages must
-  # never import a concrete driver or runtime implementation.
 
 formatters:
   enable:

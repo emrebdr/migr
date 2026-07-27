@@ -71,10 +71,10 @@ Credentials in a DSN are redacted on every output path, so leaking one takes a d
 
 ### Now, next, later
 
-**Now — M0, foundations.** Eight of ten done: the two-module layout, a Makefile that cannot
-skip a module, a 23-linter gate, a mechanically enforced import boundary, CI on Linux and
-macOS, the CLI skeleton, the config loader, and four architecture decision records. Remaining:
-this README and a custom AST check for the comment rules.
+**Now — M0, foundations: done.** The two-module layout, a Makefile that cannot skip a module, a
+24-linter gate, a mechanically enforced import boundary, a custom AST check for the comment
+rules, CI on Linux and macOS, the CLI skeleton, the config loader, and four architecture
+decision records.
 
 **Next.** The logical type system and operation IR (M1), then the driver contract and
 capability model (M2), the PostgreSQL driver (M3), and the engine core (M4). **M5 is the first
@@ -279,8 +279,8 @@ usually the part that answers "why is it like this?".
 > can be mechanically enforced are — `make lint` fails the build on them rather than leaving
 > them to a reviewer's memory.
 
-**The gate.** `make check` must be clean: `golangci-lint` across both modules, then unit and
-golden tests. CI runs the identical targets on Linux and macOS.
+**The gate.** `make check` must be clean: the comment-rule check and `golangci-lint` across both
+modules, then unit and golden tests. CI runs the identical targets on Linux and macOS.
 
 **Rules that are not local decisions.**
 
@@ -303,11 +303,18 @@ golden tests. CI runs the identical targets on Linux and macOS.
 - **Every lock is released**, on every path, including the crashed one.
 
 **Comments.** Two hard rules, and they are unusual enough to state plainly: **no comments
-inside a function body**, and **a function's doc comment is one line**. If a block needs a
-comment to be understood, extract it into a named function — the name is visible at every call
-site, and a name that stops fitting the code is obvious in a way a stale comment never is.
-Multi-line context belongs in the package `doc.go`, in `docs/`, or in an ADR. Tooling
-directives (`//nolint:`, `//go:`, `// Deprecated:`) are exempt.
+inside a function body**, and **a doc comment is one line** — for functions, types, and struct
+fields alike. If a block needs a comment to be understood, extract it into a named function —
+the name is visible at every call site, and a name that stops fitting the code is obvious in a
+way a stale comment never is. Multi-line context belongs in the package `doc.go`, in `docs/`,
+or in an ADR. Tooling directives (`//nolint:`, `//go:`, `// Deprecated:`) are exempt.
+
+These two are enforced by [`internal/lint`](internal/lint/), a small `go/ast` check that
+`make lint` runs before `golangci-lint`. It walks the filesystem rather than loading packages,
+which is deliberate: a walk crosses into the nested `sdk/go` module on its own, and it sees
+files behind `//go:build integration` that a default `golangci-lint` run skips entirely.
+`nolintlint` guards the `//nolint:` exemption, so a directive that names no linter, carries no
+reason, or suppresses nothing cannot be used to smuggle prose into a function body.
 
 **Errors.** Wrap with `%w`. No `panic` in library code. Every user-facing error names the
 migration and the offending operation.

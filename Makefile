@@ -15,6 +15,9 @@ TSDIR            := sdk/typescript
 COMPOSE          := test/docker-compose.yml
 GOLANGCI_VERSION := v2.11.4
 GOLANGCI         := $(CURDIR)/bin/golangci-lint
+# Absolute, because the loop below cd's into each module. Relying on golangci-lint's
+# upward config search would let the nested module silently pick up a different one.
+GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 
 .DEFAULT_GOAL := help
 
@@ -26,6 +29,24 @@ define go_each
 	@for m in $(MODULES); do \
 	  echo "==> $(1)  ($$m)"; \
 	  ( cd $$m && $(1) ) || exit 1; \
+	done
+endef
+
+# Run a golangci-lint subcommand in every Go module, against the one shared config.
+# Resolution and the loop live in a single shell so the resolved path survives; make
+# 3.81 gives each recipe LINE its own shell.
+define golangci_each
+	@if [ -x $(GOLANGCI) ]; then \
+	  gcl=$(GOLANGCI); \
+	elif command -v golangci-lint >/dev/null 2>&1; then \
+	  gcl=golangci-lint; \
+	  echo "!!  unpinned golangci-lint from PATH; 'make tools' installs $(GOLANGCI_VERSION)"; \
+	else \
+	  echo "golangci-lint not found -- run 'make tools'" >&2; exit 1; \
+	fi; \
+	for m in $(MODULES); do \
+	  echo "==> golangci-lint $(1)  ($$m)"; \
+	  ( cd $$m && $$gcl $(1) --config $(GOLANGCI_CONFIG) ) || exit 1; \
 	done
 endef
 
@@ -77,24 +98,7 @@ test-integration:
 	fi
 
 lint:
-	@if [ -x $(GOLANGCI) ]; then \
-	  echo "==> using $(GOLANGCI)"; \
-	elif command -v golangci-lint >/dev/null 2>&1; then \
-	  echo "==> using $$(command -v golangci-lint) from PATH (unpinned)"; \
-	else \
-	  echo "golangci-lint not found -- run 'make tools'" >&2; exit 1; \
-	fi
-	@if [ -x $(GOLANGCI) ]; then \
-	  for m in $(MODULES); do \
-	    echo "==> golangci-lint run ./...  ($$m)"; \
-	    ( cd $$m && $(GOLANGCI) run ./... ) || exit 1; \
-	  done; \
-	else \
-	  for m in $(MODULES); do \
-	    echo "==> golangci-lint run ./...  ($$m)"; \
-	    ( cd $$m && golangci-lint run ./... ) || exit 1; \
-	  done; \
-	fi
+	$(call golangci_each,run ./...)
 	$(call ts_run,npm run lint)
 
 # Packages come BEFORE -update. `go test -update ./...` stops parsing at the
@@ -111,7 +115,7 @@ tools:
 	  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 fmt:
-	$(call go_each,gofmt -w .)
+	$(call golangci_each,fmt)
 	$(call ts_run,npm run fmt)
 
 vet:

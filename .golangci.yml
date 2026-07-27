@@ -1,0 +1,182 @@
+# golangci-lint configuration for migr. Pinned version lives in the Makefile.
+#
+# Shared by both Go modules (root and sdk/go); the Makefile passes --config with an
+# absolute path so the nested module cannot silently get a different one.
+#
+# Every enabled linter traces to a CLAUDE.md rule or to a bug class a migration tool
+# actually ships. Style linters that generate churn without catching defects are
+# deliberately absent.
+#
+# Validate changes with:  ./bin/golangci-lint config verify
+
+version: "2"
+
+linters:
+  default: none
+
+  enable:
+    # Required by M0-T3.
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gosec
+    - importas
+
+    # golangci-lint's standard set, kept.
+    - ineffassign
+    - unused
+
+    # Database correctness. A migration tool that leaks *sql.Rows or skips
+    # rows.Err() corrupts exactly the thing it exists to protect.
+    - sqlclosecheck
+    - rowserrcheck
+    - bodyclose
+    - noctx
+
+    # CLAUDE.md invariants, made mechanical.
+    - errorlint # #9: wrap with %w
+    - forbidigo # #8: deterministic planning; #9: no panic in library code
+    - exhaustive # total switches over the IR operation set
+
+    # Cheap, low false-positive correctness checks.
+    - misspell
+    - copyloopvar
+    - intrange
+    - nilerr
+    - unconvert
+    - predeclared
+    - wastedassign
+
+  settings:
+    # Enforces the alias convention recorded in internal/runtime/doc.go: our
+    # package is imported plain, the stdlib one is aliased. no-unaliased is what
+    # makes this a rule rather than a suggestion.
+    importas:
+      no-unaliased: true
+      alias:
+        - pkg: runtime
+          alias: stdruntime
+
+    # Listing rules REPLACES revive's defaults rather than extending them, so this
+    # set is complete rather than incremental.
+    #
+    # package-comments is deliberately absent: it demands "Package main ...", but
+    # Go's convention for a command is "Command migr ...", which cmd/migr/main.go
+    # correctly uses. Enabling it would force a violation of the standard to
+    # satisfy the linter.
+    revive:
+      rules:
+        - name: exported
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: var-declaration
+        - name: var-naming
+
+    # analyze-types resolves the call through the type checker, so a shadowed or
+    # dot-imported time package cannot slip past a textual match.
+    # Listing forbid REPLACES forbidigo's defaults, so the print patterns are
+    # restated here rather than inherited; the cmd/ and internal/cli/ exclusion
+    # below is what lets the CLI layer print.
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^fmt\.Print(|f|ln)$
+          msg: >-
+            library code returns values and errors; printing belongs in
+            cmd/ or internal/cli/
+        - pattern: ^(print|println)$
+          msg: builtin print writes to stderr and is not for production code
+        - pattern: ^time\.Now$
+          msg: >-
+            planning paths must be deterministic — inject a clock
+            (CLAUDE.md invariant #8)
+        # Matches the source expression (rand.Intn), not the import path;
+        # ^math/rand\. silently never fires. Covers crypto/rand too, which is
+        # intended: planning paths tolerate no nondeterminism from any source.
+        #
+        # For math/rand specifically, gosec's G404 sits at the identical
+        # file:line:col and golangci-lint deduplicates by position, so G404's
+        # message is what gets printed. The rule is working -- verified with
+        # `-D gosec` -- and the build fails either way.
+        - pattern: ^rand\..*$
+          msg: >-
+            planning paths must be deterministic — no randomness
+            (CLAUDE.md invariant #8)
+        - pattern: ^panic$
+          msg: >-
+            return an error instead; panic only in main for unrecoverable
+            startup failures (CLAUDE.md invariant #9)
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    gosec:
+      excludes:
+        - G104 # duplicate of errcheck
+
+    misspell:
+      locale: US
+      ignore-rules:
+        - importas # a linter name, not a misspelling of "imports"
+
+  exclusions:
+    generated: lax
+    # The `comments` preset is deliberately absent: it suppresses exactly the
+    # "comment on exported X should be of the form ..." messages that revive's
+    # exported rule exists to produce, which would make M0-T3's requirement
+    # decorative. std-error-handling is what keeps unchecked fmt.Println and
+    # os.Remove out of errcheck.
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+    rules:
+      # A CLI's job is to write to stdout. forbidigo stays on everywhere else so
+      # library code cannot print instead of returning.
+      - path: (^cmd/|^internal/cli/)
+        linters:
+          - forbidigo
+
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - noctx
+
+  # M0-T4 adds a depguard block here to enforce invariant #1: core packages must
+  # never import a concrete driver or runtime implementation.
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/emrebdr/migr
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -49,7 +49,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	registerGlobalFlags(cmd, opts)
-	cmd.AddCommand(newVersionCmd(opts))
+	cmd.AddCommand(newVersionCmd(opts), newConfigCmd(opts))
 
 	return cmd
 }

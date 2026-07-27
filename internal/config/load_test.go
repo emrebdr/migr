@@ -1,0 +1,226 @@
+package config
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// env builds a lookup function over a fixed set of variables.
+func env(pairs map[string]string) func(string) (string, bool) {
+	return func(name string) (string, bool) {
+		v, ok := pairs[name]
+
+		return v, ok
+	}
+}
+
+// loadFixture parses a testdata file with the given environment.
+func loadFixture(t *testing.T, name string, vars map[string]string) (*Config, error) {
+	t.Helper()
+
+	path := filepath.Join("testdata", name)
+
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+
+	return parse(src, path, env(vars))
+}
+
+func TestExampleFromClaudeMDLoads(t *testing.T) {
+	cfg, err := loadFixture(t, "example.yaml", map[string]string{
+		"DATABASE_URL": "postgres://u:p@localhost:5432/db",
+	})
+	if err != nil {
+		t.Fatalf("example config must load: %v", err)
+	}
+
+	checks := []struct {
+		field string
+		got   any
+		want  any
+	}{
+		{field: "version", got: cfg.Version, want: 1},
+		{field: "migrations.dir", got: cfg.Migrations.Dir, want: "./migrations"},
+		{field: "migrations.language", got: cfg.Migrations.Language, want: LanguageTypeScript},
+		{field: "databases.default.driver", got: cfg.Databases["default"].Driver, want: "postgres"},
+		{field: "databases.default.schema", got: cfg.Databases["default"].Schema, want: "public"},
+		{field: "history.table", got: cfg.History.Table, want: "migr_migrations"},
+		{field: "lock.strategy", got: cfg.Lock.Strategy, want: LockAdvisory},
+		{field: "lock.timeout", got: cfg.Lock.Timeout.Duration(), want: 30 * time.Second},
+		{field: "safety.lock_timeout", got: cfg.Safety.LockTimeout.Duration(), want: 3 * time.Second},
+		{field: "safety.lock_retries", got: cfg.Safety.LockRetries, want: 5},
+		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: BriefExclusive},
+		{field: "safety.auto_rewrite", got: cfg.Safety.AutoRewrite, want: true},
+		{field: "validation.allow_destructive", got: cfg.Validation.AllowDestructive, want: false},
+	}
+
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s = %v, want %v", c.field, c.got, c.want)
+		}
+	}
+
+	if got := cfg.Databases["default"].DSN.Reveal(); got != "postgres://u:p@localhost:5432/db" {
+		t.Errorf("dsn was not expanded: %q", got)
+	}
+}
+
+func TestUnknownKeyIsRejectedWithSourceContext(t *testing.T) {
+	_, err := loadFixture(t, "unknown_key.yaml", nil)
+	if err == nil {
+		t.Fatal("an unknown key must be an error")
+	}
+
+	msg := err.Error()
+	for _, want := range []string{"unknown field", "drivr", "databases:"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error should mention %q, got:\n%s", want, msg)
+		}
+	}
+}
+
+func TestMissingRequiredFieldsAreAllReportedWithPaths(t *testing.T) {
+	_, err := loadFixture(t, "missing_required.yaml", nil)
+	if err == nil {
+		t.Fatal("missing required fields must be an error")
+	}
+
+	var verr *ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected a *ValidationError, got %T", err)
+	}
+
+	wantPaths := []string{
+		"databases.primary.dsn",
+		"databases.replica.driver",
+		"lock.strategy",
+		"migrations.language",
+		"safety.max_lock_impact",
+		"version",
+	}
+
+	got := make(map[string]string, len(verr.Errors))
+	for _, fe := range verr.Errors {
+		got[fe.Path] = fe.Message
+	}
+
+	for _, path := range wantPaths {
+		if _, ok := got[path]; !ok {
+			t.Errorf("no problem reported at path %q; got %v", path, got)
+		}
+	}
+
+	if len(verr.Errors) != len(wantPaths) {
+		t.Errorf("reported %d problems, want %d: %v", len(verr.Errors), len(wantPaths), got)
+	}
+}
+
+func TestValidationErrorReportsEveryProblemAtOnce(t *testing.T) {
+	_, err := loadFixture(t, "missing_required.yaml", nil)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+
+	if !strings.Contains(err.Error(), "6 problems") {
+		t.Errorf("error should summarize the count, got:\n%s", err)
+	}
+}
+
+func TestDefaultsAreApplied(t *testing.T) {
+	src := []byte(`
+version: 1
+migrations:
+  language: go
+databases:
+  default:
+    driver: sqlite
+    dsn: file:test.db
+`)
+
+	cfg, err := parse(src, "test.yaml", env(nil))
+	if err != nil {
+		t.Fatalf("minimal config must load: %v", err)
+	}
+
+	checks := []struct {
+		field string
+		got   any
+		want  any
+	}{
+		{field: "migrations.dir", got: cfg.Migrations.Dir, want: "./migrations"},
+		{field: "history.table", got: cfg.History.Table, want: "migr_migrations"},
+		{field: "lock.strategy", got: cfg.Lock.Strategy, want: LockAdvisory},
+		{field: "lock.timeout", got: cfg.Lock.Timeout.Duration(), want: 30 * time.Second},
+		{field: "safety.lock_timeout", got: cfg.Safety.LockTimeout.Duration(), want: 3 * time.Second},
+		{field: "safety.lock_retries", got: cfg.Safety.LockRetries, want: 5},
+		{field: "safety.statement_timeout", got: cfg.Safety.StatementTimeout.Duration(), want: 30 * time.Second},
+		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: BriefExclusive},
+		{field: "safety.replica_lag_threshold", got: cfg.Safety.ReplicaLagThreshold.Duration(), want: 5 * time.Second},
+	}
+
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("default %s = %v, want %v", c.field, c.got, c.want)
+		}
+	}
+}
+
+func TestEnvValueCannotInjectYAMLStructure(t *testing.T) {
+	src := []byte(`
+version: 1
+migrations:
+  language: go
+databases:
+  default:
+    driver: postgres
+    dsn: ${DATABASE_URL}
+`)
+
+	cfg, err := parse(src, "test.yaml", env(map[string]string{
+		"DATABASE_URL": "x\nallow_destructive: true\nmalicious: true",
+	}))
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+
+	if cfg.Validation.AllowDestructive {
+		t.Error("an environment value must not be able to set other config fields")
+	}
+
+	if got := cfg.Databases["default"].DSN.Reveal(); !strings.Contains(got, "malicious") {
+		t.Errorf("the value should survive intact as a scalar, got %q", got)
+	}
+}
+
+func TestEmptyFileIsRejected(t *testing.T) {
+	if _, err := parse([]byte("\n"), "test.yaml", env(nil)); err == nil {
+		t.Fatal("an empty config file must be an error")
+	}
+}
+
+func TestLoadReportsMissingFileHelpfully(t *testing.T) {
+	_, err := Load(filepath.Join(t.TempDir(), "absent.yaml"))
+	if err == nil {
+		t.Fatal("a missing file must be an error")
+	}
+
+	if !strings.Contains(err.Error(), "migr init") {
+		t.Errorf("error should suggest a remedy, got: %v", err)
+	}
+}
+
+func TestResolve(t *testing.T) {
+	if got := Resolve(""); got != DefaultFilename {
+		t.Errorf("Resolve(\"\") = %q, want %q", got, DefaultFilename)
+	}
+
+	if got := Resolve("custom.yaml"); got != "custom.yaml" {
+		t.Errorf("Resolve(%q) = %q, want the explicit value", "custom.yaml", got)
+	}
+}

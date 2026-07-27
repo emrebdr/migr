@@ -1,0 +1,12 @@
+version: 2
+migrations:
+  dir: ./migrations
+databases:
+  primary:
+    driver: postgres
+  replica:
+    dsn: postgres://localhost/db
+lock:
+  strategy: advisor
+safety:
+  max_lock_impact: whenever

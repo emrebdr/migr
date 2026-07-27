@@ -1,0 +1,28 @@
+# Copied verbatim from CLAUDE.md §9. Keep the two in sync.
+#
+# This is a copy rather than a reference because CLAUDE.md is gitignored: a test
+# reading it directly would pass locally and fail in CI, which is the worst
+# possible way for a fixture to break.
+version: 1
+migrations:
+  dir: ./migrations
+  language: typescript
+databases:
+  default:
+    driver: postgres
+    dsn: ${DATABASE_URL}
+    schema: public
+history:
+  table: migr_migrations
+lock:
+  strategy: advisory        # advisory | table | file
+  timeout: 30s              # wait for the migration lock
+safety:
+  lock_timeout: 3s          # per-DDL-statement lock wait before backing off
+  lock_retries: 5           # bounded retries with exponential backoff + jitter
+  statement_timeout: 30s
+  max_lock_impact: brief_exclusive   # lock_free | brief_exclusive | long_exclusive | table_rewrite
+  auto_rewrite: true        # decompose unsafe ops into safe sequences where possible
+  replica_lag_threshold: 5s # pause backfills above this lag
+validation:
+  allow_destructive: false

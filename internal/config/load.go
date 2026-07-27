@@ -1,0 +1,120 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
+	"github.com/goccy/go-yaml/parser"
+)
+
+// DefaultFilename is the config file looked for when --config is not given.
+const DefaultFilename = "migr.yaml"
+
+// Load reads, expands, defaults, and validates the config at path.
+func Load(path string) (*Config, error) {
+	src, err := os.ReadFile(path) //nolint:gosec // the path is operator-supplied by design
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("no config file at %s (create one with `migr init`): %w", path, err)
+		}
+
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	return parse(src, path, os.LookupEnv)
+}
+
+// Resolve returns the config path to load, given an explicit --config value.
+func Resolve(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+
+	return DefaultFilename
+}
+
+// parse runs the full pipeline over already-read bytes.
+func parse(src []byte, source string, lookup func(string) (string, bool)) (*Config, error) {
+	file, err := parser.ParseBytes(src, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parsing %s:\n%s", source, yaml.FormatError(err, false, true))
+	}
+
+	if err := expandEnv(file, lookup); err != nil {
+		return nil, fmt.Errorf("expanding variables in %s: %w", source, err)
+	}
+
+	cfg := &Config{}
+	if err := decode(file, cfg); err != nil {
+		return nil, fmt.Errorf("loading %s:\n%s", source, yaml.FormatError(err, false, true))
+	}
+
+	applyDefaults(cfg)
+
+	if err := validate(cfg, source); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+// decode converts the expanded document into a Config, rejecting unknown keys.
+func decode(file *ast.File, cfg *Config) error {
+	for _, doc := range file.Docs {
+		if doc.Body == nil {
+			continue
+		}
+
+		return yaml.NodeToValue(doc.Body, cfg, yaml.DisallowUnknownField())
+	}
+
+	return errors.New("config file is empty")
+}
+
+// applyDefaults fills every optional field left unset by the document.
+func applyDefaults(cfg *Config) {
+	setString(&cfg.Migrations.Dir, "./migrations")
+	setString(&cfg.History.Table, "migr_migrations")
+
+	if cfg.Lock.Strategy == "" {
+		cfg.Lock.Strategy = LockAdvisory
+	}
+
+	setDuration(&cfg.Lock.Timeout, 30*time.Second)
+	setDuration(&cfg.Safety.LockTimeout, 3*time.Second)
+	setDuration(&cfg.Safety.StatementTimeout, 30*time.Second)
+	setDuration(&cfg.Safety.ReplicaLagThreshold, 5*time.Second)
+
+	if cfg.Safety.LockRetries == 0 {
+		cfg.Safety.LockRetries = 5
+	}
+
+	if cfg.Safety.MaxLockImpact == "" {
+		cfg.Safety.MaxLockImpact = BriefExclusive
+	}
+}
+
+// setString assigns a default to an empty string field.
+func setString(field *string, value string) {
+	if *field == "" {
+		*field = value
+	}
+}
+
+// setDuration assigns a default to an unset duration field.
+func setDuration(field *Duration, value time.Duration) {
+	if *field == 0 {
+		*field = Duration(value)
+	}
+}
+
+// yamlPath renders a node's path without goccy's leading document marker.
+func yamlPath(node ast.Node) string {
+	return strings.TrimPrefix(node.GetPath(), "$.")
+}

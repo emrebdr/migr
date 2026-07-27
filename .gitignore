@@ -30,3 +30,18 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Build output
+bin/
+dist/
+.migr/
+
+# Markdown: ignored by default, project docs kept.
+# The ADRs, IR spec, and protocol spec are contract deliverables (CLAUDE.md §10)
+# and must stay under version control.
+*.md
+!README.md
+!CHANGELOG.md
+!docs/**/*.md
+!examples/**/*.md
+!sdk/**/*.md

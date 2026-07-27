@@ -15,6 +15,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0003](0003-ir-versioning.md) | Version the operation IR explicitly | Accepted | What happens when an SDK and the engine disagree |
 | [0004](0004-safety-model.md) | Lock impact as a capability axis; zero-downtime as a v0.1 correctness property | Accepted | How the cost of an operation against a live database is modelled |
 | [0005](0005-logical-type-encoding.md) | Encode logical types as canonical strings in the IR | Accepted | How a logical type is written down inside an IR document |
+| [0006](0006-ir-operation-shape.md) | Flat discriminated operations, one representation per schema fact | Accepted | The shape of an operation document, and where destructiveness is decided |
 
 ## When to write one
 

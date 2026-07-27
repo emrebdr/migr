@@ -129,9 +129,10 @@ func (d *ViewDef) Validate() error {
 
 // ColumnState is what a column looked like before an alter_column changed it.
 type ColumnState struct {
-	Type     *schema.Type `json:"type,omitempty"`
-	Nullable *bool        `json:"nullable,omitempty"`
-	Default  *Default     `json:"default,omitempty"`
+	Type      *schema.Type `json:"type,omitempty"`
+	Nullable  *bool        `json:"nullable,omitempty"`
+	Default   *Default     `json:"default,omitempty"`
+	NoDefault bool         `json:"no_default,omitempty"`
 }
 
 // Validate reports whether the recorded state is usable.
@@ -144,6 +145,10 @@ func (s *ColumnState) Validate() error {
 		return errors.New("from.type is present but empty")
 	}
 
+	if s.Default != nil && s.NoDefault {
+		return errors.New("from.default and from.no_default cannot both be set")
+	}
+
 	if err := s.Default.Validate(); err != nil {
 		return fmt.Errorf("from: %w", err)
 	}
@@ -153,7 +158,11 @@ func (s *ColumnState) Validate() error {
 
 // Empty reports whether the recorded state describes nothing to restore.
 func (s *ColumnState) Empty() bool {
-	return s == nil || (s.Type == nil && s.Nullable == nil && s.Default == nil)
+	if s == nil {
+		return true
+	}
+
+	return s.Type == nil && s.Nullable == nil && s.Default == nil && !s.NoDefault
 }
 
 // requireDistinctIn reports whether a named column list mentions any column twice.

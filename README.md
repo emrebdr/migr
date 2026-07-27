@@ -242,7 +242,9 @@ test/
   golden/              per-driver, per-operation expected SQL
   conformance/         shared driver, runtime, and zero-downtime suites
   integration/         Docker-backed end-to-end tests
-docs/adr/              architecture decision records
+docs/
+  ir.md                the operation IR wire format, specified
+  adr/                 architecture decision records
 ```
 
 Most of these are currently a `doc.go` recording the package's purpose and the milestone that
@@ -256,7 +258,11 @@ Three contracts carry the whole design: the **operation IR** between SDKs and dr
 **driver contract** with its two capability axes, and the **runtime protocol** between the
 engine and a language SDK.
 
-The reasoning behind each — including the options that were rejected and why — lives in
+The IR's wire format is written down in [`docs/ir.md`](docs/ir.md) — the document a third-party
+SDK implements against. Every JSON example in it is checked by the test suite, so the
+specification cannot drift from the code.
+
+The reasoning behind each contract — including the options that were rejected and why — lives in
 [`docs/adr/`](docs/adr/README.md):
 
 | # | Decision |
@@ -265,6 +271,12 @@ The reasoning behind each — including the options that were rejected and why �
 | [0002](docs/adr/0002-runtime-protocol.md) | Bidirectional JSON-RPC over stdio for language runtimes |
 | [0003](docs/adr/0003-ir-versioning.md) | Version the operation IR explicitly |
 | [0004](docs/adr/0004-safety-model.md) | Lock impact as a capability axis; zero-downtime as a v0.1 property |
+| [0005](docs/adr/0005-logical-type-encoding.md) | Encode logical types as canonical strings in the IR |
+| [0006](docs/adr/0006-ir-operation-shape.md) | Flat discriminated operations, one representation per schema fact |
+| [0007](docs/adr/0007-ir-document-envelope.md) | A versioned document envelope, outside the checksum boundary |
+| [0008](docs/adr/0008-reverse-operations.md) | Every operation declares an inverse or a reason it has none |
+| [0009](docs/adr/0009-migration-checksum.md) | A migration checksum is a scheme-versioned pair |
+| [0010](docs/adr/0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".
@@ -291,8 +303,9 @@ modules, then unit and golden tests. CI runs the identical targets on Linux and 
 - **No raw SQL outside a driver package.** Not in the engine, not in tests above the driver.
 - **Adding an IR operation is a five-part change**, all in one PR: the op type plus a JSON
   round-trip test, a `Compile` in *every* driver or an explicit `Unsupported` with a reason, a
-  golden file per driver, a defined reverse operation or an `Irreversible` marker, and a
-  specification entry.
+  golden file per driver, a defined reverse operation or an `Irreversible` marker, and an entry
+  in [`docs/ir.md`](docs/ir.md). The last one is enforced: the test suite reads the
+  specification and fails if an operation is missing from it.
 - **Planning paths are deterministic.** No `time.Now`, no randomness, no reliance on map
   iteration order in anything producing IR, plans, or SQL. Inject a clock; sort before
   iterating. Enforced by `forbidigo`; golden tests depend on it.

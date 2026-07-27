@@ -19,6 +19,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0007](0007-ir-document-envelope.md) | A versioned document envelope, outside the checksum boundary | Accepted | What an IR document is, and which bytes a migration checksum covers |
 | [0008](0008-reverse-operations.md) | Every operation declares an inverse or a reason it has none | Accepted | How rollback is derived, and the three drop operations the set was missing |
 | [0009](0009-migration-checksum.md) | A migration checksum is a scheme-versioned pair: normalized source and emitted IR | Accepted | What a checksum covers, which half decides drift, and how its own format versions |
+| [0010](0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" | Accepted | How an `alter_column` records what it replaced, and when `irVersion` 1 freezes |
 
 ## When to write one
 
@@ -45,7 +46,8 @@ way to find out. Routine implementation choices do not need one.
    cannot tell which is which unless the ADR says.
 4. Write the Consequences section honestly. If it lists only benefits, the trade-off has not
    been found yet.
-5. Add a row to the index above.
+5. Add a row to the index above, **and to the table in the root `README.md`**, which is the only
+   entry point someone who has just cloned the repository has.
 
 ## Superseding
 

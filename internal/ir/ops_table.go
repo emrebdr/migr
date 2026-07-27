@@ -244,7 +244,21 @@ func (o DropColumn) Validate() error {
 		return nil
 	}
 
-	return o.From.Validate()
+	if err := o.From.Validate(); err != nil {
+		return err
+	}
+
+	return o.requireRecordedNameMatches()
+}
+
+// requireRecordedNameMatches reports whether the recorded column is the one being dropped.
+func (o DropColumn) requireRecordedNameMatches() error {
+	if o.From.Name == o.Column {
+		return nil
+	}
+
+	return fmt.Errorf("from.name %q does not name the column being dropped (%q)",
+		o.From.Name, o.Column)
 }
 
 // RenameColumn renames a column, preserving its data.
@@ -317,14 +331,20 @@ func (o AlterColumn) Reverse() (Operation, error) {
 	}, nil
 }
 
-// restoresNoDefault reports whether undoing this change means removing a default.
+// restoresNoDefault reports whether the prior state recorded that there was no default.
 func (o AlterColumn) restoresNoDefault() bool {
-	return o.From.Default == nil && o.Default != nil
+	return o.From.NoDefault
 }
 
 // currentState records what this operation is setting, so its inverse inverts too.
 func (o AlterColumn) currentState() *ColumnState {
-	state := &ColumnState{Type: o.Type, Nullable: o.Nullable, Default: o.Default}
+	state := &ColumnState{
+		Type:      o.Type,
+		Nullable:  o.Nullable,
+		Default:   o.Default,
+		NoDefault: o.DropDefault,
+	}
+
 	if state.Empty() {
 		return nil
 	}

@@ -294,7 +294,7 @@ func TestAlterColumnReversesNoDefaultAsDropDefault(t *testing.T) {
 		Table:   "users",
 		Column:  "status",
 		Default: Literal("draft"),
-		From:    &ColumnState{Type: ptrType(t, "string(32)")},
+		From:    &ColumnState{NoDefault: true},
 	}
 
 	inverse, err := op.Reverse()
@@ -318,6 +318,166 @@ func TestAlterColumnReversesNoDefaultAsDropDefault(t *testing.T) {
 
 	if err := back.Validate(); err != nil {
 		t.Errorf("the inverse must be a valid operation: %v", err)
+	}
+}
+
+func TestPriorStateDistinguishesNoDefaultFromNothingRecorded(t *testing.T) {
+	setsADefault := func(from *ColumnState) AlterColumn {
+		return AlterColumn{Table: "users", Column: "status", Default: Literal("draft"), From: from}
+	}
+
+	if _, err := setsADefault(&ColumnState{}).Reverse(); !errors.Is(err, ErrIrreversible) {
+		t.Errorf("an empty prior state reversed to %v, want irreversible", err)
+		t.Log("A from that says nothing is not a record that there was nothing. Conflating")
+		t.Log("the two is what made this operation depend on an unrelated padding field.")
+	}
+
+	inverse, err := setsADefault(&ColumnState{NoDefault: true}).Reverse()
+	if err != nil {
+		t.Fatalf("a recorded absence must make it reversible: %v", err)
+	}
+
+	back, ok := inverse.(AlterColumn)
+	if !ok {
+		t.Fatalf("inverse is %T, want AlterColumn", inverse)
+	}
+
+	if !back.DropDefault {
+		t.Error("no_default must invert to drop_default, with no other field needed")
+		t.Log("Before this was expressible, reversing here required recording an unchanged")
+		t.Log("type purely so that the prior state read as non-empty.")
+	}
+
+	silentAboutDefaults := AlterColumn{
+		Table: "users", Column: "status",
+		Nullable: ptrBool(true),
+		Default:  Literal("draft"),
+		From:     &ColumnState{Nullable: ptrBool(false)},
+	}
+
+	partial, err := silentAboutDefaults.Reverse()
+	if err != nil {
+		t.Fatalf("a partially recorded prior state is still reversible: %v", err)
+	}
+
+	if partial.(AlterColumn).DropDefault {
+		t.Error("a prior state silent about defaults must not invert to dropping one")
+		t.Log("Inferring the absence from an unmentioned field is a guess, and the guess")
+		t.Log("destroys a default the migration never recorded and never set. The inverse")
+		t.Log("restores what from recorded and nothing more.")
+	}
+}
+
+func TestAlterColumnReversesTwiceToItself(t *testing.T) {
+	tests := []struct {
+		name string
+		op   AlterColumn
+	}{
+		{
+			name: "type change",
+			op: AlterColumn{
+				Table: "users", Column: "email",
+				Type: ptrType(t, "string(512)"),
+				From: &ColumnState{Type: ptrType(t, "string(255)")},
+			},
+		},
+		{
+			name: "nullability change",
+			op: AlterColumn{
+				Table: "users", Column: "email",
+				Nullable: ptrBool(true),
+				From:     &ColumnState{Nullable: ptrBool(false)},
+			},
+		},
+		{
+			name: "set a default where there was none",
+			op: AlterColumn{
+				Table: "users", Column: "status",
+				Default: Literal("draft"),
+				From:    &ColumnState{NoDefault: true},
+			},
+		},
+		{
+			name: "drop an existing default",
+			op: AlterColumn{
+				Table: "users", Column: "status",
+				DropDefault: true,
+				From:        &ColumnState{Default: Literal("draft")},
+			},
+		},
+		{
+			name: "replace one default with another",
+			op: AlterColumn{
+				Table: "users", Column: "status",
+				Default: Literal("live"),
+				From:    &ColumnState{Default: Literal("draft")},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			once, err := tt.op.Reverse()
+			if err != nil {
+				t.Fatalf("first reverse: %v", err)
+			}
+
+			if err := once.Validate(); err != nil {
+				t.Fatalf("the inverse must be a valid operation: %v", err)
+			}
+
+			twice, err := once.Reverse()
+			if err != nil {
+				t.Log("A rollback that cannot itself be rolled forward is a one-way door.")
+				t.Fatalf("second reverse: %v", err)
+			}
+
+			if !reflect.DeepEqual(twice, tt.op) {
+				t.Errorf("reversing twice gave\n %#v\nwant the original\n %#v", twice, tt.op)
+				t.Log("alter_column is the one operation whose inverse records its own prior")
+				t.Log("state, so it is the only one for which this identity can hold at all.")
+			}
+		})
+	}
+}
+
+func TestColumnStateRefusesBothDefaultAndNoDefault(t *testing.T) {
+	op := AlterColumn{
+		Table:   "users",
+		Column:  "status",
+		Default: Literal("live"),
+		From:    &ColumnState{Default: Literal("draft"), NoDefault: true},
+	}
+
+	if err := op.Validate(); err == nil {
+		t.Error("a prior state claiming both a default and no default was accepted")
+		t.Log("It mirrors the operation's own default/drop_default exclusion: the two")
+		t.Log("together describe no state a column can have been in.")
+	}
+}
+
+func TestDropColumnRejectsAMismatchedRecordedName(t *testing.T) {
+	op := DropColumn{
+		Table:  "users",
+		Column: "nickname",
+		From:   &Column{Name: "email", Type: mustType(t, "string(255)")},
+	}
+
+	if err := op.Validate(); err == nil {
+		t.Error("a recorded definition naming a different column was accepted")
+		t.Log("Reverse re-adds the recorded column verbatim, so a mismatch here restores a")
+		t.Log("column that was never dropped and leaves the dropped one gone -- the silent")
+		t.Log("wrong restoration that a from payload exists to prevent.")
+	}
+
+	matching := DropColumn{
+		Table:  "users",
+		Column: "nickname",
+		From:   &Column{Name: "nickname", Type: mustType(t, "string(255)")},
+	}
+
+	if err := matching.Validate(); err != nil {
+		t.Errorf("a matching recorded definition must be accepted: %v", err)
 	}
 }
 

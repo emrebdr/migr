@@ -7,8 +7,19 @@
 // golden file per driver, a defined reverse operation, and a docs/ir.md entry. See
 // CLAUDE.md invariant #4.
 //
-// Status: the v1 operation set (M1-T2), the recorder (M1-T3), the versioned envelope (M1-T4),
-// and reverse operations (M1-T5) are complete. The checksum is M1-T6.
+// Status: complete for irVersion 1 — the operation set (M1-T2), the recorder (M1-T3), the
+// versioned envelope (M1-T4), reverse operations (M1-T5), and the specification (M1-T7).
+//
+// # The wire format is specified in docs/ir.md
+//
+// That document, not this one, is what a third-party SDK implements against. Its JSON examples
+// are read by spec_test.go and re-encoded through this package, so every one of them is a
+// conformance vector and none of them can drift. The same test asserts that every operation has
+// a section, which is what makes the fifth part of CLAUDE.md invariant #4 mechanical.
+//
+// Note what that makes true of this package: after M1-T6, the bytes it emits are a compatibility
+// surface. Reordering a struct field, adding one without omitempty, or changing how a logical
+// type renders changes the checksum of every applied migration in every installation.
 //
 // # The versioned document
 //
@@ -103,6 +114,14 @@
 // leave the new one in place after rollback. And create_view with OrReplace does not assume the
 // view was new: it may have overwritten an existing definition, so it inverts to a restoration
 // when the prior query was recorded and refuses otherwise.
+//
+// ColumnState carries NoDefault so that "the column had no default" is sayable and distinct from
+// "nothing was recorded about defaults". Before it existed, the first was expressible only by
+// recording an unrelated unchanged field as padding, and the inverse inferred the absence from a
+// missing one — which drops a default the migration never recorded whenever the payload is merely
+// silent. It also makes alter_column an involution: reversing a fully recorded one twice returns
+// the original, which no other operation can claim, because it is the only one whose inverse
+// records its own prior state. See docs/adr/0010-recorded-absence-of-a-default.md.
 //
 // ReverseAll inverts a list and reverses its order, but only if every operation in it can be
 // inverted. A partial reversal that stops halfway is worse than refusing to start.

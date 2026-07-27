@@ -232,7 +232,7 @@ internal/
   plan/ engine/        IR -> ordered plan; apply, rollback, transactions, locking
   history/ checksum/   migration history store and drift detection
   validate/ diff/      destructive-op and capability validation; snapshot diffing
-  driver/              Driver contract + registry; postgres/ mysql/ sqlite/
+  driver/              Driver contract + registry; drivertest/ postgres/ mysql/ sqlite/
   runtime/             Runtime contract + registry; protocol/ golang/ node/
   cli/ config/ version/
 sdk/

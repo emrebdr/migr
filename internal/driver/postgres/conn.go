@@ -20,12 +20,28 @@ type pgConn struct {
 	lockWait string
 	// locked is session state, not shared state: a Conn is used by one goroutine, as pgx is.
 	locked bool
+	// tx is the transaction Transact opened, and is nil whenever this session is not inside one.
+	tx pgx.Tx
 }
 
-// Exec runs one compiled statement against this session.
+// Exec runs one compiled statement, inside this session's transaction when it has one open.
 func (c *pgConn) Exec(ctx context.Context, stmt driver.Statement) error {
-	if _, err := c.conn.Exec(ctx, stmt.SQL); err != nil {
+	if err := c.checkStatementFits(stmt); err != nil {
+		return err
+	}
+
+	if _, err := c.runner().Exec(ctx, stmt.SQL); err != nil {
 		return fmt.Errorf("executing a statement on %s: %w", Name, err)
+	}
+
+	return nil
+}
+
+// checkStatementFits refuses a statement declaring it cannot run where this session would run it.
+func (c *pgConn) checkStatementFits(stmt driver.Statement) error {
+	if stmt.NoTransaction && c.tx != nil {
+		return fmt.Errorf("%w: %w, so the caller must split the migration around it",
+			ErrTransaction, ErrStatementNeedsNoTransaction)
 	}
 
 	return nil

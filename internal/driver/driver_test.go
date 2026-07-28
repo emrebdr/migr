@@ -59,6 +59,11 @@ func (c *fakeConn) Lock(context.Context) (Unlock, error) {
 	return func(context.Context) error { return nil }, nil
 }
 
+// Transact runs the work with nothing bracketing it, since this fake has no database.
+func (c *fakeConn) Transact(ctx context.Context, work Work) error {
+	return work(ctx)
+}
+
 // Capabilities returns the set this session was opened with.
 func (c *fakeConn) Capabilities() capability.Set {
 	return c.caps

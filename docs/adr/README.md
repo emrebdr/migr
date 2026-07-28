@@ -26,6 +26,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0014](0014-online-change-capture.md) | Online change capture reads the write-ahead log, and cutover waits for a human | Accepted | How a shadow table stays current without triggers, and who decides the moment of the rename |
 | [0015](0015-payload-dependent-refusals.md) | A driver refuses payloads, not operation kinds | Accepted | Where a per-payload refusal lives, how the compiler and the declaration are kept in agreement, and what a version-blind compiler cannot decide |
 | [0016](0016-lock-impact-is-a-duration.md) | Lock impact is a duration, not a lock level | Accepted | What the four lock verdicts mean, what a live server can settle, and why raw is permanently unknown |
+| [0017](0017-transaction-boundaries.md) | A transaction is a closure the driver brackets, not a handle the caller holds | Accepted | How a migration becomes one transaction, where the history write sits relative to the commit, and why grouping is the engine's |
 
 ## When to write one
 

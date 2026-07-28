@@ -20,9 +20,10 @@ func New(opts driver.Options) (driver.Driver, error) {
 	schema, table := opts.Namespace()
 
 	return &pgDriver{
-		schema:   opts.Schema,
-		key:      namespaceKey(schema, table),
-		lockWait: defaultLockWait,
+		schema:            opts.Schema,
+		key:               namespaceKey(schema, table),
+		lockWait:          defaultLockWait,
+		statementLockWait: defaultStatementLockWait,
 	}, nil
 }
 
@@ -32,6 +33,8 @@ type pgDriver struct {
 	key    lockKey
 	// lockWait bounds an acquire server-side. M4-T4 sets it from migr.yaml's lock.timeout.
 	lockWait string
+	// statementLockWait bounds each statement. M4-T4 sets it from migr.yaml's safety.lock_timeout.
+	statementLockWait string
 }
 
 // Name returns the driver's registered name.
@@ -50,6 +53,8 @@ func (d *pgDriver) Open(ctx context.Context, dsn string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	pinLockTimeout(cfg, d.statementLockWait)
 
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {

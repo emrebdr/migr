@@ -27,6 +27,22 @@ const searchPathQuery = `SELECT set_config('search_path', quote_ident($1), false
 // the grammar the compiler was written against instead of trusting that it already is.
 const stringGrammarQuery = `SELECT set_config('standard_conforming_strings', 'on', false)`
 
+// lockTimeoutParam is the setting invariant #12 requires every DDL statement to run under.
+//
+// It is pinned in the startup packet rather than set with set_config, and the difference is not
+// cosmetic. A startup-packet value reaches PostgreSQL as source "client", which sets the setting's
+// reset_val; an interactive SET does not, because its source outranks the one RESET restores. So a
+// session default established the way search_path and standard_conforming_strings are established
+// would be wiped by the first RESET -- and acquire ends with one. lock_timeout would be 0 from the
+// first migration lock onward, and every DDL statement after it would wait for a lock forever:
+// invariant #12 broken on the happy path, silently. Verified on PostgreSQL 16 and 17, where
+// pg_settings then reports source "client" and RESET restores the pinned value rather than 0.
+const lockTimeoutParam = "lock_timeout"
+
+// defaultStatementLockWait bounds each DDL statement until M4-T4 passes safety.lock_timeout down,
+// and matches the default internal/config applies to that key.
+const defaultStatementLockWait = "3s"
+
 // parseDSN turns a connection string into a pgx config, withholding the string when it will not.
 func parseDSN(dsn string) (*pgx.ConnConfig, error) {
 	cfg, err := pgx.ParseConfig(dsn)
@@ -35,6 +51,11 @@ func parseDSN(dsn string) (*pgx.ConnConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+// pinLockTimeout bounds every statement this session runs, after parsing so a DSN cannot lower it.
+func pinLockTimeout(cfg *pgx.ConnConfig, wait string) {
+	cfg.RuntimeParams[lockTimeoutParam] = wait
 }
 
 // applyStringGrammar pins the session to the string literal grammar this driver quotes for.

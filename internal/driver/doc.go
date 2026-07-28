@@ -95,6 +95,28 @@
 // exists before the first executor does, so M3-T5 groups statements rather than wrapping them.
 // It is spelled so that the zero value is the safe answer.
 //
+// It did: internal/engine's Groups splits a statement list into consecutive runs that agree on the
+// flag, and Transact brackets one run. Nothing any driver compiles sets the flag yet, so a
+// migration is one run today and the executor refuses more than one, naming M13-T4 — which is
+// where the flag stops being hypothetical.
+//
+// # Transactions
+//
+// Transact takes a closure rather than returning a handle, and the reasoning is ADR 0017's. In
+// short: the driver brackets, so rollback on error and rollback on panic are structural rather
+// than remembered, the release path applies context.WithoutCancel once instead of at every call
+// site, and ADR 0013's "recorded before the transaction commits" is the last line of the closure
+// body rather than a hook parameter that would be nil at every call site.
+//
+// Deciding which statements share a transaction is not a driver's. That is grouping, it reads
+// Statement.NoTransaction and nothing else, and it lives in internal/engine so three drivers
+// cannot reach three answers about one statement list.
+//
+// The migration lock is taken before the transaction begins, so deferring both in that order makes
+// the rollback run before the release. PostgreSQL refuses every command in an aborted transaction,
+// including the one that gives an advisory lock back, so the reverse order turns a failed
+// migration into a failed release as well.
+//
 // There is no Args field. No target engine parameterizes schema changes, so it would be
 // permanently empty for the statements this type carries, and its presence would invite drivers
 // to route ordinary queries through it. A driver's own internal queries are its business.

@@ -40,6 +40,9 @@ type Driver interface {
 // Unlock releases a migration lock, and is safe to call more than once.
 type Unlock func(ctx context.Context) error
 
+// Work is what runs inside a transaction: the statements of one group, and nothing that ends it.
+type Work func(ctx context.Context) error
+
 // DefaultHistoryTable is where migrations are recorded when migr.yaml names no other table.
 const DefaultHistoryTable = "migr_migrations"
 
@@ -49,6 +52,8 @@ type Conn interface {
 	Exec(ctx context.Context, stmt Statement) error
 	// Lock acquires the migration lock, returning the release that must always run.
 	Lock(ctx context.Context) (Unlock, error)
+	// Transact runs work inside one transaction, committing it only if work returns nil.
+	Transact(ctx context.Context, work Work) error
 	// Capabilities reports what this server can do, resolved against its detected version.
 	Capabilities() capability.Set
 	// History returns this session's view of the migration history, already bound to it.

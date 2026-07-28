@@ -25,6 +25,9 @@ func (declaredConn) Exec(context.Context, driver.Statement) error { return errNo
 // Lock refuses: there is no server behind this session.
 func (declaredConn) Lock(context.Context) (driver.Unlock, error) { return nil, errNoServer }
 
+// Transact refuses: there is no server behind this session.
+func (declaredConn) Transact(context.Context, driver.Work) error { return errNoServer }
+
 // Capabilities reports the declaration, which is the only thing the conformance suite reads.
 func (c declaredConn) Capabilities() capability.Set { return c.caps }
 

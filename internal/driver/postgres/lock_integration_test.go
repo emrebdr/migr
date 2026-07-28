@@ -290,6 +290,40 @@ func TestAnAcquireLeavesTheSessionSettingsAsItFoundThem(t *testing.T) {
 	}
 }
 
+func TestTheAcquireRestoresTheBoundEveryStatementRunsUnder(t *testing.T) {
+	conn := lockedConn(t, dsnFor(servers[0].env, servers[0].dsn), "migr_lock_probe_restored")
+
+	session, ok := conn.(*pgConn)
+	if !ok {
+		t.Fatalf("Open returned %T, not this package's session", conn)
+	}
+
+	if before := lockTimeoutOf(t, session); before != defaultStatementLockWait {
+		t.Fatalf("a fresh session bounds a statement by %q, want %q", before, defaultStatementLockWait)
+	}
+
+	release, err := conn.Lock(t.Context())
+	if err != nil {
+		t.Fatalf("taking the lock: %v", err)
+	}
+
+	defer func() {
+		if err := release(context.WithoutCancel(t.Context())); err != nil {
+			t.Errorf("releasing: %v", err)
+		}
+	}()
+
+	if after := lockTimeoutOf(t, session); after != defaultStatementLockWait {
+		t.Errorf("after the acquire a statement is bounded by %q, want %q",
+			after, defaultStatementLockWait)
+		t.Log("RESET restores reset_val, which only a source at or below \"client\" sets. Establish")
+		t.Log("the per-statement bound with set_config and this line silently returns lock_timeout")
+		t.Log("to 0 -- so every DDL statement after the first migration lock waits forever, which is")
+		t.Log("invariant #12 broken on the happy path. The startup packet is what makes RESET")
+		t.Log("restore the bound rather than clear it.")
+	}
+}
+
 // lockTimeoutOf reads what this session would currently bound a lock wait by.
 func lockTimeoutOf(t *testing.T, session *pgConn) string {
 	t.Helper()

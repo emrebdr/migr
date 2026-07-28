@@ -87,6 +87,11 @@ func (c *fakeConn) Lock(context.Context) (driver.Unlock, error) {
 	return func(context.Context) error { return nil }, nil
 }
 
+// Transact reports that this fake has no database to open a transaction on.
+func (c *fakeConn) Transact(context.Context, driver.Work) error {
+	return errors.New("the fake connection has no database")
+}
+
 // Capabilities returns the set this session was opened with.
 func (c *fakeConn) Capabilities() capability.Set {
 	return c.caps

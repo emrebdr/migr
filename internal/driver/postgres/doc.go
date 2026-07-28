@@ -5,8 +5,9 @@
 // its lock-impact verdicts are keyed to the detected server version — ADD COLUMN with a default
 // rewrites the table on PostgreSQL 10 and is instant from 11 onward.
 //
-// Status: connections, compilation, the capability declaration, and the migration lock complete
-// (M3-T1 through M3-T4). This driver keeps no history yet; see pending.go, which M3-T6 deletes.
+// Status: connections, compilation, the capability declaration, the migration lock, and
+// transactional execution complete (M3-T1 through M3-T5). This driver keeps no history yet; see
+// pending.go, which M3-T6 deletes.
 //
 // # The migration lock
 //
@@ -67,6 +68,44 @@
 //
 // That is a property of this strategy rather than of this driver, and it is why the table and file
 // strategies in migr.yaml will need machinery this one does not.
+//
+// # A transaction is bracketed, never handed out
+//
+// Transact begins, runs the caller's work, and commits only if that work returns nil. There is no
+// handle to hold, so a transaction cannot outlive the call or be paired with another session, and
+// the rollback covers a returned error and a panic through one mechanism. It runs on a context
+// stripped of cancellation, for the reason the release path is: the context that caused the
+// failure is the one already canceled. See ADR 0017.
+//
+// A second transaction on one session is refused, and so is one this driver did not open — the
+// session is asked, not just the tx field. PostgreSQL answers a second BEGIN with a warning and
+// does nothing, so a commit would end somebody else's transaction and make permanent whatever it
+// had done. That refusal is the counterpart of the lock's second-acquire refusal, for the same
+// reason: an engine primitive that silently does nothing is worse than one that fails.
+//
+// A commit the server answers by rolling back is a failure. pgx reports it as ErrTxCommitRollback,
+// and taking it for success would report a migration applied whose every statement was discarded.
+//
+// While a transaction is open, every statement goes through it rather than around it. That is what
+// makes ADR 0013's "recorded before the transaction commits" true by construction once M3-T6
+// writes the store, rather than true because pgx happens to send both down one connection.
+//
+// A statement declaring it cannot run inside a transaction is refused while one is open. Nothing
+// compiled here sets that flag, so the guard is unreachable today and is the only place that could
+// notice an executor failing to split a migration around such a statement.
+//
+// # Every statement runs under a lock timeout
+//
+// lock_timeout is pinned in the startup packet at Open, not set on the session afterwards, and the
+// difference is invariant #12. A startup-packet value reaches the server as source "client", which
+// sets the setting's reset_val; an interactive SET does not. acquire raises lock_timeout to the
+// lock wait and ends with RESET — so had the per-statement bound been established with set_config,
+// the first migration lock would have returned it to 0 and every DDL statement afterwards would
+// have waited for a lock forever. Both halves were measured on PostgreSQL 16 and 17.
+//
+// So there are two bounds, and they are not the same setting: the advisory acquire waits under
+// migr.yaml's lock.timeout, and each statement under safety.lock_timeout. M4-T4 supplies both;
+// until then the driver carries its own defaults, and the second matches internal/config's.
 //
 // # What a lock verdict says
 //
@@ -193,9 +232,9 @@
 //
 // No USING clause on ALTER COLUMN ... TYPE: a cast that does not exist should fail loudly rather
 // than be coerced into one that silently loses data. No CONCURRENTLY on index creation, which is
-// M13-T11's, built on the executor M4-T5 designs to split a migration around a statement that
-// cannot run in a transaction. So nothing here sets Statement.NoTransaction, and the golden
-// format's no-transaction header stays unexercised until then.
+// M13-T11's, built on the split M13-T4 implements. So nothing here sets Statement.NoTransaction,
+// the golden format's no-transaction header stays unexercised until then, and a migration this
+// driver compiles is always exactly one transactional run.
 //
 // alter_column emits one statement per requested change, in a fixed order: type, then nullability,
 // then default. That is not cosmetic — SET NOT NULL against a column being retyped has to run after

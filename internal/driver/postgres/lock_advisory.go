@@ -32,7 +32,11 @@ const releaseQuery = `SELECT pg_advisory_unlock($1, $2)`
 // since a configured value would otherwise have to be concatenated into the statement.
 const lockTimeoutQuery = `SELECT set_config('lock_timeout', $1, false)`
 
-// lockTimeoutReset returns the setting to whatever this session's default is.
+// lockTimeoutReset returns the setting to the per-statement bound pinLockTimeout pinned at Open.
+//
+// RESET restores reset_val, which only a source at or below "client" sets -- so this restores the
+// startup-packet value and not the one an earlier SET left behind. See lockTimeoutParam: before
+// that value was pinned, this line silently returned lock_timeout to 0.
 const lockTimeoutReset = `RESET lock_timeout`
 
 // defaultLockWait bounds an acquire until M4-T4 passes migr.yaml's lock.timeout down.
@@ -129,6 +133,10 @@ func (c *pgConn) releaser() driver.Unlock {
 
 // release gives the lock back, refusing to report success for a lock this session did not hold.
 func (c *pgConn) release(ctx context.Context) error {
+	if err := c.checkReleasable(); err != nil {
+		return err
+	}
+
 	var released bool
 
 	err := c.conn.QueryRow(ctx, releaseQuery, c.key.class, c.key.obj).Scan(&released)
@@ -141,4 +149,15 @@ func (c *pgConn) release(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// checkReleasable reports an aborted transaction as itself rather than as a failed release.
+func (c *pgConn) checkReleasable() error {
+	if c.conn.PgConn().TxStatus() != aborted {
+		return nil
+	}
+
+	return &LockError{Key: c.key, Err: fmt.Errorf("%w: this session has an aborted transaction "+
+		"open, and PostgreSQL refuses every command until one ends -- roll back first, which is "+
+		"what deferring the release after the transaction already does", ErrLockRelease)}
 }

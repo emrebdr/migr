@@ -51,6 +51,20 @@ func (e *LockError) Unwrap() []error {
 	return []error{ErrLock, e.Err}
 }
 
+// ErrTransaction marks a migration transaction this driver could not run to an end, for errors.Is.
+var ErrTransaction = errors.New("migration transaction")
+
+// ErrTransactionOpen marks a transaction asked for on a session that is already inside one.
+var ErrTransactionOpen = errors.New("this session already has a transaction open")
+
+// ErrCommitDiscarded marks a commit the server answered by discarding the transaction instead.
+var ErrCommitDiscarded = errors.New("the server answered the commit by rolling back, so nothing " +
+	"this migration did was kept")
+
+// ErrStatementNeedsNoTransaction marks a statement run where it declared it cannot run.
+var ErrStatementNeedsNoTransaction = errors.New("this statement declares it cannot run inside a " +
+	"transaction, and one is open")
+
 // ErrNoSchema marks a configured schema the connected server does not have, for errors.Is.
 var ErrNoSchema = errors.New("the configured schema does not exist on this server")
 

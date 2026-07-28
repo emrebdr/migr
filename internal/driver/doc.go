@@ -98,9 +98,11 @@
 // failure, making a wiring bug indistinguishable from a bad migration to anything reading exit
 // codes.
 //
-// A Registry is a value, so two of them share no state. Tests need no reset hook, and the
-// conformance suite runs against a registry it was handed rather than whatever the process
-// accumulated.
+// A Registry is a value, so two of them share no state and tests need no reset hook. It was also
+// expected to be what the conformance suite took, and it is not: Registry.New already enforces
+// that a driver answers to the name it was registered under, so a registry parameter would prove
+// nothing that check does not, and depguard leaves a driver package able to register only itself.
+// test/conformance/driver takes a Driver and an open Conn instead (M2-T4).
 //
 // A driver name has one spelling. migr.yaml deliberately does not validate driver names against
 // a list — that would require core to know which drivers exist — so this registry is the only

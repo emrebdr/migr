@@ -19,8 +19,13 @@ const Name = "postgres"
 func New(opts driver.Options) (driver.Driver, error) {
 	schema, table := opts.Namespace()
 
+	if err := checkHistoryTable(table); err != nil {
+		return nil, err
+	}
+
 	return &pgDriver{
 		schema:            opts.Schema,
+		table:             table,
 		key:               namespaceKey(schema, table),
 		lockWait:          defaultLockWait,
 		statementLockWait: defaultStatementLockWait,
@@ -30,7 +35,9 @@ func New(opts driver.Options) (driver.Driver, error) {
 // pgDriver is the PostgreSQL driver: what it is called, what it compiles, how to reach a server.
 type pgDriver struct {
 	schema string
-	key    lockKey
+	// table is where migrations are recorded, resolved by Options.Namespace rather than assumed.
+	table string
+	key   lockKey
 	// lockWait bounds an acquire server-side. M4-T4 sets it from migr.yaml's lock.timeout.
 	lockWait string
 	// statementLockWait bounds each statement. M4-T4 sets it from migr.yaml's safety.lock_timeout.
@@ -89,13 +96,16 @@ func (d *pgDriver) establish(ctx context.Context, conn *pgx.Conn) (*pgConn, erro
 		return nil, fmt.Errorf("%w: declaring capabilities: %w", ErrConnect, err)
 	}
 
-	return &pgConn{
+	session := &pgConn{
 		conn:     conn,
 		version:  facts.version,
 		caps:     caps,
 		key:      d.key,
 		lockWait: d.lockWait,
-	}, nil
+	}
+	session.history = pgHistory{session: session, table: d.table}
+
+	return session, nil
 }
 
 // compile-time proof that this driver satisfies the contract every driver is held to.

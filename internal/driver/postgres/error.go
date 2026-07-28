@@ -65,6 +65,48 @@ var ErrCommitDiscarded = errors.New("the server answered the commit by rolling b
 var ErrStatementNeedsNoTransaction = errors.New("this statement declares it cannot run inside a " +
 	"transaction, and one is open")
 
+// ErrHistory marks a migration history operation this driver could not perform, for errors.Is.
+var ErrHistory = errors.New("migration history")
+
+// ErrNoHistoryTable marks a history table this database does not have, which Ensure creates.
+var ErrNoHistoryTable = errors.New("this database has no migration history table")
+
+// ErrHistoryShape marks a history table whose columns are not the ones this build writes.
+var ErrHistoryShape = errors.New("the migration history table is not the shape this build writes")
+
+// ErrHistoryNotATable marks a history name held by a view or some other relation.
+var ErrHistoryNotATable = errors.New("the configured history name is not a table")
+
+// ErrHistoryRace marks a history table another process created between the check and the create.
+var ErrHistoryRace = errors.New("another process created the migration history table first")
+
+// ErrAlreadyRecorded marks a run already written under the batch and ordinal it claims.
+var ErrAlreadyRecorded = errors.New("this run is already recorded")
+
+// HistoryError reports a history failure, naming the table so an operator knows which one.
+type HistoryError struct {
+	// Table is the history table migr.yaml resolved to, unqualified as this driver writes it.
+	Table string
+	// Detail states what went wrong with it, in terms an operator can act on.
+	Detail string
+	// Err is the sentinel this failure reports, and the server error under it where there was one.
+	Err error
+}
+
+// Error names the history table, what went wrong, and what the server said.
+func (e *HistoryError) Error() string {
+	return fmt.Sprintf("%v %q: %s", ErrHistory, e.Table, e.Detail)
+}
+
+// Unwrap reports the sentinel and the cause, so errors.Is finds either.
+func (e *HistoryError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrHistory}
+	}
+
+	return []error{ErrHistory, e.Err}
+}
+
 // ErrNoSchema marks a configured schema the connected server does not have, for errors.Is.
 var ErrNoSchema = errors.New("the configured schema does not exist on this server")
 

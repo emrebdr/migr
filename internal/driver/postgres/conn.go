@@ -22,6 +22,8 @@ type pgConn struct {
 	locked bool
 	// tx is the transaction Transact opened, and is nil whenever this session is not inside one.
 	tx pgx.Tx
+	// history is bound at Open, so History cannot fail to construct one and two calls share it.
+	history pgHistory
 }
 
 // Exec runs one compiled statement, inside this session's transaction when it has one open.
@@ -52,9 +54,9 @@ func (c *pgConn) Capabilities() capability.Set {
 	return c.caps
 }
 
-// History returns this session's view of the migration history.
+// History returns this session's view of the migration history, bound to it at Open.
 func (c *pgConn) History() history.Store {
-	return pendingHistory{}
+	return c.history
 }
 
 // ServerVersion returns the connected server's release, derived from the version detected at Open.

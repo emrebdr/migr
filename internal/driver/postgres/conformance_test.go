@@ -31,8 +31,33 @@ func (declaredConn) Transact(context.Context, driver.Work) error { return errNoS
 // Capabilities reports the declaration, which is the only thing the conformance suite reads.
 func (c declaredConn) Capabilities() capability.Set { return c.caps }
 
-// History returns the store this driver hands back until M3-T6 writes one.
-func (declaredConn) History() history.Store { return pendingHistory{} }
+// History refuses: there is no server behind this session for a store to read or write.
+func (declaredConn) History() history.Store { return noServerHistory{} }
+
+// noServerHistory refuses every call, rather than a nil no caller could have checked.
+type noServerHistory struct{}
+
+// Ensure refuses: there is no server behind this session.
+func (noServerHistory) Ensure(context.Context) error { return errNoServer }
+
+// Record refuses: there is no server behind this session.
+func (noServerHistory) Record(context.Context, history.Record) error { return errNoServer }
+
+// List refuses: there is no server behind this session.
+func (noServerHistory) List(context.Context) ([]history.Record, error) { return nil, errNoServer }
+
+// Latest refuses: there is no server behind this session.
+func (noServerHistory) Latest(context.Context) (history.Record, bool, error) {
+	return history.Record{}, false, errNoServer
+}
+
+// MarkFailed refuses: there is no server behind this session.
+func (noServerHistory) MarkFailed(context.Context, history.Record, error) error { return errNoServer }
+
+// MarkDirty refuses: there is no server behind this session.
+func (noServerHistory) MarkDirty(context.Context, history.Record, int32, error) error {
+	return errNoServer
+}
 
 // ServerVersion reports the version the declaration was resolved against.
 func (c declaredConn) ServerVersion() string { return c.caps.Server() }

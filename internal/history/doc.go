@@ -6,8 +6,8 @@
 // invariant #3), and this package is the one place the table's shape is written down — otherwise
 // PostgreSQL, SQLite, and MySQL would each invent a different one.
 //
-// Status: contract complete (M2-T5). Reconciliation is M4-T3; the first Store that satisfies this
-// is M3-T6. See docs/adr/0013-migration-history.md.
+// Status: contract complete (M2-T5), with the first Store satisfying it in M3-T6 (PostgreSQL).
+// Reconciliation is M4-T3. See docs/adr/0013-migration-history.md.
 //
 // # Two vocabularies, deliberately kept apart
 //
@@ -98,6 +98,24 @@
 // It is deliberately not a checksum mismatch. Drift is exit code 4 and means someone edited an
 // applied migration; an unreadable row means this history table needs manual repair. Reporting
 // the second as the first is how operators learn to ignore exit code 4.
+//
+// # A store decodes on read; it does not validate
+//
+// Validate is a write-side precondition, and a store must not apply it to a row it read back.
+// Every driver has to agree on that, or migr status answers differently per engine — which is
+// the framework's central claim rather than a driver's detail.
+//
+// CorruptError covers a value this build cannot decode: a checksum that will not parse, a
+// direction or outcome naming something this build does not know. It does not cover a row that
+// decodes cleanly and would fail Validate. A newer migr writing a fourth outcome, or an
+// engine_version this build never emitted, or a batch someone repaired by hand, must still read
+// back — migr history is the command an operator runs to inspect exactly that table, and a store
+// that refuses to read it has removed the tool they were reaching for. ir_version and
+// engine_version are provenance about the build that wrote the row and are never checked on read.
+//
+// A store selects its columns by name rather than all of them, for the same reason: a table a
+// newer migr extended must stay readable, and a positional read would shift its scan targets
+// silently rather than ignore what it does not know.
 //
 // # Import direction, now enforced by the thing it warned about
 //

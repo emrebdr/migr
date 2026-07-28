@@ -23,6 +23,8 @@ type runner interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	// QueryRow runs a query returning at most one row.
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	// Query runs a query returning any number of rows.
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // runner returns the open transaction when there is one, so nothing can bypass it unnoticed.
@@ -53,6 +55,15 @@ func (c *pgConn) Transact(ctx context.Context, work driver.Work) (err error) {
 	returned = true
 
 	return err
+}
+
+// inTransaction runs work atomically, opening a transaction only when the session has none.
+func (c *pgConn) inTransaction(ctx context.Context, work driver.Work) error {
+	if c.tx != nil {
+		return work(ctx)
+	}
+
+	return c.Transact(ctx, work)
 }
 
 // begin opens the transaction, refusing a session that is already inside one.

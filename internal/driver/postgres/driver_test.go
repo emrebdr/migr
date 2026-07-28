@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -117,16 +116,24 @@ func declaredSet(t *testing.T) (capability.Set, error) {
 	return capability.NewSet(modernServer.facts(), modernServer.rules())
 }
 
-func TestTheHistoryStoreRefusesRatherThanReturningNil(t *testing.T) {
-	store := pendingHistory{}
+func TestTheHistoryStoreIsBoundToTheSessionAndItsTable(t *testing.T) {
+	session := &pgConn{}
+	session.history = pgHistory{session: session, table: "audit_log"}
 
-	if err := store.Ensure(context.Background()); err == nil {
-		t.Error("the pending history store reported success")
+	store, ok := session.History().(pgHistory)
+	if !ok {
+		t.Fatalf("History returned %T, not this package's store", session.History())
 	}
 
-	if _, err := store.List(context.Background()); !strings.Contains(err.Error(), historyTask) {
-		t.Errorf("List failed with %v, which does not name the task that will fix it", err)
-		t.Log("History() returns no error, so a driver with no store yet must hand back one")
-		t.Log("that refuses. A nil would panic at the first call with nothing to read.")
+	if store.table != "audit_log" {
+		t.Errorf("the store writes to %q, want the table migr.yaml named", store.table)
+		t.Log("A store that hard-coded migr_migrations would pass every round-trip test, since")
+		t.Log("both halves would agree on the wrong table. Options.HistoryTable exists to be read.")
+	}
+
+	if store.session != session {
+		t.Error("the store is not bound to the session that returned it")
+		t.Log("History takes no context and returns no error precisely because the store is built")
+		t.Log("inside Open and cannot fail to be constructed (ADR 0013).")
 	}
 }

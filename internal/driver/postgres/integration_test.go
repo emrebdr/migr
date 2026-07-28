@@ -98,21 +98,23 @@ func TestConnectingToEveryServerUnderTest(t *testing.T) {
 	}
 }
 
-// checkHistory holds a session's history store to what it must be before M3-T6 writes one.
+// checkHistory holds a session's history store to what the contract says it must be.
 func checkHistory(t *testing.T, conn driver.Conn) {
 	t.Helper()
 
 	store := conn.History()
 	if store == nil {
 		t.Error("the session handed back no history store")
-		t.Log("History returns no error, so nil is a value no caller can check before it")
-		t.Log("panics. A store that refuses is the only honest answer before M3-T6.")
+		t.Log("History returns no error, so nil is a value no caller can check before it panics.")
 
 		return
 	}
 
-	if err := store.Ensure(t.Context()); err == nil {
-		t.Error("the history store created a table before M3-T6 wrote one")
+	if _, _, err := store.Latest(t.Context()); !errors.Is(err, ErrNoHistoryTable) {
+		t.Errorf("reading a history table nothing created returned %v, want ErrNoHistoryTable", err)
+		t.Log("This session points at no schema of its own, so its history table does not exist.")
+		t.Log("Reading that as \"no runs yet\" would make a fully migrated database look virgin,")
+		t.Log("and the next up would re-run every migration it had already applied.")
 	}
 }
 

@@ -5,9 +5,9 @@
 // its lock-impact verdicts are keyed to the detected server version — ADD COLUMN with a default
 // rewrites the table on PostgreSQL 10 and is instant from 11 onward.
 //
-// Status: connections, compilation, the capability declaration, the migration lock, and
-// transactional execution complete (M3-T1 through M3-T5). This driver keeps no history yet; see
-// pending.go, which M3-T6 deletes.
+// Status: connections, compilation, the capability declaration, the migration lock, transactional
+// execution, and the history store complete (M3-T1 through M3-T6). Nothing in this package is
+// scaffolding any longer.
 //
 // # The migration lock
 //
@@ -86,13 +86,55 @@
 // A commit the server answers by rolling back is a failure. pgx reports it as ErrTxCommitRollback,
 // and taking it for success would report a migration applied whose every statement was discarded.
 //
-// While a transaction is open, every statement goes through it rather than around it. That is what
-// makes ADR 0013's "recorded before the transaction commits" true by construction once M3-T6
-// writes the store, rather than true because pgx happens to send both down one connection.
+// While a transaction is open, every statement goes through it rather than around it, and so does
+// every query the history store makes. That is what makes ADR 0013's "recorded before the
+// transaction commits" true by construction rather than true because pgx happens to send both
+// down one connection.
 //
 // A statement declaring it cannot run inside a transaction is refused while one is open. Nothing
 // compiled here sets that flag, so the guard is unreachable today and is the only place that could
 // notice an executor failing to split a migration around such a statement.
+//
+// # The history store
+//
+// The table's shape is internal/history's, so three drivers cannot invent three of them, and
+// Ensure creates it by compiling history.Schema through this package's own compiler. Everything
+// after that is ordinary DML — an INSERT and two SELECTs, raw SQL that invariant #3 permits here
+// and nowhere above. Unlike DDL a statement's values are bound rather than written in, so only
+// the table name is concatenated, and New refuses one PostgreSQL could not carry.
+//
+// The usable length of that name is 51 bytes rather than 63, because history.Schema names the
+// index after the table. New checks the derived name too, so an operator reads a sentence about
+// history.table instead of a complaint about a field called "name".
+//
+// Ensure compiles both operations before running either and runs them as one unit — inside the
+// caller's transaction when there is one, in its own otherwise. The reason is retry idempotency:
+// a failure between them would leave a table present without its index, after which every later
+// Ensure reports it present and the index is never created at all. It is a setup step, taken
+// before the migration transaction opens and under the migration lock, and it deliberately does
+// not go through the plan or capability path — this driver declares add_index as long_exclusive,
+// so --require-safe would otherwise refuse to create migr's own history table.
+//
+// to_regclass folds an unquoted name to lower case, so the existence check passes the name
+// through quote_ident. Without it a mixed-case history table reports absent forever and every run
+// tries to create it. When the table is present, every column history.Schema declares must be
+// there; extras are fine, because a table a newer migr extended must stay usable.
+//
+// One SQLSTATE means two things and is classified per call site rather than from a table. Two
+// concurrent CREATE TABLEs do not both raise 42P07: the loser blocks on a pg_catalog unique index
+// and raises 23505 when the winner commits, measured on both test servers. So 23505 is a lost
+// race in Ensure and a duplicate run on a write, and the two never share a statement. A lost race
+// names the migration lock, whose advisory key is derived from the schema and table names and
+// needs no table to exist — it is available on a database with no history at all.
+//
+// A missing table is reported as itself on every path, reads included. Read as "no runs yet", a
+// history.table typo would make a fully migrated database look virgin and the next up would
+// re-run every migration it had already applied.
+//
+// error is written as NULL rather than as an empty string, since it is the one nullable column of
+// the fifteen and writing ” makes that declaration decorative. duration_ms is what the column is
+// called: a run measured in microseconds does not round-trip, and truncating toward zero is the
+// behavior rather than a defect.
 //
 // # Every statement runs under a lock timeout
 //

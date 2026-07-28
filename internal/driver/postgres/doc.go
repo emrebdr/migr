@@ -5,9 +5,68 @@
 // its lock-impact verdicts are keyed to the detected server version — ADD COLUMN with a default
 // rewrites the table on PostgreSQL 10 and is instant from 11 onward.
 //
-// Status: connections, compilation, and the capability declaration complete (M3-T1, M3-T2, M3-T3).
-// This driver locks nothing and keeps no history yet; see pending.go, which M3-T4 and M3-T6 each
-// delete a piece of.
+// Status: connections, compilation, the capability declaration, and the migration lock complete
+// (M3-T1 through M3-T4). This driver keeps no history yet; see pending.go, which M3-T6 deletes.
+//
+// # The migration lock
+//
+// One session-level advisory lock, taken on the session that will release it — which is why a
+// Conn is one pinned connection and never a pool (ADR 0011). The key is two int4s:
+//
+//	pg_advisory_lock(<a constant identifying migr>, <digest of schema + history table>)
+//
+// PostgreSQL keeps the two-key advisory space separate from the one-key space and never lets them
+// collide, so an application using pg_advisory_lock(bigint) for its own purposes cannot collide
+// with migr at all — by construction rather than by hash luck. The fixed first half makes migr's
+// locks recognizable in pg_locks, which is what M4-T4's "say who holds the lock" will read.
+//
+// The second half is a SHA-256 digest, not hash/maphash: maphash is seeded per process, so it
+// would give every migr invocation a different key and the lock would block nobody. The two inputs
+// are separated by a NUL, which no identifier may contain, so schema "a" with table "bc" and
+// schema "ab" with table "c" are different installations rather than one. Advisory locks are
+// already scoped to the database, so the database name adds nothing and is not an input; neither
+// is the DSN, which carries a password and can be spelled several ways for one server.
+//
+// # The wait is bounded by the server, not by a context
+//
+// pg_advisory_lock waits indefinitely, and the obvious bound — wrapping the call in a context with
+// a timeout — is wrong here. pgx closes the connection when a context is canceled mid-query, and
+// its own documentation says so: "The default behavior when a context is canceled is for the
+// method to immediately return. In most circumstances, this will also close the underlying
+// connection." A Conn is pinned for the lock's lifetime, so that would kill the one session that
+// could have held it, leaving nothing to retry on.
+//
+// So the acquire sets lock_timeout for its own duration. A wait that gives up fails with SQLSTATE
+// 55P03 and the session stays alive and usable — verified against both test servers, along with
+// the fact that lock_timeout covers an advisory wait at all, which is not obvious from the
+// documentation's "a table, index, row, or other database object". M4-T4 replaces the driver's own
+// bound with migr.yaml's lock.timeout and builds retry on top of the session that survives.
+//
+// It is set through set_config rather than SET, because SET takes no bound parameters — the same
+// reason applySearchPath uses it, and the reason a configured timeout will not need concatenating.
+//
+// # A second acquire is refused, and a second release is not
+//
+// pg_advisory_lock is re-entrant and counted, so acquiring twice on one session would succeed
+// instantly and raise the hold count to two. One release would then report success while the lock
+// was still held, and the next run would block forever against a lock nobody knows about. Lock
+// refuses instead, naming the bug at the call site.
+//
+// Releasing twice is fine and returns nil, which is what the contract's "safe to call more than
+// once" is for: an early explicit release and a deferred one must not double-release. A release
+// the server answers false to is an error rather than a shrug — it means this session did not hold
+// what it thought it held.
+//
+// # There is no stale-lock recovery, and that is the point
+//
+// Invariant #11 requires a stale-lock story. PostgreSQL's is that the server releases a
+// session-level advisory lock when the backend goes away — a crash, a kill, a dropped connection.
+// A crashed migr therefore cannot wedge a database, Close needs no special path, and there is no
+// recovery code to write. An integration test proves it by abandoning a locked session and
+// acquiring from the next one.
+//
+// That is a property of this strategy rather than of this driver, and it is why the table and file
+// strategies in migr.yaml will need machinery this one does not.
 //
 // # What a lock verdict says
 //

@@ -14,6 +14,43 @@ var ErrConnect = errors.New("cannot open a PostgreSQL session")
 // ErrServerTooOld marks a server older than the release this driver can reason about.
 var ErrServerTooOld = errors.New("PostgreSQL server is older than this driver supports")
 
+// ErrLock marks a migration lock this driver could not take or give back, for errors.Is.
+var ErrLock = errors.New("migration lock")
+
+// ErrLockTimeout marks an acquire that gave up waiting rather than one that was refused.
+var ErrLockTimeout = errors.New("gave up waiting for the migration lock")
+
+// ErrLockHeld marks a second acquire on a session that already holds the lock.
+var ErrLockHeld = errors.New("this session already holds the migration lock")
+
+// ErrLockNotHeld marks a release of a lock the server says this session did not hold.
+var ErrLockNotHeld = errors.New("the server reports this session did not hold the migration lock")
+
+// ErrLockRelease marks a release that failed, leaving the lock held until the session ends.
+var ErrLockRelease = errors.New("releasing the migration lock failed")
+
+// LockError reports a migration lock failure, naming the key so pg_locks can be matched to it.
+type LockError struct {
+	// Key is the advisory key this driver locks the installation on.
+	Key lockKey
+	// Err is what went wrong, one of this package's lock sentinels or a server error.
+	Err error
+}
+
+// Error names the key and what went wrong with it.
+func (e *LockError) Error() string {
+	return fmt.Sprintf("%v %s: %v", ErrLock, e.Key, e.Err)
+}
+
+// Unwrap reports the sentinel and the cause, so errors.Is finds either.
+func (e *LockError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrLock}
+	}
+
+	return []error{ErrLock, e.Err}
+}
+
 // ErrNoSchema marks a configured schema the connected server does not have, for errors.Is.
 var ErrNoSchema = errors.New("the configured schema does not exist on this server")
 

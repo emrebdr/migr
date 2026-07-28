@@ -12,6 +12,17 @@ import (
 type Options struct {
 	// Schema is the namespace migrations target, where the engine has one.
 	Schema string
+	// HistoryTable is where migrations are recorded, and with Schema it names one installation.
+	HistoryTable string
+}
+
+// Namespace returns what identifies one migr installation, defaulting what migr.yaml left unset.
+func (o Options) Namespace() (schema, table string) {
+	if o.HistoryTable == "" {
+		return o.Schema, DefaultHistoryTable
+	}
+
+	return o.Schema, o.HistoryTable
 }
 
 // Constructor builds a driver from settings resolved out of migr.yaml.

@@ -7,18 +7,12 @@ import (
 	"github.com/emrebdr/migr/internal/history"
 )
 
-// The tasks that replace each part of this file. Everything here is scaffolding that refuses
-// honestly rather than a stub that returns a plausible empty value.
-const (
-	lockTask    = "M3-T4"
-	historyTask = "M3-T6"
-)
+// historyTask is what replaces this file. Everything here is scaffolding that refuses honestly
+// rather than a stub that returns a plausible empty value.
+const historyTask = "M3-T6"
 
 // ErrPending marks a driver method whose implementing task has not landed, for errors.Is.
 var ErrPending = errors.New("not implemented in this driver yet")
-
-// errPendingLock refuses to take a migration lock this driver cannot yet release.
-var errPendingLock = pending("advisory locking", lockTask)
 
 // errPendingHistory refuses every history call until the store is written.
 var errPendingHistory = pending("the history store", historyTask)

@@ -13,9 +13,13 @@ import (
 
 // pgConn is one pinned PostgreSQL session, never a pool: an advisory lock belongs to a backend.
 type pgConn struct {
-	conn    *pgx.Conn
-	version serverVersion
-	caps    capability.Set
+	conn     *pgx.Conn
+	version  serverVersion
+	caps     capability.Set
+	key      lockKey
+	lockWait string
+	// locked is session state, not shared state: a Conn is used by one goroutine, as pgx is.
+	locked bool
 }
 
 // Exec runs one compiled statement against this session.
@@ -25,11 +29,6 @@ func (c *pgConn) Exec(ctx context.Context, stmt driver.Statement) error {
 	}
 
 	return nil
-}
-
-// Lock refuses to take the migration lock until advisory locking is written.
-func (c *pgConn) Lock(context.Context) (driver.Unlock, error) {
-	return nil, errPendingLock
 }
 
 // Capabilities reports what this server can do, resolved against the version detected at Open.

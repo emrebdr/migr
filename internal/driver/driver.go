@@ -40,6 +40,9 @@ type Driver interface {
 // Unlock releases a migration lock, and is safe to call more than once.
 type Unlock func(ctx context.Context) error
 
+// DefaultHistoryTable is where migrations are recorded when migr.yaml names no other table.
+const DefaultHistoryTable = "migr_migrations"
+
 // Conn is one pinned database session. Everything needing a database lives here.
 type Conn interface {
 	// Exec runs one compiled statement.

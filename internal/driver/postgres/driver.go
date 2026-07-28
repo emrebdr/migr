@@ -17,12 +17,21 @@ const Name = "postgres"
 
 // New builds the PostgreSQL driver from the settings resolved out of migr.yaml.
 func New(opts driver.Options) (driver.Driver, error) {
-	return &pgDriver{schema: opts.Schema}, nil
+	schema, table := opts.Namespace()
+
+	return &pgDriver{
+		schema:   opts.Schema,
+		key:      namespaceKey(schema, table),
+		lockWait: defaultLockWait,
+	}, nil
 }
 
 // pgDriver is the PostgreSQL driver: what it is called, what it compiles, how to reach a server.
 type pgDriver struct {
 	schema string
+	key    lockKey
+	// lockWait bounds an acquire server-side. M4-T4 sets it from migr.yaml's lock.timeout.
+	lockWait string
 }
 
 // Name returns the driver's registered name.
@@ -75,7 +84,13 @@ func (d *pgDriver) establish(ctx context.Context, conn *pgx.Conn) (*pgConn, erro
 		return nil, fmt.Errorf("%w: declaring capabilities: %w", ErrConnect, err)
 	}
 
-	return &pgConn{conn: conn, version: facts.version, caps: caps}, nil
+	return &pgConn{
+		conn:     conn,
+		version:  facts.version,
+		caps:     caps,
+		key:      d.key,
+		lockWait: d.lockWait,
+	}, nil
 }
 
 // compile-time proof that this driver satisfies the contract every driver is held to.

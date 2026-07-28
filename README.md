@@ -128,6 +128,16 @@ No DDL statement ever waits unbounded for a lock. On PostgreSQL the lock queue i
 behind it. Three milliseconds of work becomes a table outage. Every statement therefore runs
 under a lock timeout with bounded retry and backoff.
 
+For the changes no lock timeout can make cheap, migr copies the table into a shadow, keeps the
+shadow current by **reading the engine's replication log** — the binlog on MySQL, logical
+decoding on PostgreSQL — and swaps the two by rename. Reading the log rather than installing
+triggers is the point: production writes do no extra work for the hours a large copy takes.
+
+The rename is the only irreversible step, so it **waits for you**. When the copy finishes the
+shadow is held in sync indefinitely, its lag measured and shown, until you confirm — and the
+original table is kept under a derived name afterwards, so a rollback is a second rename rather
+than a restore.
+
 ---
 
 ## The idea, in code
@@ -282,6 +292,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0011](docs/adr/0011-driver-contract.md) | The driver contract: a session-scoped connection and an explicitly wired registry |
 | [0012](docs/adr/0012-capability-resolution.md) | Capability resolution: one rule per operation, resolved against one server |
 | [0013](docs/adr/0013-migration-history.md) | Migration history is an append-only log, keyed by the run rather than by the row |
+| [0014](docs/adr/0014-online-change-capture.md) | Online change capture reads the write-ahead log, and cutover waits for a human |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

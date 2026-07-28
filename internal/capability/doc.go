@@ -96,15 +96,21 @@
 //
 // # Not built, and why
 //
-// Two further facts belong here and are recorded rather than stubbed, following what ADR 0011 did
-// with history.Store:
+// Three further facts belong here and are recorded rather than stubbed, following what ADR 0011
+// did with history.Store:
 //
 //	Facts.TransactionalDDL       M4-T9, and MySQL declares it false in M9-T3
+//	Facts.Capture                M13-T16: whether this server permits log-based change capture
 //	engine limits on a logical type (PG precision 1000, MySQL 65)   deferred from M1-T1
 //
-// Both are fields on a struct rather than methods on an interface, so adding either reopens no
-// driver. That is ADR 0004's retrofit-cost argument applied to the model that argument created,
-// and it is why Set is a struct.
+// All three are fields on a struct rather than methods on an interface, so adding any of them
+// reopens no driver. That is ADR 0004's retrofit-cost argument applied to the model that argument
+// created, and it is why Set is a struct.
+//
+// Capture is a connection-wide fact rather than a per-operation verdict: binlog_format and
+// wal_level describe the server, not the operation being asked about. A server that will not
+// permit it refuses shadow-table migration with a reason naming the missing setting or privilege,
+// rather than silently falling back to triggers — see docs/adr/0014-online-change-capture.md.
 //
 // Type limits have no consumer before M10, no decided shape, and no gap today: a driver handed
 // decimal(1200,2) refuses at Compile with a reason, which the conformance suite already accepts.

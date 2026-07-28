@@ -49,11 +49,20 @@
 //
 // # Deferred, but decided
 //
-// Two methods belong on Conn and are not written yet, because their types do not exist. They are
-// recorded here so the tasks that add them inherit a decision rather than a blank page:
+// Three methods are not written yet, because their types do not exist. They are recorded here so
+// the tasks that add them inherit a decision rather than a blank page:
 //
-//	Introspect(ctx) (*schema.Snapshot, error)     M11-T1
-//	ServerVersion() string                        M3-T1
+//	Conn.Introspect(ctx) (*schema.Snapshot, error)       M11-T1
+//	Conn.ServerVersion() string                          M3-T1
+//	Driver.Capture(ctx, capture.Request) (capture.Stream, error)   M13-T9
+//
+// Capture hangs off Driver rather than Conn deliberately. Reading a replication log — MySQL's
+// row-format binlog, PostgreSQL's logical decoding — is a second connection of a different kind
+// with its own lifetime: it outlives individual statements and must be closed even while the
+// migration session is healthy. A PostgreSQL slot left open retains WAL until the disk fills, so
+// that lifetime is an outage if it is tangled with another one. See
+// docs/adr/0014-online-change-capture.md. internal/capture is subject to the same one-way import
+// rule as internal/history, for the same reason.
 //
 // ServerVersion and capability.Set.Server report the same fact, so a driver must derive both from
 // one detection inside Open or they can disagree.

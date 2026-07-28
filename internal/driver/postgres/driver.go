@@ -65,18 +65,17 @@ func (d *pgDriver) establish(ctx context.Context, conn *pgx.Conn) (*pgConn, erro
 		return nil, err
 	}
 
-	version, err := detectVersion(ctx, conn)
+	facts, err := gatherFacts(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
 
-	caps, err := capability.NewSet(
-		capability.Facts{Driver: Name, Server: version.String()}, rules())
+	caps, err := capability.NewSet(facts.facts(), facts.rules())
 	if err != nil {
 		return nil, fmt.Errorf("%w: declaring capabilities: %w", ErrConnect, err)
 	}
 
-	return &pgConn{conn: conn, version: version, caps: caps}, nil
+	return &pgConn{conn: conn, version: facts.version, caps: caps}, nil
 }
 
 // compile-time proof that this driver satisfies the contract every driver is held to.

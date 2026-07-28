@@ -200,8 +200,9 @@ func TestAnEnumColumnIsRefusedWhereverItAppears(t *testing.T) {
 	}
 
 	for _, op := range ops {
-		if refusal := refusalFor(t, op); !strings.Contains(refusal.Reason, enumTask) {
-			t.Errorf("%s: the refusal %q names no task", op.Kind(), refusal.Reason)
+		if refusal := refusalFor(t, op); !strings.Contains(refusal.Reason, enumBlocker) {
+			t.Errorf("%s: the refusal %q does not say what supporting it would need",
+				op.Kind(), refusal.Reason)
 		}
 	}
 

@@ -14,6 +14,27 @@ var ErrConnect = errors.New("cannot open a PostgreSQL session")
 // ErrServerTooOld marks a server older than the release this driver can reason about.
 var ErrServerTooOld = errors.New("PostgreSQL server is older than this driver supports")
 
+// ErrNoSchema marks a configured schema the connected server does not have, for errors.Is.
+var ErrNoSchema = errors.New("the configured schema does not exist on this server")
+
+// SchemaError reports a configured schema PostgreSQL would silently ignore.
+type SchemaError struct {
+	// Schema is the name migr.yaml configured, which the server does not have.
+	Schema string
+}
+
+// Error names the schema and what PostgreSQL would have done with it.
+func (e *SchemaError) Error() string {
+	return fmt.Sprintf("%v: databases.<name>.schema is %q, and PostgreSQL drops an entry naming no "+
+		"schema from search_path rather than reporting it, so the first migration would fail with "+
+		"\"no schema has been selected to create in\" and name neither", ErrNoSchema, e.Schema)
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrNoSchema) succeeds.
+func (e *SchemaError) Unwrap() error {
+	return ErrNoSchema
+}
+
 // DSNError reports an unparsable connection string without ever rendering it.
 type DSNError struct {
 	// Err is the underlying parse failure, unwrapped for errors.Is but never shown.

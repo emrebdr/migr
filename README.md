@@ -294,6 +294,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0013](docs/adr/0013-migration-history.md) | Migration history is an append-only log, keyed by the run rather than by the row |
 | [0014](docs/adr/0014-online-change-capture.md) | Online change capture reads the write-ahead log, and cutover waits for a human |
 | [0015](docs/adr/0015-payload-dependent-refusals.md) | A driver refuses payloads, not operation kinds |
+| [0016](docs/adr/0016-lock-impact-is-a-duration.md) | Lock impact is a duration, not a lock level |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

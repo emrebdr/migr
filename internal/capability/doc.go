@@ -12,8 +12,9 @@
 // This package is where engine-specific knowledge belongs. An `if driver == "mysql"` branch in the
 // engine means this model is missing something and should be extended instead.
 //
-// Status: both axes complete (M2-T2). Every driver reports LockUnknown until M13-T1 classifies
-// them. See docs/adr/0012-capability-resolution.md.
+// Status: both axes complete (M2-T2). PostgreSQL classifies every operation (M3-T3); SQLite and
+// MySQL report LockUnknown until M8-T3 and M9-T3, and M13-T1 is where all three are held to one
+// standard. See docs/adr/0012-capability-resolution.md and 0016-lock-impact-is-a-duration.md.
 //
 // # Resolution answers about an operation, not about a kind
 //
@@ -94,18 +95,31 @@
 // capability declaration is the source of truth, and M2-T4 is what proves Compile agrees with it —
 // which means that suite needs a Conn, where M2-T3's golden harness needs only a Compiler.
 //
+// # An unknown that never resolves
+//
+// LockUnknown is not only a worklist entry. A raw operation is opaque to the framework by
+// definition, so PostgreSQL declares it unknown permanently and every other driver will too. A
+// driver with no unknowns left still has that one, which is why "unknown means unclassified" is
+// the wrong reading of the verdict.
+//
 // # Not built, and why
 //
-// Three further facts belong here and are recorded rather than stubbed, following what ADR 0011
-// did with history.Store:
+// Two further facts belong here and are recorded rather than stubbed, following what ADR 0011 did
+// with history.Store:
 //
-//	Facts.TransactionalDDL       M4-T9, and MySQL declares it false in M9-T3
 //	Facts.Capture                M13-T16: whether this server permits log-based change capture
 //	engine limits on a logical type (PG precision 1000, MySQL 65)   deferred from M1-T1
 //
-// All three are fields on a struct rather than methods on an interface, so adding any of them
-// reopens no driver. That is ADR 0004's retrofit-cost argument applied to the model that argument
-// created, and it is why Set is a struct.
+// Both are fields on a struct rather than methods on an interface, so adding either reopens no
+// driver. That is ADR 0004's retrofit-cost argument applied to the model that argument created,
+// and it is why Set is a struct. Facts.TransactionalDDL was the third and arrived in M3-T3, so
+// M4-T9 reads a field rather than adding one.
+//
+// Three capabilities the milestone plan names are deliberately absent, because no v1 operation can
+// request them: a partial index (add_index has no predicate), a deferrable constraint (no
+// operation carries DEFERRABLE), and concurrent index creation (M13-T11 chooses to emit it; it is
+// not something a migration asks for). A field recording a server capability that no operation can
+// reach would be a constant nothing reads. When the IR gains the field, the capability follows it.
 //
 // Capture is a connection-wide fact rather than a per-operation verdict: binlog_format and
 // wal_level describe the server, not the operation being asked about. A server that will not

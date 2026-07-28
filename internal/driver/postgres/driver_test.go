@@ -99,27 +99,22 @@ func TestTheDeclaredSetIsCompleteAndAllowsWhatCompiles(t *testing.T) {
 				verdict, compileErr)
 		}
 
-		if verdict := set.Resolve(op); verdict.Allowed() &&
-			verdict.Lock() != capability.LockUnknown {
-			t.Errorf("%s: lock impact is %q before anything measured one", op.Kind(), verdict.Lock())
-		}
 	}
 
-	t.Log("The literal is asserted rather than lockPending, because an assertion written against")
-	t.Log("the constant moves with it: a mutation sweep found declaring table_rewrite passed.")
-	t.Log("Declaring a cost nobody measured is not the safe answer -- it and unknown rank alike")
-	t.Log("against a ceiling, but only unknown says the driver has not looked (ADR 0012).")
+	t.Log("This holds the support axis only. The lock axis moved to lock_test.go when M3-T3")
+	t.Log("classified it, and the assertion that used to live here -- everything is unknown --")
+	t.Log("is now the opposite of what is true.")
 
 	t.Log("capability.NewSet refuses a set that does not answer for every operation, so this")
 	t.Log("driver could not open a connection at all with a partial declaration. The set is pure,")
 	t.Log("so the agreement the conformance suite exists to prove is checkable with no server.")
 }
 
-// declaredSet builds the capability set Open builds, which needs no server because rules() does not.
+// declaredSet builds the set Open builds, for a server this test declares rather than connects to.
 func declaredSet(t *testing.T) (capability.Set, error) {
 	t.Helper()
 
-	return capability.NewSet(capability.Facts{Driver: Name, Server: "17.2"}, rules())
+	return capability.NewSet(modernServer.facts(), modernServer.rules())
 }
 
 func TestTheHistoryStoreRefusesRatherThanReturningNil(t *testing.T) {

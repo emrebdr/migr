@@ -166,14 +166,39 @@ func TestAnOrdinarySchemaIsSetPlainly(t *testing.T) {
 func TestTheSearchPathCannotBeEscaped(t *testing.T) {
 	const injection = "public, pg_catalog"
 
+	createSchema(t, injection)
+
 	current := searchPath(t, injection)
 
 	if !strings.Contains(current, `"`+injection+`"`) {
 		t.Errorf("search_path is %q, want the schema kept whole as one quoted identifier", current)
-		t.Log("config never validates schema -- not for identifier legality, not for length, not")
-		t.Log("for commas. Setting it with a bound parameter through set_config is what makes an")
-		t.Log("injected value a schema name nobody has rather than two search path entries.")
 	}
+
+	t.Log("A schema may legitimately be created with a comma in its name, so the existence check")
+	t.Log("M3-T3 added does not make quote_ident redundant -- it makes it the second line rather")
+	t.Log("than the only one. Without the quoting this name would become two search path entries,")
+	t.Log("one of them pg_catalog, which is a privilege surface rather than a typo.")
+	t.Log("config never validates schema: not for identifier legality, not for length, not for")
+	t.Log("commas. This test creates the schema first precisely because the injected value would")
+	t.Log("otherwise be refused before reaching search_path at all.")
+}
+
+// createSchema makes a schema exist for the duration of one test, and drops it afterwards.
+func createSchema(t *testing.T, name string) {
+	t.Helper()
+
+	session := openSession(t, dsnFor(servers[0].env, servers[0].dsn))
+
+	if _, err := session.conn.Exec(t.Context(), "CREATE SCHEMA "+quote(name)); err != nil {
+		t.Fatalf("creating schema %q: %v", name, err)
+	}
+
+	t.Cleanup(func() {
+		ctx := context.WithoutCancel(t.Context())
+		if _, err := session.conn.Exec(ctx, "DROP SCHEMA "+quote(name)); err != nil {
+			t.Errorf("dropping schema %q: %v", name, err)
+		}
+	})
 }
 
 func TestTheConformanceSuitePasses(t *testing.T) {
@@ -319,8 +344,8 @@ func TestPostgresAcceptsEverythingThisDriverCompiles(t *testing.T) {
 	t.Log("that Up followed by Down restores an introspected snapshot.")
 }
 
-// runScript compiles and executes every operation in the script, then rolls the whole thing back.
-func runScript(t *testing.T, dsn string) {
+// openSession opens a connection and returns this package's own session, which tests reach into.
+func openSession(t *testing.T, dsn string) *pgConn {
 	t.Helper()
 
 	conn := open(t, dsn, driver.Options{})
@@ -329,6 +354,13 @@ func runScript(t *testing.T, dsn string) {
 	if !ok {
 		t.Fatalf("Open returned %T, not this package's session", conn)
 	}
+
+	return session
+}
+
+// beginRolledBack starts a transaction the cleanup rolls back, so a test leaves no schema behind.
+func beginRolledBack(t *testing.T, session *pgConn) {
+	t.Helper()
 
 	tx, err := session.conn.Begin(t.Context())
 	if err != nil {
@@ -340,6 +372,14 @@ func runScript(t *testing.T, dsn string) {
 			t.Errorf("Rollback: %v", err)
 		}
 	})
+}
+
+// runScript compiles and executes every operation in the script, then rolls the whole thing back.
+func runScript(t *testing.T, dsn string) {
+	t.Helper()
+
+	session := openSession(t, dsn)
+	beginRolledBack(t, session)
 
 	d := newDriver(t, driver.Options{})
 

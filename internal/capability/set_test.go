@@ -163,10 +163,41 @@ func TestTwoServerVersionsDisagreeAboutTheSameOperation(t *testing.T) {
 		t.Log("ADD COLUMN ... DEFAULT rewrote the whole table on PostgreSQL 10 and is instant")
 		t.Log("from 11 onward. The version is closed over at construction, so this is provable")
 		t.Log("with no database and Resolve stays free of I/O.")
+		t.Log("These rules are a fixture demonstrating the mechanism, not PostgreSQL's real")
+		t.Log("answers: the driver reports brief_exclusive rather than lock_free for the 11+ case,")
+		t.Log("because ALTER TABLE still takes ACCESS EXCLUSIVE (ADR 0016).")
 	}
 
 	if sets["16.2"].Server() != "16.2" || sets["16.2"].Driver() != "postgres" {
 		t.Errorf("a set reports itself as %s/%s", sets["16.2"].Driver(), sets["16.2"].Server())
+	}
+}
+
+func TestASetReportsTheFactsItWasBuiltFrom(t *testing.T) {
+	rules := everyKind(Native(LockFree))
+
+	transactional := mustSet(t, Facts{
+		Driver: "postgres", Server: "17.6", TransactionalDDL: true,
+	}, rules)
+
+	if !transactional.TransactionalDDL() {
+		t.Error("a set built from a server with transactional DDL reports none")
+	}
+
+	plain := mustSet(t, Facts{Driver: "mysql", Server: "8.0.36"}, rules)
+
+	if plain.TransactionalDDL() {
+		t.Error("a set built from a server without transactional DDL reports it")
+		t.Log("Both directions are asserted because only one of them fails safe. A driver wrongly")
+		t.Log("reported as transactional means M4-T9 skips the dirty-state model and a partial")
+		t.Log("failure is recorded as a clean one -- a mutation sweep found the accessor could")
+		t.Log("return a constant true with nothing noticing.")
+	}
+
+	var unbuilt Set
+
+	if unbuilt.TransactionalDDL() {
+		t.Error("a set that was never built claims transactional DDL")
 	}
 }
 

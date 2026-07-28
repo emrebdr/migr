@@ -52,6 +52,10 @@ func applySearchPath(ctx context.Context, conn *pgx.Conn, schema string) error {
 		return nil
 	}
 
+	if err := checkSchemaExists(ctx, conn, schema); err != nil {
+		return err
+	}
+
 	if _, err := conn.Exec(ctx, searchPathQuery, schema); err != nil {
 		return fmt.Errorf("%w: setting the search path to %q: %w", ErrConnect, schema, err)
 	}

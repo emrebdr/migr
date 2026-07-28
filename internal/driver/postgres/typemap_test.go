@@ -99,8 +99,15 @@ func TestAnEnumIsRefusedForTheObjectNobodyWouldDrop(t *testing.T) {
 		t.Fatal("an enum column compiled")
 	}
 
-	if !strings.Contains(problem, enumTask) {
-		t.Errorf("the refusal %q names no task that will fix it", problem)
+	if !strings.Contains(problem, enumBlocker) {
+		t.Errorf("the refusal %q does not say what supporting it would need", problem)
+	}
+
+	if strings.Contains(problem, "M3-") {
+		t.Errorf("the refusal %q names a task, and no task will fix this", problem)
+		t.Log("The v1 IR has no operation that owns a CREATE TYPE object, so this is an IR change")
+		t.Log("rather than a driver one. Naming a milestone task would promise work nobody has")
+		t.Log("scheduled and would go stale the moment that task shipped without it.")
 	}
 }
 

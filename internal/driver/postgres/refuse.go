@@ -9,8 +9,8 @@ import (
 	"github.com/emrebdr/migr/internal/schema"
 )
 
-// enumTask owns native enums, whose done-when already names them: see this package's doc.
-const enumTask = "M3-T3"
+// enumBlocker names what the v1 IR would need before an enum could be supported at all.
+const enumBlocker = "an operation that owns the type"
 
 // refuse builds this driver's refusal to compile an operation, for a reason found in its payload.
 func refuse(op ir.Operation, reason string) error {
@@ -84,7 +84,9 @@ func checkType(field string, t schema.Type) string {
 func describeEnum(field string, t schema.Type) string {
 	return fmt.Sprintf("%s is %s, and a PostgreSQL enum is a CREATE TYPE object that no operation "+
 		"in the v1 IR owns: nothing would drop it, so applying a migration, rolling it back, and "+
-		"applying it again fails on a type that already exists (%s)", field, t, enumTask)
+		"applying it again fails on a type that already exists. Supporting it needs %s, which is "+
+		"an IR change rather than a driver one; use string(n) with a check constraint meanwhile",
+		field, t, enumBlocker)
 }
 
 // checkArray reports an array PostgreSQL would flatten, or an element it cannot carry.

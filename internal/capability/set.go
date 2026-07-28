@@ -22,6 +22,8 @@ type Facts struct {
 	Driver string
 	// Server is the connected server's version, as the driver detected it.
 	Server string
+	// TransactionalDDL reports whether a failed migration leaves the schema untouched.
+	TransactionalDDL bool
 }
 
 // Set is one driver's capabilities, already resolved against one connected server.
@@ -80,6 +82,11 @@ func (s Set) Driver() string {
 // Server returns the server version these verdicts were resolved against.
 func (s Set) Server() string {
 	return s.facts.Server
+}
+
+// TransactionalDDL reports whether a failed migration leaves this server's schema untouched.
+func (s Set) TransactionalDDL() bool {
+	return s.facts.TransactionalDDL
 }
 
 // Resolve answers both axes for one operation, refusing rather than guessing.

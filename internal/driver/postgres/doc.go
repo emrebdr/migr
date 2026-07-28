@@ -5,9 +5,60 @@
 // its lock-impact verdicts are keyed to the detected server version — ADD COLUMN with a default
 // rewrites the table on PostgreSQL 10 and is instant from 11 onward.
 //
-// Status: connections and compilation complete (M3-T1, M3-T2). This driver locks nothing and
-// keeps no history yet; see pending.go, which M3-T4 and M3-T6 each delete a piece of. Lock impact
-// is declared unknown until M3-T3 measures it.
+// Status: connections, compilation, and the capability declaration complete (M3-T1, M3-T2, M3-T3).
+// This driver locks nothing and keeps no history yet; see pending.go, which M3-T4 and M3-T6 each
+// delete a piece of.
+//
+// # What a lock verdict says
+//
+// The four verdicts describe how long a lock is held, not which lock is taken. Nearly every
+// ALTER TABLE here takes ACCESS EXCLUSIVE, which blocks readers as well as writers, so "which
+// lock" would sort a catalog update alongside an index build. See ADR 0016.
+//
+//	lock_free        create_table; create_view without or_replace -- nothing existing is touched
+//	brief_exclusive  drop_table, rename_table, drop_column, rename_column, drop_index,
+//	                 every drop_* constraint, drop_view, create_view with or_replace
+//	long_exclusive   add_index and add_unique and add_primary_key (an index build);
+//	                 add_foreign_key and add_check (a full scan to validate)
+//	table_rewrite    see add_column and alter_column below
+//	unknown          raw, permanently
+//
+// raw is the case unknown exists for and the one that never resolves: the framework cannot know
+// what the statement does. A driver with nothing left to classify still reports this one.
+//
+// add_column depends on the payload and on the server at once. PostgreSQL 11 stores a new column's
+// default in pg_attribute and applies it on read, so a default no longer rewrites every row --
+// unless it is volatile, because then every row needs a value of its own. gen_random_uuid() is
+// volatile and rewrites the table on every release; a literal and the three SQL-standard time
+// keywords do not, from 11 onward. Volatility is read from pg_proc rather than carried in a list.
+//
+// alter_column reports the worst of the changes it was asked for, since it runs them all: a retype
+// rewrites, SET NOT NULL scans the table, and DROP NOT NULL or either default change is catalog
+// work. A retype is always reported as a rewrite even where PostgreSQL would not perform one --
+// varchar(255) to varchar(512) is binary coercible -- because the operation carries only what a
+// migration author recorded the old type as. Over-reporting costs a flag; under-reporting costs an
+// outage (invariant #13).
+//
+// What is measured rather than assumed: an integration test asserts that nothing rewrites the
+// table without having been declared a rewrite, by watching pg_class.relfilenode. The
+// brief/long distinction is a duration under contention and is M13-T12's to measure, not this
+// driver's to claim.
+//
+// # What the server is asked at Open
+//
+// Beside the version, one query asks whether gen_random_uuid() exists and how volatile it is.
+// Both answers matter: the volatility keys the add_column verdict, and the existence closes the
+// support question M3-T2 could not answer, since that function moved into core only in
+// PostgreSQL 13 and this driver connects to 10. A server that lacks it now gets a refusal from
+// the declaration at validation time instead of an error from the server at apply time.
+//
+// Asking beats testing the version. pgcrypto has provided that function for a decade, so a
+// PostgreSQL 12 carrying the extension has it, and a version comparison would refuse a server
+// that works.
+//
+// The configured schema is checked for existence in the same pass, because PostgreSQL drops an
+// entry naming no schema from search_path rather than reporting it -- so a typo opens cleanly and
+// fails at the first migration with a message naming neither the schema nor the config key.
 //
 // # The declaration is derived from the compiler
 //
@@ -34,7 +85,11 @@
 // same thing:
 //
 //   - an enum type, which needs a CREATE TYPE object no v1 operation owns — nothing would drop it,
-//     so apply, roll back, and apply again fails on a type that already exists (M3-T3)
+//     so apply, roll back, and apply again fails on a type that already exists. Permanent: the
+//     blocker is an IR change rather than a driver one, so the reason names what is missing rather
+//     than a task (ADR 0016)
+//   - a uuid column default on a server with no gen_random_uuid, which the declaration knows and
+//     the version-blind compiler does not
 //   - a nested array, because PostgreSQL declares array dimensions and does not enforce them:
 //     integer[][] and integer[] are one type, so two logical types would become one native one
 //   - a drop_primary_key naming no constraint, because PostgreSQL has no name-free form; the v1 IR
@@ -69,9 +124,11 @@
 // nobody indexes it. A schema type should be the canonical one.
 //
 // Default functions map to CURRENT_TIMESTAMP, CURRENT_DATE, CURRENT_TIME, and gen_random_uuid().
-// That last one is core only from PostgreSQL 13, and this driver's minimum is 10 — Compile is pure
-// by contract and cannot know which server a session reached, so the version-dependent refusal can
-// only live in the declaration, which does. M3-T3 inherits the choice; ADR 0015 records it.
+// The first three are SQL-standard keywords rather than functions and are stable by definition, so
+// they are not looked up; the fourth is, because both its existence and its volatility vary by
+// server. Compile is pure by contract and cannot know which server a session reached, so the
+// version-dependent refusal lives in the declaration. ADR 0015 recorded the asymmetry; ADR 0016
+// narrowed it to a refusal an operator sees before anything runs.
 //
 // # What this driver does not emit
 //

@@ -25,6 +25,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0013](0013-migration-history.md) | Migration history is an append-only log, keyed by the run rather than by the row | Accepted | What a history row records, why a rollback appends instead of deleting, and why the store is bound to a session |
 | [0014](0014-online-change-capture.md) | Online change capture reads the write-ahead log, and cutover waits for a human | Accepted | How a shadow table stays current without triggers, and who decides the moment of the rename |
 | [0015](0015-payload-dependent-refusals.md) | A driver refuses payloads, not operation kinds | Accepted | Where a per-payload refusal lives, how the compiler and the declaration are kept in agreement, and what a version-blind compiler cannot decide |
+| [0016](0016-lock-impact-is-a-duration.md) | Lock impact is a duration, not a lock level | Accepted | What the four lock verdicts mean, what a live server can settle, and why raw is permanently unknown |
 
 ## When to write one
 

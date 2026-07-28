@@ -11,6 +11,14 @@
 
 version: "2"
 
+# A tagged file is invisible to every linter unless the tag is named here: golangci-lint loads
+# packages under the default build constraints, and `make lint` passes no flags. Without this,
+# internal/driver/postgres's integration tests would be checked by internal/lint's comment walk
+# and by nothing else. Adding a tag is purely additive -- untagged files still build.
+run:
+  build-tags:
+    - integration
+
 linters:
   default: none
 

@@ -1,0 +1,1 @@
+-- migr:unsupported add_index: the PostgreSQL compiler is not written yet (M3-T2)

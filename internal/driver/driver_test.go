@@ -69,6 +69,11 @@ func (c *fakeConn) History() history.Store {
 	return nil
 }
 
+// ServerVersion reports the version this fake session was opened against.
+func (c *fakeConn) ServerVersion() string {
+	return c.caps.Server()
+}
+
 // Close releases nothing, since this fake holds nothing.
 func (c *fakeConn) Close(context.Context) error {
 	return nil

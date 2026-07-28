@@ -40,10 +40,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          # Neither module has a go.sum yet -- there are no dependencies. The
-          # default '**/go.sum' glob resolves to nothing and errors, so key the
-          # cache off files that exist. Covers both modules.
-          cache-dependency-path: "**/go.mod"
+          # Key off both: the root module has a go.sum, sdk/go has none, and the
+          # default '**/go.sum' glob alone would error on the module that lacks
+          # one. Including go.mod covers sdk/go and re-keys when a dependency
+          # is added or removed.
+          cache-dependency-path: |
+            **/go.mod
+            **/go.sum
 
       - name: Report toolchain
         run: |

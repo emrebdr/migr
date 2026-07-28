@@ -1,0 +1,41 @@
+# Databases the tagged tests run against. `make test-integration` brings these up with
+# `up -d --wait`, which waits on the healthchecks below rather than on the container merely
+# existing -- PostgreSQL accepts TCP well before it accepts queries, so without a healthcheck
+# the first test races the server's own startup.
+#
+# Two PostgreSQL majors, because a lock-impact verdict is derived from the connected server's
+# version and a driver that is only ever tested against one version cannot have that tested at
+# all. MySQL 8 joins them in M9-T7 and SQLite needs no container.
+#
+# Ports are non-default so this never collides with a PostgreSQL an operator is already running.
+# The DSNs matching these are the defaults in internal/driver/postgres; override with
+# MIGR_TEST_PG16_DSN and MIGR_TEST_PG17_DSN.
+
+services:
+  postgres16:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: migr
+      POSTGRES_PASSWORD: migr
+      POSTGRES_DB: migr
+    ports:
+      - "55416:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U migr -d migr"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  postgres17:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: migr
+      POSTGRES_PASSWORD: migr
+      POSTGRES_DB: migr
+    ports:
+      - "55417:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U migr -d migr"]
+      interval: 1s
+      timeout: 3s
+      retries: 30

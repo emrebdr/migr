@@ -49,11 +49,10 @@
 //
 // # Deferred, but decided
 //
-// Three methods are not written yet, because their types do not exist. They are recorded here so
+// Two methods are not written yet, because their types do not exist. They are recorded here so
 // the tasks that add them inherit a decision rather than a blank page:
 //
 //	Conn.Introspect(ctx) (*schema.Snapshot, error)       M11-T1
-//	Conn.ServerVersion() string                          M3-T1
 //	Driver.Capture(ctx, capture.Request) (capture.Stream, error)   M13-T9
 //
 // Capture hangs off Driver rather than Conn deliberately. Reading a replication log — MySQL's
@@ -64,8 +63,9 @@
 // docs/adr/0014-online-change-capture.md. internal/capture is subject to the same one-way import
 // rule as internal/history, for the same reason.
 //
-// ServerVersion and capability.Set.Server report the same fact, so a driver must derive both from
-// one detection inside Open or they can disagree.
+// ServerVersion and capability.Set.Server report the same fact, so a driver derives both from one
+// detection inside Open or they can disagree. M3-T1 added it and does exactly that: it reads
+// server_version_num once and renders the display string from the number.
 //
 // They are not stubbed. A method whose only possible implementation returns a plausible empty
 // value is worse than a missing one, and the conformance suite's "no third possibility" rule

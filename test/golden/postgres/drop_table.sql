@@ -1,0 +1,1 @@
+-- migr:unsupported drop_table: the PostgreSQL compiler is not written yet (M3-T2)

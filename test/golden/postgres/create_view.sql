@@ -1,0 +1,1 @@
+-- migr:unsupported create_view: the PostgreSQL compiler is not written yet (M3-T2)

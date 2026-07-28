@@ -1,0 +1,1 @@
+-- migr:unsupported rename_column: the PostgreSQL compiler is not written yet (M3-T2)

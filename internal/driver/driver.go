@@ -50,6 +50,8 @@ type Conn interface {
 	Capabilities() capability.Set
 	// History returns this session's view of the migration history, already bound to it.
 	History() history.Store
+	// ServerVersion returns the connected server's version, as the driver detected it at Open.
+	ServerVersion() string
 	// Close releases the session and anything it holds.
 	Close(ctx context.Context) error
 }

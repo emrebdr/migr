@@ -35,12 +35,23 @@
 // is what proves the two agree. See internal/capability and
 // docs/adr/0012-capability-resolution.md.
 //
+// # History belongs to the session too
+//
+// History returns the store already bound to this connection, which is why it takes no context
+// and returns no error: there is nothing left to fail. A driver builds it inside Open, alongside
+// the capability set, and Store's own methods each carry the context they need.
+//
+// internal/history never imports this package. It is named here as a return type, so the
+// dependency runs one way and the other direction is an import cycle. ADR 0011 recorded that as a
+// review rule because depguard cannot express it — the deny prefix deliberately leaves this
+// package importable. Naming history.Store here is what made it mechanical: the cycle the rule
+// warned about is now the thing that enforces it. See docs/adr/0013-migration-history.md.
+//
 // # Deferred, but decided
 //
-// Three methods belong on Conn and are not written yet, because their types do not exist. They
-// are recorded here so the tasks that add them inherit a decision rather than a blank page:
+// Two methods belong on Conn and are not written yet, because their types do not exist. They are
+// recorded here so the tasks that add them inherit a decision rather than a blank page:
 //
-//	History() history.Store                       M2-T5
 //	Introspect(ctx) (*schema.Snapshot, error)     M11-T1
 //	ServerVersion() string                        M3-T1
 //
@@ -50,10 +61,6 @@
 // They are not stubbed. A method whose only possible implementation returns a plausible empty
 // value is worse than a missing one, and the conformance suite's "no third possibility" rule
 // exists to forbid exactly that.
-//
-// One rule follows for M2-T5: internal/history must never import internal/driver. The store is
-// bound to a connection by the driver, so its own methods stay connection-free. The alternative
-// is an import cycle, discovered while writing it.
 //
 // # A Conn is one pinned session, not a pool
 //

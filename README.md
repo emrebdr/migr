@@ -71,16 +71,18 @@ Credentials in a DSN are redacted on every output path, so leaking one takes a d
 
 ### Now, next, later
 
-**Now — M0, foundations: done.** The two-module layout, a Makefile that cannot skip a module, a
-24-linter gate, a mechanically enforced import boundary, a custom AST check for the comment
-rules, CI on Linux and macOS, the CLI skeleton, the config loader, and four architecture
-decision records.
+**Done — M0, M1, M2.** The foundations: a two-module layout, a Makefile that cannot skip a
+module, a 24-linter gate, a mechanically enforced import boundary, a custom AST check for the
+comment rules, and CI on Linux and macOS. Then the neutral middle: a logical type system, the
+twenty-operation IR with a versioned envelope and a checksum scheme. Then the contracts every
+database plugs into: the driver interface and registry, the two-axis capability model, a
+golden-file harness, a conformance suite that proves a driver's compiler agrees with what it
+declared, and the migration history store — thirteen architecture decision records so far.
 
-**Next.** The logical type system and operation IR (M1), then the driver contract and
-capability model (M2), the PostgreSQL driver (M3), and the engine core (M4). **M5 is the first
-version a person can actually use** — against PostgreSQL, with SQL-file migrations. The Go SDK
-and the runtime protocol land in M6, and TypeScript in M7, which is where the polyglot claim
-stops being a claim.
+**Now — M3, the PostgreSQL driver**, and it is the first code that touches a database. The
+engine core follows in M4. **M5 is the first version a person can actually use** — against
+PostgreSQL, with SQL-file migrations. The Go SDK and the runtime protocol land in M6, and
+TypeScript in M7, which is where the polyglot claim stops being a claim.
 
 **Later.** The SQLite and MySQL drivers (M8, M9), validation and safety (M10), introspection
 and schema diffing (M11), seeds and data transformations (M12), and the zero-downtime milestone
@@ -279,6 +281,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0010](docs/adr/0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" |
 | [0011](docs/adr/0011-driver-contract.md) | The driver contract: a session-scoped connection and an explicitly wired registry |
 | [0012](docs/adr/0012-capability-resolution.md) | Capability resolution: one rule per operation, resolved against one server |
+| [0013](docs/adr/0013-migration-history.md) | Migration history is an append-only log, keyed by the run rather than by the row |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

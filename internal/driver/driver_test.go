@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -61,6 +62,11 @@ func (c *fakeConn) Lock(context.Context) (Unlock, error) {
 // Capabilities returns the set this session was opened with.
 func (c *fakeConn) Capabilities() capability.Set {
 	return c.caps
+}
+
+// History reports no store, since this fake has no database to keep one in.
+func (c *fakeConn) History() history.Store {
+	return nil
 }
 
 // Close releases nothing, since this fake holds nothing.

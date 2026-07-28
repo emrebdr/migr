@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -47,6 +48,8 @@ type Conn interface {
 	Lock(ctx context.Context) (Unlock, error)
 	// Capabilities reports what this server can do, resolved against its detected version.
 	Capabilities() capability.Set
+	// History returns this session's view of the migration history, already bound to it.
+	History() history.Store
 	// Close releases the session and anything it holds.
 	Close(ctx context.Context) error
 }

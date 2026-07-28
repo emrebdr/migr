@@ -1,1 +1,2 @@
--- migr:unsupported drop_unique: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+ALTER TABLE "users" DROP CONSTRAINT "uq_users_email";

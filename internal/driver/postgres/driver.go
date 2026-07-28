@@ -30,13 +30,9 @@ func (d *pgDriver) Name() string {
 	return Name
 }
 
-// Compile refuses every operation until the compiler is written.
+// Compile turns an IR operation into the PostgreSQL statements that perform it.
 func (d *pgDriver) Compile(op ir.Operation) ([]driver.Statement, error) {
-	if op == nil {
-		return nil, fmt.Errorf("%s was asked to compile no operation at all", Name)
-	}
-
-	return nil, driver.Unsupported(Name, op.Kind(), compilePending)
+	return compile(op)
 }
 
 // Open connects to a server and returns a session bound to what that server can do.
@@ -61,6 +57,10 @@ func (d *pgDriver) Open(ctx context.Context, dsn string) (driver.Conn, error) {
 
 // establish turns an open connection into a session, or reports why it cannot be one.
 func (d *pgDriver) establish(ctx context.Context, conn *pgx.Conn) (*pgConn, error) {
+	if err := applyStringGrammar(ctx, conn); err != nil {
+		return nil, err
+	}
+
 	if err := applySearchPath(ctx, conn, d.schema); err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (d *pgDriver) establish(ctx context.Context, conn *pgx.Conn) (*pgConn, erro
 	}
 
 	caps, err := capability.NewSet(
-		capability.Facts{Driver: Name, Server: version.String()}, pendingRules())
+		capability.Facts{Driver: Name, Server: version.String()}, rules())
 	if err != nil {
 		return nil, fmt.Errorf("%w: declaring capabilities: %w", ErrConnect, err)
 	}

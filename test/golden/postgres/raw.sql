@@ -1,1 +1,2 @@
--- migr:unsupported raw: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+-- a raw statement, passed through verbatim

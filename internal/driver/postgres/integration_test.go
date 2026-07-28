@@ -5,12 +5,15 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 	conformance "github.com/emrebdr/migr/test/conformance/driver"
 )
 
@@ -187,7 +190,202 @@ func TestTheConformanceSuitePasses(t *testing.T) {
 		})
 	}
 
-	t.Log("First run of the conformance suite against a real driver rather than a fake. It")
-	t.Log("passes because this driver refuses every operation and declares every operation")
-	t.Log("unsupported -- the biconditional holds at zero as well as it will at twenty.")
+	t.Log("The same suite runs untagged against a session double, because rules() needs no")
+	t.Log("connection. This run is the other half: it holds the declaration a live server")
+	t.Log("actually produced to what that server's driver compiles.")
+}
+
+// script is an ordered set of operations that reach every form this driver compiles.
+func script(t *testing.T) ir.Operations {
+	t.Helper()
+
+	return ir.Operations{
+		ir.CreateTable{
+			Table:      "migr_probe_users",
+			Columns:    []ir.Column{{Name: "id", Type: probeType(t, "uuid")}},
+			PrimaryKey: []string{"id"},
+		},
+		ir.CreateTable{
+			Table:   "migr_probe_orders",
+			Columns: everyMappableColumn(t),
+		},
+		ir.AddColumn{Table: "migr_probe_orders", Column: ir.Column{
+			Name:     "note",
+			Type:     probeType(t, "string(64)"),
+			Nullable: true,
+			Default:  ir.Literal("it's fine"),
+		}},
+		ir.AlterColumn{
+			Table:    "migr_probe_orders",
+			Column:   "note",
+			Type:     probePointer(probeType(t, "string(128)")),
+			Nullable: probePointer(false),
+			Default:  ir.Literal("still fine"),
+		},
+		ir.AlterColumn{Table: "migr_probe_orders", Column: "note", DropDefault: true},
+		ir.RenameColumn{Table: "migr_probe_orders", From: "note", To: "order"},
+		ir.AddPrimaryKey{Table: "migr_probe_orders", Name: "pk_probe_orders", Columns: []string{"id"}},
+		ir.AddUnique{Table: "migr_probe_orders", Name: "uq_probe_orders", Columns: []string{"id"}},
+		ir.AddCheck{Table: "migr_probe_orders", Name: "ck_probe_orders", Expression: "total >= 0"},
+		ir.AddIndex{Table: "migr_probe_orders", Name: "idx_probe_orders", Columns: []string{"order"}},
+		ir.AddForeignKey{
+			Table:             "migr_probe_orders",
+			Name:              "fk_probe_orders",
+			Columns:           []string{"user_id"},
+			ReferencesTable:   "migr_probe_users",
+			ReferencesColumns: []string{"id"},
+			OnDelete:          ir.ActionCascade,
+			OnUpdate:          ir.ActionRestrict,
+		},
+		ir.CreateView{View: "migr_probe_view", Query: "SELECT id FROM migr_probe_orders;"},
+		ir.CreateView{
+			View:      "migr_probe_view",
+			Query:     "SELECT id FROM migr_probe_orders WHERE id > 0",
+			OrReplace: true,
+		},
+		ir.Raw{Driver: Name, SQL: "COMMENT ON TABLE migr_probe_users IS 'written by a raw op'"},
+		ir.DropView{View: "migr_probe_view"},
+		ir.DropForeignKey{Table: "migr_probe_orders", Name: "fk_probe_orders"},
+		ir.DropIndex{Table: "migr_probe_orders", Name: "idx_probe_orders"},
+		ir.DropCheck{Table: "migr_probe_orders", Name: "ck_probe_orders"},
+		ir.DropUnique{Table: "migr_probe_orders", Name: "uq_probe_orders"},
+		ir.DropPrimaryKey{Table: "migr_probe_orders", Name: "pk_probe_orders"},
+		ir.DropColumn{Table: "migr_probe_orders", Column: "order"},
+		ir.RenameTable{From: "migr_probe_orders", To: "migr_probe_archive"},
+		ir.DropTable{Table: "migr_probe_archive"},
+		ir.DropTable{Table: "migr_probe_users"},
+	}
+}
+
+// everyMappableColumn returns one column per logical type this driver claims to have a spelling for.
+func everyMappableColumn(t *testing.T) []ir.Column {
+	t.Helper()
+
+	spellings := []string{
+		"string(255)", "text", "bool", "int16", "int32", "int64", "float32", "float64",
+		"decimal(10,2)", "uuid", "json", "timestamp", "timestamptz", "date", "time", "binary",
+		"array(int32)", "array(string(16))",
+	}
+
+	columns := []ir.Column{
+		{Name: "id", Type: probeType(t, "int64")},
+		{Name: "user_id", Type: probeType(t, "uuid"), Nullable: true},
+		{Name: "total", Type: probeType(t, "int32"), Nullable: true, Default: ir.Literal("0")},
+		{Name: "key", Type: probeType(t, "uuid"), Default: ir.Call(ir.FuncUUID)},
+		{Name: "seen", Type: probeType(t, "timestamptz"), Default: ir.Call(ir.FuncCurrentTimestamp)},
+		{Name: "day", Type: probeType(t, "date"), Default: ir.Call(ir.FuncCurrentDate)},
+		{Name: "hour", Type: probeType(t, "time"), Default: ir.Call(ir.FuncCurrentTime)},
+	}
+
+	for i, spelling := range spellings {
+		columns = append(columns, ir.Column{
+			Name:     fmt.Sprintf("mapped_%02d", i),
+			Type:     probeType(t, spelling),
+			Nullable: true,
+		})
+	}
+
+	return columns
+}
+
+// probeType parses a canonical logical type for the script above.
+func probeType(t *testing.T, spelling string) schema.Type {
+	t.Helper()
+
+	typ, err := schema.Parse(spelling)
+	if err != nil {
+		t.Fatalf("schema.Parse(%q): %v", spelling, err)
+	}
+
+	return typ
+}
+
+// probePointer returns a pointer to a value, for the alter_column fields that are tri-state.
+func probePointer[T any](v T) *T {
+	return &v
+}
+
+func TestPostgresAcceptsEverythingThisDriverCompiles(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			runScript(t, dsnFor(server.env, server.dsn))
+		})
+	}
+
+	t.Log("The golden files record what this driver emits; only a server can say whether the")
+	t.Log("SQL is right. Twenty syntactically plausible and wrong statements would pass every")
+	t.Log("untagged test in this repository.")
+	t.Log("This is not M3-T7: it asserts that PostgreSQL parses and accepts each statement, not")
+	t.Log("that Up followed by Down restores an introspected snapshot.")
+}
+
+// runScript compiles and executes every operation in the script, then rolls the whole thing back.
+func runScript(t *testing.T, dsn string) {
+	t.Helper()
+
+	conn := open(t, dsn, driver.Options{})
+
+	session, ok := conn.(*pgConn)
+	if !ok {
+		t.Fatalf("Open returned %T, not this package's session", conn)
+	}
+
+	tx, err := session.conn.Begin(t.Context())
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := tx.Rollback(context.WithoutCancel(t.Context())); err != nil {
+			t.Errorf("Rollback: %v", err)
+		}
+	})
+
+	d := newDriver(t, driver.Options{})
+
+	for _, op := range script(t) {
+		execCompiled(t, session, d, op)
+	}
+}
+
+// execCompiled compiles one operation and runs each statement it becomes.
+func execCompiled(t *testing.T, session *pgConn, d driver.Driver, op ir.Operation) {
+	t.Helper()
+
+	if err := op.Validate(); err != nil {
+		t.Fatalf("%s: the script is not a well-formed operation: %v", op.Kind(), err)
+	}
+
+	stmts, err := d.Compile(op)
+	if err != nil {
+		t.Fatalf("%s: %v", op.Kind(), err)
+	}
+
+	for i, stmt := range stmts {
+		if err := session.Exec(t.Context(), stmt); err != nil {
+			t.Fatalf("%s statement %d:\n  %s\n  %v", op.Kind(), i+1, stmt.SQL, err)
+		}
+	}
+}
+
+func TestTheSessionPinsTheStringGrammarTheCompilerQuotesFor(t *testing.T) {
+	conn := open(t, dsnFor(servers[0].env, servers[0].dsn), driver.Options{})
+
+	session, ok := conn.(*pgConn)
+	if !ok {
+		t.Fatalf("Open returned %T, not this package's session", conn)
+	}
+
+	var setting string
+	if err := session.conn.QueryRow(t.Context(),
+		"SHOW standard_conforming_strings").Scan(&setting); err != nil {
+		t.Fatalf("reading standard_conforming_strings: %v", err)
+	}
+
+	if setting != "on" {
+		t.Errorf("standard_conforming_strings is %q", setting)
+		t.Log("A column default is written into the statement rather than bound, so doubling '")
+		t.Log("is the whole defense -- and with this off a backslash starts an escape sequence")
+		t.Log("that can be escaped past. Compile is pure and cannot check a session setting.")
+	}
 }

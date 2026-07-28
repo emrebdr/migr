@@ -1,1 +1,2 @@
--- migr:unsupported add_foreign_key: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+ALTER TABLE "orders" ADD CONSTRAINT "fk_orders_user" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE RESTRICT;

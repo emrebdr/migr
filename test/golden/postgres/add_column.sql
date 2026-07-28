@@ -1,1 +1,2 @@
--- migr:unsupported add_column: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+ALTER TABLE "users" ADD COLUMN "nickname" varchar(64) DEFAULT 'anonymous';

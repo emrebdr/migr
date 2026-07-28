@@ -1,1 +1,2 @@
--- migr:unsupported drop_foreign_key: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+ALTER TABLE "orders" DROP CONSTRAINT "fk_orders_user";

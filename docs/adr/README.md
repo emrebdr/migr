@@ -22,6 +22,9 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0010](0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" | Accepted | How an `alter_column` records what it replaced, and when `irVersion` 1 freezes |
 | [0011](0011-driver-contract.md) | The driver contract: a session-scoped connection and an explicitly wired registry | Accepted | What a driver must implement, where connection-scoped work lives, and how a driver reaches the binary |
 | [0012](0012-capability-resolution.md) | Capability resolution: one rule per operation, resolved against one server | Accepted | How a driver declares both capability axes, and how an unresolved lock verdict compares against a threshold |
+| [0013](0013-migration-history.md) | Migration history is an append-only log, keyed by the run rather than by the row | Accepted | What a history row records, why a rollback appends instead of deleting, and why the store is bound to a session |
+| [0014](0014-online-change-capture.md) | Online change capture reads the write-ahead log, and cutover waits for a human | Accepted | How a shadow table stays current without triggers, and who decides the moment of the rename |
+| [0015](0015-payload-dependent-refusals.md) | A driver refuses payloads, not operation kinds | Accepted | Where a per-payload refusal lives, how the compiler and the declaration are kept in agreement, and what a version-blind compiler cannot decide |
 
 ## When to write one
 

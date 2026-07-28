@@ -1,1 +1,2 @@
--- migr:unsupported add_index: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+CREATE INDEX "idx_users_email" ON "users" ("email");

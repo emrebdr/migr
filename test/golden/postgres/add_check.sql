@@ -1,1 +1,2 @@
--- migr:unsupported add_check: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+ALTER TABLE "orders" ADD CONSTRAINT "ck_orders_total" CHECK (total >= 0);

@@ -1,1 +1,2 @@
--- migr:unsupported drop_check: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+ALTER TABLE "orders" DROP CONSTRAINT "ck_orders_total";

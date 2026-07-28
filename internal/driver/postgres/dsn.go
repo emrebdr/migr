@@ -17,6 +17,16 @@ import (
 // session resolves.
 const searchPathQuery = `SELECT set_config('search_path', quote_ident($1), false)`
 
+// stringGrammarQuery makes the session's string literal grammar known rather than assumed.
+//
+// DDL takes no parameters, so a column default's literal value is written into the statement
+// rather than bound, and doubling ' is the whole defense. That defense is complete only while
+// standard_conforming_strings is on: with it off, a backslash starts an escape sequence and the
+// doubling can be escaped past. It has been the default since PostgreSQL 9.1 and is deprecated,
+// but Compile is pure by contract and cannot read a session setting -- so the session is set to
+// the grammar the compiler was written against instead of trusting that it already is.
+const stringGrammarQuery = `SELECT set_config('standard_conforming_strings', 'on', false)`
+
 // parseDSN turns a connection string into a pgx config, withholding the string when it will not.
 func parseDSN(dsn string) (*pgx.ConnConfig, error) {
 	cfg, err := pgx.ParseConfig(dsn)
@@ -25,6 +35,15 @@ func parseDSN(dsn string) (*pgx.ConnConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+// applyStringGrammar pins the session to the string literal grammar this driver quotes for.
+func applyStringGrammar(ctx context.Context, conn *pgx.Conn) error {
+	if _, err := conn.Exec(ctx, stringGrammarQuery); err != nil {
+		return fmt.Errorf("%w: pinning the string literal grammar: %w", ErrConnect, err)
+	}
+
+	return nil
 }
 
 // applySearchPath points the session at the configured schema, if migr.yaml named one.

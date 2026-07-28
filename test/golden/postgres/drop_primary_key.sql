@@ -1,1 +1,2 @@
--- migr:unsupported drop_primary_key: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+ALTER TABLE "legacy" DROP CONSTRAINT "pk_legacy";

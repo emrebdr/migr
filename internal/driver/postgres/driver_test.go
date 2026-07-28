@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -41,32 +40,31 @@ func TestTheDriverAnswersToTheNameItRegistersUnder(t *testing.T) {
 	}
 }
 
-func TestEveryOperationIsRefusedWithAReasonNamingItsTask(t *testing.T) {
+func TestEveryOperationCompilesToStatementsThatCarrySQL(t *testing.T) {
 	d := newDriver(t, driver.Options{})
 
 	for _, op := range drivertest.Operations(Name) {
 		stmts, err := d.Compile(op)
-
-		if stmts != nil {
-			t.Errorf("%s compiled to statements before the compiler exists", op.Kind())
-		}
-
-		var refusal *driver.UnsupportedError
-		if !errors.As(err, &refusal) {
-			t.Errorf("%s was refused with %v, which is not an UnsupportedError", op.Kind(), err)
+		if err != nil {
+			t.Errorf("%s: %v", op.Kind(), err)
 
 			continue
 		}
 
-		if refusal.Driver != Name || refusal.Kind != op.Kind() {
-			t.Errorf("the refusal names %s/%s, want %s/%s",
-				refusal.Driver, refusal.Kind, Name, op.Kind())
+		if len(stmts) == 0 {
+			t.Errorf("%s compiled to no statements at all, and reported no refusal", op.Kind())
 		}
 
-		if !strings.Contains(refusal.Reason, compileTask) {
-			t.Errorf("reason %q does not name the task that will fix it", refusal.Reason)
-			t.Log("Until M3-T2 lands this driver honestly supports nothing. Saying which task")
-			t.Log("changes that is the difference between a refusal and a dead end.")
+		for i, stmt := range stmts {
+			if strings.TrimSpace(stmt.SQL) == "" {
+				t.Errorf("%s: statement %d carries no SQL, so it changes nothing while reporting "+
+					"success", op.Kind(), i+1)
+			}
+
+			if stmt.NoTransaction {
+				t.Errorf("%s: statement %d opts out of the transaction, which nothing this driver "+
+					"emits needs until CREATE INDEX CONCURRENTLY arrives (M13-T11)", op.Kind(), i+1)
+			}
 		}
 	}
 }
@@ -81,8 +79,10 @@ func TestCompilingNoOperationIsAnErrorRatherThanAPanic(t *testing.T) {
 	}
 }
 
-func TestTheDeclaredSetIsCompleteAndRefusesEverything(t *testing.T) {
-	set, err := capability.NewSet(capability.Facts{Driver: Name, Server: "17.2"}, pendingRules())
+func TestTheDeclaredSetIsCompleteAndAllowsWhatCompiles(t *testing.T) {
+	d := newDriver(t, driver.Options{})
+
+	set, err := declaredSet(t)
 	if err != nil {
 		t.Fatalf("the declaration is not a complete capability set: %v", err)
 	}
@@ -92,20 +92,34 @@ func TestTheDeclaredSetIsCompleteAndRefusesEverything(t *testing.T) {
 	}
 
 	for _, op := range drivertest.Operations(Name) {
-		verdict := set.Resolve(op)
+		_, compileErr := d.Compile(op)
 
-		if verdict.Allowed() {
-			t.Errorf("%s is declared supported by a driver that compiles nothing", op.Kind())
+		if verdict := set.Resolve(op); verdict.Allowed() != (compileErr == nil) {
+			t.Errorf("%s: the declaration says %q and the compiler says %v", op.Kind(),
+				verdict, compileErr)
 		}
 
-		if !strings.Contains(verdict.Reason(), compileTask) {
-			t.Errorf("the %s verdict reads %q, which names no task", op.Kind(), verdict.Reason())
+		if verdict := set.Resolve(op); verdict.Allowed() &&
+			verdict.Lock() != capability.LockUnknown {
+			t.Errorf("%s: lock impact is %q before anything measured one", op.Kind(), verdict.Lock())
 		}
 	}
 
+	t.Log("The literal is asserted rather than lockPending, because an assertion written against")
+	t.Log("the constant moves with it: a mutation sweep found declaring table_rewrite passed.")
+	t.Log("Declaring a cost nobody measured is not the safe answer -- it and unknown rank alike")
+	t.Log("against a ceiling, but only unknown says the driver has not looked (ADR 0012).")
+
 	t.Log("capability.NewSet refuses a set that does not answer for every operation, so this")
-	t.Log("driver could not have opened a connection at all with a partial declaration. An")
-	t.Log("honest \"nothing yet\" is what lets the conformance suite run from the first commit.")
+	t.Log("driver could not open a connection at all with a partial declaration. The set is pure,")
+	t.Log("so the agreement the conformance suite exists to prove is checkable with no server.")
+}
+
+// declaredSet builds the capability set Open builds, which needs no server because rules() does not.
+func declaredSet(t *testing.T) (capability.Set, error) {
+	t.Helper()
+
+	return capability.NewSet(capability.Facts{Driver: Name, Server: "17.2"}, rules())
 }
 
 func TestTheHistoryStoreRefusesRatherThanReturningNil(t *testing.T) {

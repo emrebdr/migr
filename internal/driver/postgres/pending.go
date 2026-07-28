@@ -4,21 +4,15 @@ import (
 	"context"
 	"errors"
 
-	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/history"
-	"github.com/emrebdr/migr/internal/ir"
 )
 
 // The tasks that replace each part of this file. Everything here is scaffolding that refuses
 // honestly rather than a stub that returns a plausible empty value.
 const (
-	compileTask = "M3-T2"
 	lockTask    = "M3-T4"
 	historyTask = "M3-T6"
 )
-
-// compilePending is the reason every operation is refused until the compiler is written.
-const compilePending = "the PostgreSQL compiler is not written yet (" + compileTask + ")"
 
 // ErrPending marks a driver method whose implementing task has not landed, for errors.Is.
 var ErrPending = errors.New("not implemented in this driver yet")
@@ -32,18 +26,6 @@ var errPendingHistory = pending("the history store", historyTask)
 // pending builds the refusal a not-yet-written part of this driver gives.
 func pending(what, task string) error {
 	return errors.New(what + " is not written yet (" + task + "): " + ErrPending.Error())
-}
-
-// pendingRules declares every operation unsupported, which is complete and currently true.
-func pendingRules() map[ir.Kind]capability.Rule {
-	rules := make(map[ir.Kind]capability.Rule, len(ir.Kinds()))
-
-	refusal := capability.Fixed(capability.Unsupported(compilePending))
-	for _, kind := range ir.Kinds() {
-		rules[kind] = refusal
-	}
-
-	return rules
 }
 
 // pendingHistory is a store that refuses, rather than a nil no caller could have checked.

@@ -1,1 +1,2 @@
--- migr:unsupported drop_index: the PostgreSQL compiler is not written yet (M3-T2)
+-- migr:statement 1
+DROP INDEX "idx_users_email";

@@ -201,9 +201,9 @@ func (h pgHistory) classifyRead(err error) error {
 
 // missingTable reports a table nothing created, which reading as "no runs yet" would re-run everything.
 func (h pgHistory) missingTable(err error) error {
-	return &HistoryError{Table: h.table, Err: errors.Join(ErrNoHistoryTable, err), Detail: fmt.Sprintf(
+	return &HistoryError{Table: h.table, Err: errors.Join(history.ErrNoTable, err), Detail: fmt.Sprintf(
 		"%v. Ensure creates it; a database that has one under another name is a history.table "+
-			"that does not match the one migrations were recorded under", ErrNoHistoryTable)}
+			"that does not match the one migrations were recorded under", history.ErrNoTable)}
 }
 
 // scan reads one row back, reporting a value this build cannot decode as the corrupt row it is.

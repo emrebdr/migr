@@ -192,8 +192,8 @@ func TestAMissingHistoryTableIsNeverReadAsADatabaseWithNoRuns(t *testing.T) {
 	store := pgHistory{table: "migr_migrations"}
 
 	err := store.classifyRead(serverError(undefinedTableCode))
-	if !errors.Is(err, ErrNoHistoryTable) {
-		t.Fatalf("reading a missing table returned %v, want ErrNoHistoryTable", err)
+	if !errors.Is(err, history.ErrNoTable) {
+		t.Fatalf("reading a missing table returned %v, want history.ErrNoTable", err)
 	}
 
 	if !strings.Contains(err.Error(), "migr_migrations") {
@@ -265,8 +265,8 @@ func TestAWriteAgainstAnUnusableTableSaysWhichWayItIsUnusable(t *testing.T) {
 	rec := history.Record{Version: "20260728T120000"}
 
 	missing := store.classifyWrite(rec, serverError(undefinedTableCode))
-	if !errors.Is(missing, ErrNoHistoryTable) {
-		t.Errorf("writing to a missing table returned %v, want ErrNoHistoryTable", missing)
+	if !errors.Is(missing, history.ErrNoTable) {
+		t.Errorf("writing to a missing table returned %v, want history.ErrNoTable", missing)
 	}
 
 	shaped := store.classifyWrite(rec, serverError(undefinedColumn))
@@ -275,7 +275,7 @@ func TestAWriteAgainstAnUnusableTableSaysWhichWayItIsUnusable(t *testing.T) {
 	}
 
 	other := store.classifyWrite(rec, serverError("53300"))
-	if errors.Is(other, ErrNoHistoryTable) || errors.Is(other, ErrHistoryShape) ||
+	if errors.Is(other, history.ErrNoTable) || errors.Is(other, ErrHistoryShape) ||
 		errors.Is(other, ErrAlreadyRecorded) {
 		t.Errorf("an unrelated server failure was classified as one of ours: %v", other)
 	}

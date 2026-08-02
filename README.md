@@ -191,7 +191,7 @@ suite is what holds that true as both SDKs evolve.
 | `migr init` | scaffold `migr.yaml` and a migrations directory | planned |
 | `migr create` | new migration from a template | planned |
 | `migr up` / `migr down` | apply / roll back, by step or to a version | planned |
-| `migr status` | applied, pending, drifted | planned |
+| `migr status` | applied, pending, missing, drifted, dirty | planned |
 | `migr plan` | dry run: compiled statements, annotated with lock impact | planned |
 | `migr validate` | run validators without touching the database | planned |
 | `migr diff` | introspect, diff against the desired schema, emit a migration | planned |
@@ -297,6 +297,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0016](docs/adr/0016-lock-impact-is-a-duration.md) | Lock impact is a duration, not a lock level |
 | [0017](docs/adr/0017-transaction-boundaries.md) | A transaction is a closure the driver brackets, not a handle the caller holds |
 | [0018](docs/adr/0018-declared-dependencies.md) | A dependency is declared by a migration, never computed by one |
+| [0019](docs/adr/0019-history-reconciliation.md) | Reconciliation replays the whole log, and a half-applied migration is a fifth state |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

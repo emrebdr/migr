@@ -11,6 +11,9 @@ var ErrIncomplete = errors.New("history record is incomplete")
 // ErrCorrupt marks a recorded row this build cannot read back, for errors.Is.
 var ErrCorrupt = errors.New("history row is corrupt")
 
+// ErrNoTable marks a database with no migration history table, which is not one with no runs.
+var ErrNoTable = errors.New("this database has no migration history table")
+
 // IncompleteError reports a record that cannot be written, and which field is why.
 type IncompleteError struct {
 	// Version is the migration the record describes, where it named one.

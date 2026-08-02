@@ -373,12 +373,12 @@ func TestReadingAHistoryTableNothingCreatedIsAnError(t *testing.T) {
 	target := scratchSchema(t, dsn)
 	session := historyIn(t, dsn, target)
 
-	if _, err := session.History().List(t.Context()); !errors.Is(err, ErrNoHistoryTable) {
-		t.Errorf("List against a missing table returned %v, want ErrNoHistoryTable", err)
+	if _, err := session.History().List(t.Context()); !errors.Is(err, history.ErrNoTable) {
+		t.Errorf("List against a missing table returned %v, want history.ErrNoTable", err)
 	}
 
-	if _, _, err := session.History().Latest(t.Context()); !errors.Is(err, ErrNoHistoryTable) {
-		t.Errorf("Latest against a missing table returned %v, want ErrNoHistoryTable", err)
+	if _, _, err := session.History().Latest(t.Context()); !errors.Is(err, history.ErrNoTable) {
+		t.Errorf("Latest against a missing table returned %v, want history.ErrNoTable", err)
 	}
 
 	if err := session.History().Record(t.Context(), run(t, 1, 1, "20260728T200000")); err == nil {

@@ -7,7 +7,11 @@
 // on a package that also opens databases.
 //
 // Status: discovery, version ordering, and the dependency overlay complete (M4-T1, M4-T2).
-// Reconciliation against history is M4-T3 and checksum verification is M4-T7.
+// Checksum verification is M4-T7.
+//
+// Reconciliation against history is internal/history, which imports this package (M4-T3). That is
+// what turned the leaf property above from a review rule into a compiler-enforced one: importing
+// history back is now an import cycle.
 //
 // # The grammar
 //

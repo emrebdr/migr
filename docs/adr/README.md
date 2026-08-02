@@ -28,6 +28,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0016](0016-lock-impact-is-a-duration.md) | Lock impact is a duration, not a lock level | Accepted | What the four lock verdicts mean, what a live server can settle, and why raw is permanently unknown |
 | [0017](0017-transaction-boundaries.md) | A transaction is a closure the driver brackets, not a handle the caller holds | Accepted | How a migration becomes one transaction, where the history write sits relative to the commit, and why grouping is the engine's |
 | [0018](0018-declared-dependencies.md) | A dependency is declared by a migration, never computed by one | Accepted | What `Dependencies()` may return, how an edge names its target, and what resolution hands downstream |
+| [0019](0019-history-reconciliation.md) | Reconciliation replays the whole log, and a half-applied migration is a fifth state | Accepted | Where `ErrNoTable` lives, how absence is made unmissable, and why status is folded rather than looked up |
 
 ## When to write one
 

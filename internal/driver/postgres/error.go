@@ -68,9 +68,6 @@ var ErrStatementNeedsNoTransaction = errors.New("this statement declares it cann
 // ErrHistory marks a migration history operation this driver could not perform, for errors.Is.
 var ErrHistory = errors.New("migration history")
 
-// ErrNoHistoryTable marks a history table this database does not have, which Ensure creates.
-var ErrNoHistoryTable = errors.New("this database has no migration history table")
-
 // ErrHistoryShape marks a history table whose columns are not the ones this build writes.
 var ErrHistoryShape = errors.New("the migration history table is not the shape this build writes")
 

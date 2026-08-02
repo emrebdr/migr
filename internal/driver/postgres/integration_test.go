@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
 	conformance "github.com/emrebdr/migr/test/conformance/driver"
@@ -109,8 +110,8 @@ func checkHistory(t *testing.T, conn driver.Conn) {
 		return
 	}
 
-	if _, _, err := store.Latest(t.Context()); !errors.Is(err, ErrNoHistoryTable) {
-		t.Errorf("reading a history table nothing created returned %v, want ErrNoHistoryTable", err)
+	if _, _, err := store.Latest(t.Context()); !errors.Is(err, history.ErrNoTable) {
+		t.Errorf("reading a history table nothing created returned %v, want history.ErrNoTable", err)
 		t.Log("This session points at no schema of its own, so its history table does not exist.")
 		t.Log("Reading that as \"no runs yet\" would make a fully migrated database look virgin,")
 		t.Log("and the next up would re-run every migration it had already applied.")

@@ -27,6 +27,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0015](0015-payload-dependent-refusals.md) | A driver refuses payloads, not operation kinds | Accepted | Where a per-payload refusal lives, how the compiler and the declaration are kept in agreement, and what a version-blind compiler cannot decide |
 | [0016](0016-lock-impact-is-a-duration.md) | Lock impact is a duration, not a lock level | Accepted | What the four lock verdicts mean, what a live server can settle, and why raw is permanently unknown |
 | [0017](0017-transaction-boundaries.md) | A transaction is a closure the driver brackets, not a handle the caller holds | Accepted | How a migration becomes one transaction, where the history write sits relative to the commit, and why grouping is the engine's |
+| [0018](0018-declared-dependencies.md) | A dependency is declared by a migration, never computed by one | Accepted | What `Dependencies()` may return, how an edge names its target, and what resolution hands downstream |
 
 ## When to write one
 

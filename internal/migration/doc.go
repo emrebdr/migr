@@ -6,8 +6,8 @@
 // executor, and so M4-T2's dependency DAG and M4-T3's reconciliation build on a type rather than
 // on a package that also opens databases.
 //
-// Status: discovery and version ordering complete (M4-T1). The dependency DAG that overlays this
-// order is M4-T2, reconciliation against history is M4-T3, and checksum verification is M4-T7.
+// Status: discovery, version ordering, and the dependency overlay complete (M4-T1, M4-T2).
+// Reconciliation against history is M4-T3 and checksum verification is M4-T7.
 //
 // # The grammar
 //
@@ -30,6 +30,47 @@
 // history.Record.Version stores that string, `migr down --to <version>` compares against it, and
 // the format is fixed width and zero padded, so lexical order is chronological order. Holding a
 // time.Time beside it would be a second representation of one fact, and the two can disagree.
+//
+// # The dependency overlay
+//
+// Order takes what Discover found and what each migration declares it must follow, and returns one
+// sequence. A timestamp is enough until two branches each write one and merge, which is what
+// CLAUDE.md §9 means by parallel branches and merged feature work — so a declared dependency may
+// point backwards in time, and that is the use case rather than a mistake.
+//
+// The sort is Kahn's, with the ready set drained in version order. That makes the timestamp the
+// tiebreak among migrations nothing constrains relative to each other, and it makes the result a
+// total sequence rather than a graph: M4-T5 aborts a queue and M4-T8 steps through one, and handing
+// either a graph would leave both re-deriving this.
+//
+// An edge names a version, because that is the key discovery proves unique, the one a history row
+// joins on, and the one `migr down --to` names. Every message renders a filename instead, since a
+// loop printed as three fifteen-digit timestamps is the least useful form of the one error this
+// exists to produce. ADR 0018 records both, and records that a declaration is read from a migration
+// rather than computed by one — a graph that could branch on live query results would let plan and
+// apply order the same migrations differently.
+//
+// Declared is a map, so nothing that decides an order may iterate it (invariant #8). Every decision
+// walks the sorted migration list and looks up; each dependency list is walked sorted, so a
+// caller's own slice order cannot choose which cycle gets reported; and the one place a map has to
+// be walked — collecting declarations whose key names no discovered migration — sorts before
+// reporting.
+//
+// # Everything wrong with a graph, in one pass
+//
+// GraphError carries every unknown dependency and every cycle rather than the first of either,
+// because M5-T5's `migr validate` asks for exactly that and a graph with four broken edges is
+// otherwise four commands.
+//
+// Reporting both together is sound rather than convenient: an edge naming a version nothing carries
+// is dropped before the sort runs, and dropping an edge can only remove cycles, never create one.
+// So every loop left is genuine and neither report sends an operator chasing the other.
+//
+// One report is made for each edge that closes a loop, so two loops through one migration are both
+// reported — breaking one leaves the other — and no loop is reported twice, since the walk crosses
+// each edge once. A migration merely waiting behind a cycle is not reported as being in one:
+// nothing about it can be edited to fix anything. Each path is rotated to start at its earliest
+// migration, so it reads the same however the walk happened to arrive.
 //
 // # A stray file is an error, and a near miss is why
 //

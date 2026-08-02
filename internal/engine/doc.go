@@ -1,10 +1,11 @@
-// Package engine orchestrates migration execution: dependency ordering,
-// locking, transactions, apply and rollback, and batch semantics.
+// Package engine orchestrates migration execution: locking, transactions,
+// apply and rollback, and batch semantics.
 //
-// Finding migration files and putting them in version order is not here. It is
-// internal/migration, which imports stdlib and nothing else, so the CLI can
-// list migrations for status and validate without reaching through an executor
-// that opens databases (M4-T1).
+// Deciding what order migrations run in is not here. Finding them, sorting them
+// by version, and overlaying the dependencies they declare is
+// internal/migration, which imports stdlib and nothing else — so the CLI can
+// list and validate migrations without reaching through an executor that opens
+// databases (M4-T1, M4-T2). What arrives here is already a sequence.
 //
 // Apply runs one migration's compiled statements as one all-or-nothing unit.
 // It groups the statements first, brackets the single run in the session's

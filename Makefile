@@ -95,16 +95,10 @@ test:
 	$(call ts_run,npm test)
 
 test-integration:
-	@if [ -f $(COMPOSE) ]; then \
-	  echo "==> docker compose up  ($(COMPOSE))"; \
-	  docker compose -f $(COMPOSE) up -d --wait || exit 1; \
-	else \
-	  echo "==> docker compose: skipped -- $(COMPOSE) created in M3-T7"; \
-	fi
+	@echo "==> docker compose up  ($(COMPOSE))"
+	@docker compose -f $(COMPOSE) up -d --wait
 	$(call go_each,go test -tags=integration ./...)
-	@if [ -f $(COMPOSE) ]; then \
-	  echo "    containers left running; 'make clean' tears them down"; \
-	fi
+	@echo "    containers left running; 'make clean' tears them down"
 
 # commentlint takes a single path where every other target loops MODULES, and that is
 # deliberate: it walks the filesystem rather than loading packages, so it descends into

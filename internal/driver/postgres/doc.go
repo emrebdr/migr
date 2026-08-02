@@ -5,9 +5,9 @@
 // its lock-impact verdicts are keyed to the detected server version — ADD COLUMN with a default
 // rewrites the table on PostgreSQL 10 and is instant from 11 onward.
 //
-// Status: connections, compilation, the capability declaration, the migration lock, transactional
-// execution, and the history store complete (M3-T1 through M3-T6). Nothing in this package is
-// scaffolding any longer.
+// Status: complete through M3-T7 — connections, compilation, the capability declaration, the
+// migration lock, transactional execution, the history store, and the round-trip proof that every
+// operation this driver compiles can be rolled back against PostgreSQL 16 and 17.
 //
 // # The migration lock
 //
@@ -242,6 +242,31 @@
 // Every one is a silent-wrong rather than a loud failure, which is why each is refused rather than
 // left to the server. A raw operation addressed to another engine is the sixth, and the one the
 // conformance suite already required of every driver.
+//
+// # What a rollback restores, and what it does not
+//
+// M3-T7 holds every operation this driver compiles to the round trip: applied against PostgreSQL
+// 16 and 17, then reversed, the schema digest must return to exactly what it was. Nineteen of the
+// twenty pass. raw is the twentieth and has no inverse by construction — its undo is authored, as
+// ir.Raw.Reverse's own message instructs, and a fixture cannot derive one.
+//
+// Two things a reversal does not bring back, both measured rather than assumed, and neither of
+// them a compiler bug:
+//
+//	drop_column      an index on the dropped column. PostgreSQL removes it silently, and
+//	                 ir.DropColumn.From records a column — name, type, nullability, default —
+//	                 and nothing that depended on it.
+//	add_primary_key  the nullability its subject had before. ADD PRIMARY KEY sets NOT NULL on a
+//	                 nullable column and DROP CONSTRAINT leaves it set, on both 16 and 17.
+//
+// Neither is fixable by widening a from payload: the first destroys more than the operation
+// names, and the second inverts by name, where a name says nothing about what the constraint
+// implied. Both are ADR 0008's open trust problem, and both close the same way — M11-T2 can
+// introspect the live schema and refuse a rollback whose recorded prior state disagrees with it.
+//
+// The practical consequence for a migration author is an ordering rule: drop dependents before
+// their subjects, the way the M3-T7 fixture does. PostgreSQL enforces the loud half of that
+// itself — it refuses to drop a column a view depends on — and says nothing about the quiet half.
 //
 // # Identifiers are always quoted
 //

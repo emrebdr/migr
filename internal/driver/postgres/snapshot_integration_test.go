@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/emrebdr/migr/internal/ir"
 )
 
 // columnQuery renders every column of every table in one schema, with its type and its default.
@@ -48,7 +50,13 @@ SELECT viewname || ' ' || definition
  WHERE schemaname = $1
  ORDER BY viewname`
 
-// relationQuery lists the tables and views one schema holds, so an empty schema still renders.
+// relationQuery names the tables and views one schema holds, whatever those relations contain.
+//
+// Every other probe here describes contents, so a table with no columns left would be invisible
+// without this one -- and drop_column can reach that state, since PostgreSQL allows a relation
+// with zero columns even though ir.CreateTable refuses to declare one. A digest that could not
+// tell an emptied table from a dropped one would compare a rollback that dropped the wrong thing
+// as equal.
 const relationQuery = `
 SELECT c.relkind::text || ' ' || c.relname
   FROM pg_class c
@@ -69,6 +77,33 @@ SELECT c.relkind::text || ' ' || c.relname
 // pg_get_indexdef, pg_get_constraintdef -- so no oid or relfilenode reaches the text and two runs
 // of one schema render identically.
 const snapshotSupersededBy = "M11-T6"
+
+// loneTable is a table whose only column drop_column takes away, leaving the relation behind.
+const loneTable = "migr_probe_lone"
+
+func TestTheDigestTellsAnEmptiedTableFromADroppedOne(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			dsn := dsnFor(server.env, server.dsn)
+			target := scratchSchema(t, dsn)
+			session := sessionIn(t, dsn, target)
+
+			only := ir.Column{Name: "id", Type: probeType(t, "int64")}
+
+			apply(t, session, ir.Operations{
+				ir.CreateTable{Table: loneTable, Columns: []ir.Column{only}},
+				ir.DropColumn{Table: loneTable, Column: only.Name, From: &only},
+			})
+
+			if digest := describeSchema(t, session, target); !strings.Contains(digest, loneTable) {
+				t.Errorf("a table with no columns left renders as nothing:\n%q", digest)
+				t.Log("Every probe but relationQuery describes contents, so an emptied table would")
+				t.Log("be indistinguishable from one that was dropped -- and a rollback that dropped")
+				t.Log("a table it was meant to empty would compare equal to one that did neither.")
+			}
+		})
+	}
+}
 
 // describeSchema renders everything one schema holds as deterministic text, for comparison.
 func describeSchema(t *testing.T, session *pgConn, schema string) string {

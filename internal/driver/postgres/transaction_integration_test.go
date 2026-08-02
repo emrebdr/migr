@@ -5,6 +5,8 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
+	"hash/fnv"
 	"strings"
 	"testing"
 
@@ -18,11 +20,14 @@ import (
 // undefinedTable is the SQLSTATE PostgreSQL raises for a statement naming a table it does not have.
 const undefinedTable = "42P01"
 
+// scratchPrefix opens the name of every schema a test in this package gets to itself.
+const scratchPrefix = "migr_test_"
+
 // scratchSchema gives one test a schema of its own, named after it, and drops it afterwards.
 func scratchSchema(t *testing.T, dsn string) string {
 	t.Helper()
 
-	name := "migr_t5_" + strings.NewReplacer("/", "_", " ", "_").Replace(strings.ToLower(t.Name()))
+	name := scratchName(t.Name())
 
 	admin := openSession(t, dsn)
 
@@ -42,6 +47,55 @@ func scratchSchema(t *testing.T, dsn string) string {
 	})
 
 	return name
+}
+
+// fingerprintWidth is what a scratch name reserves for the mark that keeps two cut names apart.
+const fingerprintWidth = len("_00000000")
+
+// scratchRoom is how much of a test's own name a schema identifier has left for it.
+//
+// PostgreSQL cuts an identifier over NAMEDATALEN - 1 bytes and reports it with a notice rather
+// than an error, so two tests whose names agree for that long would quietly share one schema --
+// and this package names its tests in sentences. Cutting here instead, and ending every name with
+// a fingerprint of the whole of it, keeps the schema readable in a failure and keeps it distinct.
+const scratchRoom = maxIdentifier - len(scratchPrefix) - fingerprintWidth
+
+// scratchName renders a test's name as a schema identifier, cut to fit and kept distinct.
+func scratchName(test string) string {
+	readable := strings.NewReplacer("/", "_", " ", "_").Replace(strings.ToLower(test))
+	if len(readable) > scratchRoom {
+		readable = readable[:scratchRoom]
+	}
+
+	return scratchPrefix + readable + "_" + fingerprint(test)
+}
+
+// fingerprint distinguishes two test names that survive the cut with the same bytes.
+func fingerprint(test string) string {
+	sum := fnv.New32a()
+	sum.Write([]byte(test))
+
+	return fmt.Sprintf("%08x", sum.Sum32())
+}
+
+func TestAScratchNameFitsAndStaysDistinct(t *testing.T) {
+	shared := "TestSomethingThisPackageWouldPlausiblyCallATestOfItsOwnBehavior"
+
+	first := scratchName(shared + "UnderOneCondition")
+	second := scratchName(shared + "UnderAnother")
+
+	for _, name := range []string{first, second} {
+		if len(name) > maxIdentifier {
+			t.Errorf("scratch schema %q is %d bytes, over the %d PostgreSQL keeps",
+				name, len(name), maxIdentifier)
+		}
+	}
+
+	if first == second {
+		t.Errorf("two tests would share the scratch schema %q", first)
+		t.Log("Both names are cut at the same place, so only the fingerprint of the whole name")
+		t.Log("keeps them apart. Sharing one schema means one test drops the other's tables.")
+	}
 }
 
 // sessionIn opens a session pointed at one schema, so unqualified DDL lands only there.

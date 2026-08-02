@@ -221,3 +221,16 @@ What that commits to:
 Revisit the trust problem in `from` once introspection exists: a rollback could verify the
 recorded prior definition against the live schema and refuse when they disagree, turning a silent
 wrong restoration into a loud one.
+
+M3-T7 measured that problem rather than only recording it. Every operation but `raw` now
+round-trips against PostgreSQL 16 and 17 — applied, reversed, and compared against a catalog
+digest — so a `from` payload that describes the wrong thing is caught rather than trusted. Two
+gaps survive that no wider payload closes, and both are the same one this note is about:
+
+- `drop_column` records a column, and PostgreSQL silently destroys any index on it. The reversal
+  brings the column back without the index.
+- `add_primary_key` inverts by name, and a name says nothing about the `NOT NULL` the constraint
+  implied on a nullable column. `DROP CONSTRAINT` leaves it set.
+
+Both are pinned by a test that asserts the gap, so closing either arrives as a failing assertion
+rather than as a discovery.

@@ -82,3 +82,32 @@ jobs:
 
       - name: Smoke run
         run: ./bin/migr
+
+  # The tagged tests are the only ones that can say whether the SQL this repository
+  # emits is right rather than merely plausible, and until this job existed nothing
+  # ran them outside a developer's laptop. ubuntu-latest only: GitHub's macOS runners
+  # ship no Docker daemon, which is why the job above keeps the OS matrix and this
+  # one does not.
+  #
+  # `make test-integration` brings the databases up itself, with `up -d --wait` on the
+  # healthchecks, so there is no services: block here and no wait loop. It does not
+  # need `make tools` either -- that target installs golangci-lint, and this job lints
+  # nothing.
+  integration:
+    name: integration (postgres 16, 17)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            **/go.mod
+            **/go.sum
+
+      - name: Integration tests
+        run: make test-integration

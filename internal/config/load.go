@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -63,7 +64,23 @@ func parse(src []byte, source string, lookup func(string) (string, bool)) (*Conf
 		return nil, err
 	}
 
+	resolvePaths(cfg, source)
+
 	return cfg, nil
+}
+
+// resolvePaths anchors every relative path in the config to its config file rather than to the cwd.
+func resolvePaths(cfg *Config, source string) {
+	cfg.Migrations.Dir = anchor(cfg.Migrations.Dir, source)
+}
+
+// anchor joins a relative path to the directory its config file sits in, leaving absolute ones be.
+func anchor(target, source string) string {
+	if target == "" || filepath.IsAbs(target) {
+		return target
+	}
+
+	return filepath.Join(filepath.Dir(source), target)
 }
 
 // decode converts the expanded document into a Config, rejecting unknown keys.

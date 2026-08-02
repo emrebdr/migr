@@ -18,6 +18,16 @@
 // Validation accumulates every problem rather than stopping at the first, so a
 // misconfigured file is fixed in one pass instead of one error at a time.
 //
+// # Paths follow their config file
+//
+// A relative migrations.dir is anchored to the directory migr.yaml sits in,
+// never to the working directory, so a config names its own migrations from
+// anywhere. Read the other way, `migr --config ../other/migr.yaml up` would
+// apply whatever ./migrations happened to be beside the operator to the other
+// project's database. The default is unchanged — filepath.Dir("migr.yaml") is
+// "." — and an absolute path is left where it points. Nothing read the field
+// until M4-T1, which is why nothing had noticed.
+//
 // Duration implements the func form of UnmarshalYAML rather than the []byte
 // form deliberately: the []byte form receives the node's raw source, trailing
 // comment and all, so "30s  # wait for the lock" would reach time.ParseDuration

@@ -48,7 +48,7 @@ func TestExampleFromClaudeMDLoads(t *testing.T) {
 		want  any
 	}{
 		{field: "version", got: cfg.Version, want: 1},
-		{field: "migrations.dir", got: cfg.Migrations.Dir, want: "./migrations"},
+		{field: "migrations.dir", got: cfg.Migrations.Dir, want: filepath.Join("testdata", "migrations")},
 		{field: "migrations.language", got: cfg.Migrations.Language, want: LanguageTypeScript},
 		{field: "databases.default.driver", got: cfg.Databases["default"].Driver, want: "postgres"},
 		{field: "databases.default.schema", got: cfg.Databases["default"].Schema, want: "public"},
@@ -206,7 +206,7 @@ databases:
 		got   any
 		want  any
 	}{
-		{field: "migrations.dir", got: cfg.Migrations.Dir, want: "./migrations"},
+		{field: "migrations.dir", got: cfg.Migrations.Dir, want: "migrations"},
 		{field: "history.table", got: cfg.History.Table, want: "migr_migrations"},
 		{field: "lock.strategy", got: cfg.Lock.Strategy, want: LockAdvisory},
 		{field: "lock.timeout", got: cfg.Lock.Timeout.Duration(), want: 30 * time.Second},
@@ -276,4 +276,74 @@ func TestResolve(t *testing.T) {
 	if got := Resolve("custom.yaml"); got != "custom.yaml" {
 		t.Errorf("Resolve(%q) = %q, want the explicit value", "custom.yaml", got)
 	}
+}
+
+// withDir renders a minimal config naming a migrations directory, or omitting it for the default.
+func withDir(dir string) []byte {
+	src := "version: 1\nmigrations:\n  language: go\n"
+	if dir != "" {
+		src += "  dir: " + dir + "\n"
+	}
+
+	return []byte(src + "databases:\n  default:\n    driver: postgres\n    dsn: postgres://h/db\n")
+}
+
+func TestAConfigNamesItsOwnMigrationsFromAnywhere(t *testing.T) {
+	absolute := filepath.Join(t.TempDir(), "elsewhere")
+
+	tests := []struct {
+		name   string
+		dir    string
+		source string
+		want   string
+	}{
+		{
+			name:   "relative to a config in another directory",
+			dir:    "./migrations",
+			source: filepath.Join("..", "other", "migr.yaml"),
+			want:   filepath.Join("..", "other", "migrations"),
+		},
+		{
+			name:   "relative to a config named by an absolute path",
+			dir:    "db/changes",
+			source: "/srv/app/migr.yaml",
+			want:   "/srv/app/db/changes",
+		},
+		{
+			name:   "an absolute dir is left where it points",
+			dir:    absolute,
+			source: filepath.Join("..", "other", "migr.yaml"),
+			want:   absolute,
+		},
+		{
+			name:   "the default, beside a config in the working directory",
+			dir:    "",
+			source: DefaultFilename,
+			want:   "migrations",
+		},
+		{
+			name:   "the default, beside a config somewhere else",
+			dir:    "",
+			source: filepath.Join("..", "other", "migr.yaml"),
+			want:   filepath.Join("..", "other", "migrations"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := parse(withDir(tc.dir), tc.source, env(nil))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+
+			if cfg.Migrations.Dir != tc.want {
+				t.Errorf("migrations.dir = %q, want %q", cfg.Migrations.Dir, tc.want)
+			}
+		})
+	}
+
+	t.Log("Read relative to the working directory instead, `migr --config ../other/migr.yaml up`")
+	t.Log("would find whatever ./migrations happened to be beside the operator and apply it to")
+	t.Log("the other project's database. Nothing had read migrations.dir before M4-T1, so")
+	t.Log("nothing had noticed.")
 }

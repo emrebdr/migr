@@ -1,0 +1,20 @@
+# The two lock waits are deliberately distinct, and neither is its own default.
+#
+# example.yaml sets both to the values applyDefaults would have supplied anyway, so a mapping that
+# traded lock.timeout for safety.lock_timeout would read identically there. Here it does not.
+version: 1
+migrations:
+  dir: ./migrations
+  language: go
+databases:
+  default:
+    driver: postgres
+    dsn: postgres://localhost/db
+    schema: bookings
+history:
+  table: bookings_migrations
+lock:
+  strategy: advisory
+  timeout: 45s
+safety:
+  lock_timeout: 2s

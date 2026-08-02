@@ -8,6 +8,9 @@ import (
 	stdruntime "runtime"
 )
 
+// Program is what this binary calls itself, wherever it has to name itself to something else.
+const Program = "migr"
+
 // Version is the framework version, overridden at build time via -ldflags.
 var Version = "dev"
 
@@ -22,7 +25,7 @@ type Info struct {
 
 // String renders the info as a single human-readable line.
 func (i Info) String() string {
-	s := fmt.Sprintf("migr %s", i.Version)
+	s := fmt.Sprintf("%s %s", Program, i.Version)
 	if i.showCommit() {
 		s += fmt.Sprintf(" (%s%s)", i.Commit, dirtySuffix(i.Dirty))
 	}

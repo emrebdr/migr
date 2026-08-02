@@ -5,9 +5,10 @@
 // its lock-impact verdicts are keyed to the detected server version — ADD COLUMN with a default
 // rewrites the table on PostgreSQL 10 and is instant from 11 onward.
 //
-// Status: complete through M3-T7 — connections, compilation, the capability declaration, the
-// migration lock, transactional execution, the history store, and the round-trip proof that every
-// operation this driver compiles can be rolled back against PostgreSQL 16 and 17.
+// Status: complete through M3-T7, plus M4-T4 — connections, compilation, the capability
+// declaration, the migration lock and its configured bounds, transactional execution, the history
+// store, and the round-trip proof that every operation this driver compiles can be rolled back
+// against PostgreSQL 16 and 17.
 //
 // # The migration lock
 //
@@ -19,7 +20,7 @@
 // PostgreSQL keeps the two-key advisory space separate from the one-key space and never lets them
 // collide, so an application using pg_advisory_lock(bigint) for its own purposes cannot collide
 // with migr at all — by construction rather than by hash luck. The fixed first half makes migr's
-// locks recognizable in pg_locks, which is what M4-T4's "say who holds the lock" will read.
+// locks recognizable in pg_locks, which is what the holder report reads.
 //
 // The second half is a SHA-256 digest, not hash/maphash: maphash is seeded per process, so it
 // would give every migr invocation a different key and the lock would block nobody. The two inputs
@@ -40,11 +41,42 @@
 // So the acquire sets lock_timeout for its own duration. A wait that gives up fails with SQLSTATE
 // 55P03 and the session stays alive and usable — verified against both test servers, along with
 // the fact that lock_timeout covers an advisory wait at all, which is not obvious from the
-// documentation's "a table, index, row, or other database object". M4-T4 replaces the driver's own
-// bound with migr.yaml's lock.timeout and builds retry on top of the session that survives.
+// documentation's "a table, index, row, or other database object".
 //
 // It is set through set_config rather than SET, because SET takes no bound parameters — the same
-// reason applySearchPath uses it, and the reason a configured timeout will not need concatenating.
+// reason applySearchPath uses it, and the reason migr.yaml's lock.timeout is bound rather than
+// concatenated.
+//
+// The surviving session is not merely a precondition for something later; it is what makes the
+// holder answerable at all. Bounded by a context, the connection would be closed by the time the
+// acquire failed, and there would be nothing left to run pg_locks against.
+//
+// # lock.timeout is one budget, and there is no retry
+//
+// pg_advisory_lock queues, and PostgreSQL's lock manager is a fair FIFO waiter — so a session that
+// gives up and re-acquires goes to the back of a queue it was at the front of. Backoff and jitter
+// exist to break contention convoys on a primitive that does not queue; this one does.
+//
+// Invariant #12's "a timeout retries with backoff rather than queueing" is about DDL statements,
+// and its reason does not transfer: an ALTER TABLE blocked behind a long-running query blocks every
+// later query on that table, so staying queued is itself the outage. An advisory lock blocks
+// nothing but other migr runs. safety.lock_retries belongs to that per-statement bound (M13-T2),
+// which is why it sits in the safety block beside safety.lock_timeout rather than beside
+// lock.timeout. See ADR 0020.
+//
+// # A duration is spelled to the server, not printed
+//
+// lock_timeout takes an integer and at most one unit from us, ms, s, min, h, d. Go's canonical
+// duration form is multi-unit, so 90s renders "1m30s" and an hour renders "1h0m0s" — both refused
+// by both servers, and a refused set_config means the bound is lost rather than applied. Every
+// value anyone tries by hand happens to round-trip, so passing Duration.String straight through
+// survives testing and fails the first time someone writes lock.timeout: 2m.
+//
+// lockTimeoutSetting is therefore the only thing that reaches the server: integer milliseconds,
+// rounded up, refused above what an int can hold. Rounding up rather than truncating is not a
+// nicety — Duration.Milliseconds turns 500µs into 0, and lock_timeout of 0 is PostgreSQL's
+// spelling for waiting forever. Duration.String stays correct in exactly one place, the message an
+// operator reads.
 //
 // # A second acquire is refused, and a second release is not
 //
@@ -58,16 +90,54 @@
 // the server answers false to is an error rather than a shrug — it means this session did not hold
 // what it thought it held.
 //
-// # There is no stale-lock recovery, and that is the point
+// # A dead backend needs no recovery; a dead client is not a dead backend
 //
 // Invariant #11 requires a stale-lock story. PostgreSQL's is that the server releases a
-// session-level advisory lock when the backend goes away — a crash, a kill, a dropped connection.
-// A crashed migr therefore cannot wedge a database, Close needs no special path, and there is no
-// recovery code to write. An integration test proves it by abandoning a locked session and
-// acquiring from the next one.
+// session-level advisory lock when the backend goes away, so there is no recovery code to write —
+// proven by abandoning a locked session, and again by terminating one with pg_terminate_backend.
 //
-// That is a property of this strategy rather than of this driver, and it is why the table and file
-// strategies in migr.yaml will need machinery this one does not.
+// That covers a client that closed, crashed cleanly, or was killed with SIGTERM. It does not cover
+// one killed with SIGKILL, OOM-killed, or partitioned away: no FIN reaches the server, the backend
+// stays blocked in ReadCommand, and it holds the lock until TCP keepalives expire — two hours by
+// default on Linux. A crashed migr up would wedge every later run for that long, which is the one
+// case invariant #11 exists for.
+//
+// So the startup packet pins tcp_keepalives_idle, _interval and _count, bringing that to about
+// ninety seconds. They are USERSET, they read back as set over TCP, and they report 0 without
+// error on a Unix socket or an unsupported platform — measured on both servers, both transports.
+// The reaping itself needs a dropped packet and is not reproducible in the compose environment;
+// a proxy that closes a socket sends FIN or RST, which is the opposite of the failure being
+// modeled. What is tested is that the server was asked.
+//
+// migr never terminates a holder itself: killing another session on the strength of an advisory
+// row is not a decision a migration tool makes silently, and the usual victim would be a
+// legitimately slow migration. It reports the pid instead, and an integration test terminates the
+// pid taken out of the error to prove the advice works.
+//
+// Recoverability is a property of the strategy rather than of the driver, and the file and table
+// strategies will need machinery this one does not — a lock file, unlike a backend, does not
+// vanish when its owner dies. lock.strategy reaches this driver through Options and anything but
+// advisory is refused at construction, so a strategy migr.yaml names and this engine cannot do is
+// an error rather than a silent substitution.
+//
+// # Who holds the lock, and since when
+//
+// A failed acquire reads pg_locks joined to pg_stat_activity on migr's fixed class id and reports
+// a driver.LockHolder. Four clauses in that query are load-bearing and each has a test: granted
+// separates the holder from the sessions queued behind it; objsubid = 2 keeps the two-integer key
+// space apart from the bigint one, whose rows carry an identical classid and objid; and classid
+// and objid are what make the lock migr's, and this installation's.
+//
+// PostgreSQL records no grant time for an advisory lock, so what is reported is the holder's
+// session age — which bounds the hold from above and is the honest answer. xact_start is the
+// tempting wrong one: it is NULL for an idle holder, which is exactly what a session holding a
+// lock and doing nothing is, so it would render "held for 0s" for a hold of an hour.
+//
+// Across roles pg_stat_activity withholds backend_start while leaving application_name visible, so
+// the degraded report is "who, but not how long" rather than a confident zero. The holder is read
+// after the wait has already failed, so it is who holds the lock now rather than provably who
+// blocked this run, and the message says so — otherwise it aims a pg_terminate_backend at a
+// session that may have taken the lock a moment ago.
 //
 // # A transaction is bracketed, never handed out
 //
@@ -146,8 +216,9 @@
 // have waited for a lock forever. Both halves were measured on PostgreSQL 16 and 17.
 //
 // So there are two bounds, and they are not the same setting: the advisory acquire waits under
-// migr.yaml's lock.timeout, and each statement under safety.lock_timeout. M4-T4 supplies both;
-// until then the driver carries its own defaults, and the second matches internal/config's.
+// migr.yaml's lock.timeout, and each statement under safety.lock_timeout. Options carries both,
+// and whichever migr.yaml left unset falls back to the contract's own constant rather than to
+// zero — which the server would read as no bound at all.
 //
 // # What a lock verdict says
 //

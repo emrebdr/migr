@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -15,6 +16,9 @@ import (
 // Name is the name this driver is registered under, and the name every refusal it gives states.
 const Name = "postgres"
 
+// strategy is the one migration lock this driver implements, and the only one lock.strategy may ask for.
+const strategy = "advisory"
+
 // New builds the PostgreSQL driver from the settings resolved out of migr.yaml.
 func New(opts driver.Options) (driver.Driver, error) {
 	schema, table := opts.Namespace()
@@ -23,13 +27,40 @@ func New(opts driver.Options) (driver.Driver, error) {
 		return nil, err
 	}
 
+	if err := checkStrategy(opts.LockStrategy); err != nil {
+		return nil, err
+	}
+
+	lockWait, statementLockWait := opts.Waits()
+	if err := checkWaits(lockWait, statementLockWait); err != nil {
+		return nil, err
+	}
+
 	return &pgDriver{
 		schema:            opts.Schema,
 		table:             table,
 		key:               namespaceKey(schema, table),
-		lockWait:          defaultLockWait,
-		statementLockWait: defaultStatementLockWait,
+		lockWait:          lockWait,
+		statementLockWait: statementLockWait,
 	}, nil
+}
+
+// checkStrategy refuses a lock strategy this engine has no implementation of, rather than ignoring it.
+func checkStrategy(requested string) error {
+	if requested == "" || requested == strategy {
+		return nil
+	}
+
+	return &LockStrategyError{Requested: requested, Implemented: strategy}
+}
+
+// checkWaits refuses either configured bound before a connection exists, naming the key that set it.
+func checkWaits(lockWait, statementLockWait time.Duration) error {
+	if err := checkLockWait("lock.timeout", lockWait); err != nil {
+		return err
+	}
+
+	return checkLockWait("safety.lock_timeout", statementLockWait)
 }
 
 // pgDriver is the PostgreSQL driver: what it is called, what it compiles, how to reach a server.
@@ -38,10 +69,10 @@ type pgDriver struct {
 	// table is where migrations are recorded, resolved by Options.Namespace rather than assumed.
 	table string
 	key   lockKey
-	// lockWait bounds an acquire server-side. M4-T4 sets it from migr.yaml's lock.timeout.
-	lockWait string
-	// statementLockWait bounds each statement. M4-T4 sets it from migr.yaml's safety.lock_timeout.
-	statementLockWait string
+	// lockWait bounds an acquire server-side, and is migr.yaml's lock.timeout.
+	lockWait time.Duration
+	// statementLockWait bounds each statement, and is migr.yaml's safety.lock_timeout.
+	statementLockWait time.Duration
 }
 
 // Name returns the driver's registered name.
@@ -62,6 +93,8 @@ func (d *pgDriver) Open(ctx context.Context, dsn string) (driver.Conn, error) {
 	}
 
 	pinLockTimeout(cfg, d.statementLockWait)
+	pinApplicationName(cfg)
+	pinKeepalives(cfg)
 
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {

@@ -298,6 +298,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0017](docs/adr/0017-transaction-boundaries.md) | A transaction is a closure the driver brackets, not a handle the caller holds |
 | [0018](docs/adr/0018-declared-dependencies.md) | A dependency is declared by a migration, never computed by one |
 | [0019](docs/adr/0019-history-reconciliation.md) | Reconciliation replays the whole log, and a half-applied migration is a fifth state |
+| [0020](docs/adr/0020-lock-contention.md) | Lock contention: one budget, no retry, and a holder read after the fact |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

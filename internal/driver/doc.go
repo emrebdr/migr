@@ -121,6 +121,39 @@
 // permanently empty for the statements this type carries, and its presence would invite drivers
 // to route ordinary queries through it. A driver's own internal queries are its business.
 //
+// # The migration lock: what a driver owes, and what it may not decide
+//
+// Options carries two bounds and a strategy, and Waits defaults whichever migr.yaml left unset.
+// Non-positive means unset rather than "no bound", because on every engine so far a zero timeout is
+// the spelling for waiting forever — the opposite of what an operator who left a field blank meant.
+// The defaults are DefaultLockWait and DefaultStatementLockWait, and internal/config applies those
+// same constants, so a driver built from migr.yaml and one built by hand behave alike.
+//
+// The two are different settings and are easy to swap. LockWait bounds the wait for the migration
+// lock (migr.yaml's lock.timeout); StatementLockWait bounds one statement's wait for a lock
+// (safety.lock_timeout), which is what invariant #12 requires of every DDL statement.
+//
+// LockStrategy is what migr.yaml asked for, and a driver must refuse one it does not implement
+// rather than silently substituting its own. internal/config asks whether a value is a word migr
+// knows; only the driver can say whether this engine can do it.
+//
+// Giving up on the lock is ErrLockTimeout, and every driver reports it, because internal/cli cannot
+// name a driver (invariant #1) and exit code 3 is otherwise unreachable. A driver may wrap it —
+// PostgreSQL adds the advisory key an operator matches against pg_locks — but the sentinel has to
+// survive errors.Is.
+//
+// LockBusyError carries who holds the lock, and LockHolder is deliberately shaped for three
+// engines rather than one: Process is a string because MySQL's holder is a connection id, SQLite's
+// an OS pid in a lock file, and PostgreSQL's a backend pid. Connected is a duration the server
+// measured, not an instant, since forbidigo leaves a driver no clock and comparing a server
+// timestamp against a client one is wrong across skew. A holder is read after the wait has already
+// failed, so it names who holds the lock now rather than provably who blocked this run — the
+// message says so, because otherwise it aims a termination at a session that may be innocent.
+//
+// What "recoverable" means is a property of the strategy rather than of the driver. PostgreSQL's
+// advisory lock dies with its backend and needs no recovery code; a lock file does not vanish when
+// its owner does, so the file strategy owes a staleness rule this one has no use for. See ADR 0020.
+//
 // # Refusing an operation
 //
 // UnsupportedError is the one way a driver says it cannot perform an operation. M2-T4 asserts

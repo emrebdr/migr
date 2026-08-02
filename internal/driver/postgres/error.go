@@ -3,6 +3,7 @@ package postgres
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // ErrDSN marks a connection string this driver cannot parse, for errors.Is.
@@ -16,9 +17,6 @@ var ErrServerTooOld = errors.New("PostgreSQL server is older than this driver su
 
 // ErrLock marks a migration lock this driver could not take or give back, for errors.Is.
 var ErrLock = errors.New("migration lock")
-
-// ErrLockTimeout marks an acquire that gave up waiting rather than one that was refused.
-var ErrLockTimeout = errors.New("gave up waiting for the migration lock")
 
 // ErrLockHeld marks a second acquire on a session that already holds the lock.
 var ErrLockHeld = errors.New("this session already holds the migration lock")
@@ -49,6 +47,54 @@ func (e *LockError) Unwrap() []error {
 	}
 
 	return []error{ErrLock, e.Err}
+}
+
+// ErrWaitTooLong marks a configured wait longer than this engine can store, for errors.Is.
+var ErrWaitTooLong = errors.New("the configured wait is longer than PostgreSQL can store")
+
+// WaitError reports a configured wait this driver cannot pass to the server, naming its config key.
+type WaitError struct {
+	// Key is the migr.yaml key that set it, so an operator edits the line they wrote.
+	Key string
+	// Wait is what that key was set to.
+	Wait time.Duration
+	// Max is the longest wait this engine holds.
+	Max time.Duration
+}
+
+// Error names the config key, what it was set to, and the longest value the engine would keep.
+func (e *WaitError) Error() string {
+	return fmt.Sprintf("%v: %s is %s, and lock_timeout is an integer of milliseconds, so the "+
+		"longest it holds is %s", ErrWaitTooLong, e.Key, e.Wait, e.Max)
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrWaitTooLong) succeeds.
+func (e *WaitError) Unwrap() error {
+	return ErrWaitTooLong
+}
+
+// ErrLockStrategy marks a migration lock strategy this driver does not implement, for errors.Is.
+var ErrLockStrategy = errors.New("this driver does not implement that migration lock strategy")
+
+// LockStrategyError reports a configured strategy this engine has no implementation of.
+type LockStrategyError struct {
+	// Requested is what lock.strategy asked for.
+	Requested string
+	// Implemented is the strategy this driver has, which is the only one it accepts.
+	Implemented string
+}
+
+// Error names what was asked for and the one strategy this driver implements.
+func (e *LockStrategyError) Error() string {
+	return fmt.Sprintf("%v: lock.strategy is %q, and this driver locks with %q. PostgreSQL's "+
+		"session advisory lock is released by the server when the backend goes away, which is a "+
+		"stale-lock story the other strategies have to write for themselves",
+		ErrLockStrategy, e.Requested, e.Implemented)
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrLockStrategy) succeeds.
+func (e *LockStrategyError) Unwrap() error {
+	return ErrLockStrategy
 }
 
 // ErrTransaction marks a migration transaction this driver could not run to an end, for errors.Is.

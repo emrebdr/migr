@@ -25,14 +25,21 @@ const pollLimit = 10 * time.Second
 func lockedConn(t *testing.T, dsn, table string) driver.Conn {
 	t.Helper()
 
-	return lockedConnWaiting(t, dsn, table, defaultLockWait)
+	return lockedConnWaiting(t, dsn, table, driver.DefaultLockWait)
 }
 
 // lockedConnWaiting opens a session whose acquire gives up after the given wait.
-func lockedConnWaiting(t *testing.T, dsn, table, wait string) driver.Conn {
+func lockedConnWaiting(t *testing.T, dsn, table string, wait time.Duration) driver.Conn {
 	t.Helper()
 
-	built, err := New(driver.Options{HistoryTable: table})
+	return lockedConnWith(t, dsn, driver.Options{HistoryTable: table, LockWait: wait})
+}
+
+// lockedConnWith opens a session built from options a test chose, so a bound is not the driver's own.
+func lockedConnWith(t *testing.T, dsn string, opts driver.Options) driver.Conn {
+	t.Helper()
+
+	built, err := New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -41,8 +48,6 @@ func lockedConnWaiting(t *testing.T, dsn, table, wait string) driver.Conn {
 	if !ok {
 		t.Fatalf("New returned %T, not this package's driver", built)
 	}
-
-	d.lockWait = wait
 
 	conn, err := d.Open(t.Context(), dsn)
 	if err != nil {
@@ -290,16 +295,34 @@ func TestAnAcquireLeavesTheSessionSettingsAsItFoundThem(t *testing.T) {
 	}
 }
 
+// configuredStatementWait is deliberately not a round number of seconds and not either default.
+//
+// PostgreSQL renders lock_timeout back in the largest unit that divides it evenly, so 3000ms reads
+// as "3s" -- measured. 1200ms reads as itself, which is what lets this test assert the configured
+// value rather than something the driver would have produced anyway.
+const configuredStatementWait = 1200 * time.Millisecond
+
+// configuredStatementSetting is how PostgreSQL renders that wait back through SHOW.
+const configuredStatementSetting = "1200ms"
+
 func TestTheAcquireRestoresTheBoundEveryStatementRunsUnder(t *testing.T) {
-	conn := lockedConn(t, dsnFor(servers[0].env, servers[0].dsn), "migr_lock_probe_restored")
+	conn := lockedConnWith(t, dsnFor(servers[0].env, servers[0].dsn), driver.Options{
+		HistoryTable:      "migr_lock_probe_restored",
+		LockWait:          5 * time.Second,
+		StatementLockWait: configuredStatementWait,
+	})
 
 	session, ok := conn.(*pgConn)
 	if !ok {
 		t.Fatalf("Open returned %T, not this package's session", conn)
 	}
 
-	if before := lockTimeoutOf(t, session); before != defaultStatementLockWait {
-		t.Fatalf("a fresh session bounds a statement by %q, want %q", before, defaultStatementLockWait)
+	if before := lockTimeoutOf(t, session); before != configuredStatementSetting {
+		t.Log("The two bounds are different settings. safety.lock_timeout is pinned in the startup")
+		t.Log("packet and lock.timeout bounds the acquire; a session showing the acquire's wait")
+		t.Log("here means the two were swapped on the way down.")
+		t.Fatalf("a fresh session bounds a statement by %q, want %q", before,
+			configuredStatementSetting)
 	}
 
 	release, err := conn.Lock(t.Context())
@@ -313,9 +336,9 @@ func TestTheAcquireRestoresTheBoundEveryStatementRunsUnder(t *testing.T) {
 		}
 	}()
 
-	if after := lockTimeoutOf(t, session); after != defaultStatementLockWait {
+	if after := lockTimeoutOf(t, session); after != configuredStatementSetting {
 		t.Errorf("after the acquire a statement is bounded by %q, want %q",
-			after, defaultStatementLockWait)
+			after, configuredStatementSetting)
 		t.Log("RESET restores reset_val, which only a source at or below \"client\" sets. Establish")
 		t.Log("the per-statement bound with set_config and this line silently returns lock_timeout")
 		t.Log("to 0 -- so every DDL statement after the first migration lock waits forever, which is")
@@ -372,7 +395,7 @@ func TestAWaitThatGivesUpLeavesTheSessionUsable(t *testing.T) {
 	dsn := dsnFor(servers[0].env, servers[0].dsn)
 
 	holder := lockedConn(t, dsn, "migr_lock_probe_timeout")
-	waiter := lockedConnWaiting(t, dsn, "migr_lock_probe_timeout", "150ms")
+	waiter := lockedConnWaiting(t, dsn, "migr_lock_probe_timeout", 150*time.Millisecond)
 
 	release, err := holder.Lock(t.Context())
 	if err != nil {
@@ -389,8 +412,8 @@ func TestAWaitThatGivesUpLeavesTheSessionUsable(t *testing.T) {
 		t.Fatal("the wait never gave up")
 	}
 
-	if !errors.Is(err, ErrLockTimeout) {
-		t.Errorf("the wait failed with %v, want ErrLockTimeout", err)
+	if !errors.Is(err, driver.ErrLockTimeout) {
+		t.Errorf("the wait failed with %v, want driver.ErrLockTimeout", err)
 	}
 
 	checkStillUsable(t, waiter, session)

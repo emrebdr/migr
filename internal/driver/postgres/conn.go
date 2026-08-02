@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -13,11 +14,12 @@ import (
 
 // pgConn is one pinned PostgreSQL session, never a pool: an advisory lock belongs to a backend.
 type pgConn struct {
-	conn     *pgx.Conn
-	version  serverVersion
-	caps     capability.Set
-	key      lockKey
-	lockWait string
+	conn    *pgx.Conn
+	version serverVersion
+	caps    capability.Set
+	key     lockKey
+	// lockWait bounds an acquire, and is rendered by lockTimeoutSetting before it reaches the server.
+	lockWait time.Duration
 	// locked is session state, not shared state: a Conn is used by one goroutine, as pgx is.
 	locked bool
 	// tx is the transaction Transact opened, and is nil whenever this session is not inside one.

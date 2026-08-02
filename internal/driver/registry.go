@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Options are the settings a driver needs at construction, before any connection exists.
@@ -14,6 +15,12 @@ type Options struct {
 	Schema string
 	// HistoryTable is where migrations are recorded, and with Schema it names one installation.
 	HistoryTable string
+	// LockStrategy is how migr.yaml asked for the migration lock, empty meaning the driver's own.
+	LockStrategy string
+	// LockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
+	LockWait time.Duration
+	// StatementLockWait bounds one statement's wait for a lock, and is migr.yaml's safety.lock_timeout.
+	StatementLockWait time.Duration
 }
 
 // Namespace returns what identifies one migr installation, defaulting what migr.yaml left unset.
@@ -23,6 +30,21 @@ func (o Options) Namespace() (schema, table string) {
 	}
 
 	return o.Schema, o.HistoryTable
+}
+
+// Waits returns the two lock bounds, defaulting whichever migr.yaml left unset.
+func (o Options) Waits() (lock, statement time.Duration) {
+	return orDefault(o.LockWait, DefaultLockWait), orDefault(o.StatementLockWait,
+		DefaultStatementLockWait)
+}
+
+// orDefault substitutes the contract's bound for a wait a caller left unset, since none means forever.
+func orDefault(wait, fallback time.Duration) time.Duration {
+	if wait <= 0 {
+		return fallback
+	}
+
+	return wait
 }
 
 // Constructor builds a driver from settings resolved out of migr.yaml.

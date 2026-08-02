@@ -94,13 +94,22 @@ func TestAQueryGoesThroughTheTransactionWhenOneIsOpen(t *testing.T) {
 	}
 }
 
-func TestEachStatementIsBoundedByTheWaitConfigDefaultsTo(t *testing.T) {
-	if defaultStatementLockWait != "3s" {
-		t.Errorf("a statement's lock wait defaults to %q, want %q",
-			defaultStatementLockWait, "3s")
-		t.Log("internal/config defaults safety.lock_timeout to 3s. Two defaults for one setting")
-		t.Log("means an operator who configures nothing gets one bound today and a different one")
-		t.Log("the day M4-T4 wires the value through, with nothing having changed in migr.yaml.")
+func TestEachStatementIsBoundedByTheWaitTheContractDefaultsTo(t *testing.T) {
+	built, err := New(driver.Options{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	d, ok := built.(*pgDriver)
+	if !ok {
+		t.Fatalf("New returned %T, not this package's driver", built)
+	}
+
+	if d.statementLockWait != driver.DefaultStatementLockWait {
+		t.Errorf("a statement's lock wait defaults to %s, want %s",
+			d.statementLockWait, driver.DefaultStatementLockWait)
+		t.Log("internal/config applies the same constant to safety.lock_timeout, so an operator")
+		t.Log("who configures nothing gets one bound rather than two that can drift apart.")
 	}
 }
 

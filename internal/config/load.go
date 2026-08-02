@@ -14,6 +14,7 @@ import (
 	"github.com/goccy/go-yaml/parser"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/driver"
 )
 
 // DefaultFilename is the config file looked for when --config is not given.
@@ -99,14 +100,14 @@ func decode(file *ast.File, cfg *Config) error {
 // applyDefaults fills every optional field left unset by the document.
 func applyDefaults(cfg *Config) {
 	setString(&cfg.Migrations.Dir, "./migrations")
-	setString(&cfg.History.Table, "migr_migrations")
+	setString(&cfg.History.Table, driver.DefaultHistoryTable)
 
 	if cfg.Lock.Strategy == "" {
 		cfg.Lock.Strategy = LockAdvisory
 	}
 
-	setDuration(&cfg.Lock.Timeout, 30*time.Second)
-	setDuration(&cfg.Safety.LockTimeout, 3*time.Second)
+	setDuration(&cfg.Lock.Timeout, driver.DefaultLockWait)
+	setDuration(&cfg.Safety.LockTimeout, driver.DefaultStatementLockWait)
 	setDuration(&cfg.Safety.StatementTimeout, 30*time.Second)
 	setDuration(&cfg.Safety.ReplicaLagThreshold, 5*time.Second)
 

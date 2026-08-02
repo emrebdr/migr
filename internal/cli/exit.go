@@ -1,8 +1,17 @@
 package cli
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/emrebdr/migr/internal/driver"
+)
 
 // Exit codes, as documented in CLAUDE.md §5.
+//
+// ExitCode resolves an explicit ExitError first, so a command may always classify a failure
+// itself. Below that it reads driver.ErrLockTimeout, because giving up on the migration lock is
+// contention rather than a runtime error, and recognizing the contract's sentinel in one place is
+// what saves every command from having to remember it.
 const (
 	ExitOK         = 0
 	ExitRuntime    = 1
@@ -38,6 +47,10 @@ func ExitCode(err error) int {
 	var exitErr *ExitError
 	if errors.As(err, &exitErr) {
 		return exitErr.Code
+	}
+
+	if errors.Is(err, driver.ErrLockTimeout) {
+		return ExitLock
 	}
 
 	return ExitRuntime

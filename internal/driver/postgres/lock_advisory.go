@@ -28,8 +28,8 @@ const releaseQuery = `SELECT pg_advisory_unlock($1, $2)`
 // lockTimeoutQuery bounds an acquire server-side, so a wait that gives up leaves the session alive.
 //
 // set_config rather than SET, because SET takes no bound parameters -- the same reason
-// applySearchPath uses it. That matters once M4-T4 passes migr.yaml's lock.timeout down here,
-// since a configured value would otherwise have to be concatenated into the statement.
+// applySearchPath uses it, and the reason migr.yaml's lock.timeout is bound here rather than
+// concatenated. The value it binds is lockTimeoutSetting's, never Duration.String's.
 const lockTimeoutQuery = `SELECT set_config('lock_timeout', $1, false)`
 
 // lockTimeoutReset returns the setting to the per-statement bound pinLockTimeout pinned at Open.
@@ -38,9 +38,6 @@ const lockTimeoutQuery = `SELECT set_config('lock_timeout', $1, false)`
 // startup-packet value and not the one an earlier SET left behind. See lockTimeoutParam: before
 // that value was pinned, this line silently returned lock_timeout to 0.
 const lockTimeoutReset = `RESET lock_timeout`
-
-// defaultLockWait bounds an acquire until M4-T4 passes migr.yaml's lock.timeout down.
-const defaultLockWait = "30s"
 
 // lockNotAvailable is the SQLSTATE PostgreSQL raises when lock_timeout expires.
 const lockNotAvailable = "55P03"
@@ -86,14 +83,14 @@ func (c *pgConn) Lock(ctx context.Context) (driver.Unlock, error) {
 
 // acquire waits for the lock under a server-side bound, so giving up does not end the session.
 func (c *pgConn) acquire(ctx context.Context) error {
-	if _, err := c.conn.Exec(ctx, lockTimeoutQuery, c.lockWait); err != nil {
+	if _, err := c.conn.Exec(ctx, lockTimeoutQuery, lockTimeoutSetting(c.lockWait)); err != nil {
 		return fmt.Errorf("%w: bounding the wait for %s: %w", ErrLock, c.key, err)
 	}
 
 	defer c.resetLockTimeout(ctx)
 
 	if _, err := c.conn.Exec(ctx, acquireQuery, c.key.class, c.key.obj); err != nil {
-		return &LockError{Key: c.key, Err: c.classifyLockFailure(err)}
+		return &LockError{Key: c.key, Err: c.classifyLockFailure(ctx, err)}
 	}
 
 	return nil
@@ -105,10 +102,10 @@ func (c *pgConn) resetLockTimeout(ctx context.Context) {
 }
 
 // classifyLockFailure separates giving up on the wait from every other way an acquire fails.
-func (c *pgConn) classifyLockFailure(err error) error {
+func (c *pgConn) classifyLockFailure(ctx context.Context, err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == lockNotAvailable {
-		return fmt.Errorf("%w after %s: %w", ErrLockTimeout, c.lockWait, err)
+		return c.busy(ctx, err)
 	}
 
 	return err

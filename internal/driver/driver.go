@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"time"
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/history"
@@ -45,6 +46,12 @@ type Work func(ctx context.Context) error
 
 // DefaultHistoryTable is where migrations are recorded when migr.yaml names no other table.
 const DefaultHistoryTable = "migr_migrations"
+
+// DefaultLockWait is how long migr waits for the migration lock when migr.yaml names no timeout.
+const DefaultLockWait = 30 * time.Second
+
+// DefaultStatementLockWait bounds one statement's wait for a lock when migr.yaml names none.
+const DefaultStatementLockWait = 3 * time.Second
 
 // Conn is one pinned database session. Everything needing a database lives here.
 type Conn interface {

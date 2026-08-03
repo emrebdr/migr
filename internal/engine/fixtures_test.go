@@ -1,0 +1,420 @@
+package engine
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/checksum"
+	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/plan"
+)
+
+// errRefused is what the recording session reports for the statement a test told it to fail.
+var errRefused = errors.New("the server refused this statement")
+
+// start is the instant every staged run begins at, since this package may not read a clock.
+var start = time.Date(2026, 7, 27, 15, 30, 0, 0, time.UTC)
+
+// tick is how far a staged clock advances per reading, so a run's duration is never zero.
+const tick = 250 * time.Millisecond
+
+// runtimeName is what staged migrations are written in, and what every staged row records.
+const runtimeName = "sql"
+
+// clock returns a clock starting at start and advancing one tick per reading.
+func clock() Clock {
+	at := start
+
+	return func() time.Time {
+		now := at
+		at = at.Add(tick)
+
+		return now
+	}
+}
+
+// backwards returns a clock whose second reading precedes its first, which a real one may do.
+func backwards() Clock {
+	at := start
+
+	return func() time.Time {
+		now := at
+		at = at.Add(-tick)
+
+		return now
+	}
+}
+
+// recorder is a session with no database that records what the executor asked it to do.
+type recorder struct {
+	caps    capability.Set
+	calls   []string
+	fail    string
+	inTx    bool
+	store   *journal
+	lockErr error
+}
+
+// newRecorder builds a session whose declaration says whether its DDL is transactional.
+func newRecorder(t *testing.T, transactional bool) *recorder {
+	t.Helper()
+
+	rules := make(map[ir.Kind]capability.Rule, len(ir.Kinds()))
+	for _, kind := range ir.Kinds() {
+		rules[kind] = capability.Fixed(capability.Native(capability.LockFree))
+	}
+
+	facts := capability.Facts{Driver: "recorder", Server: "1.0", TransactionalDDL: transactional}
+
+	set, err := capability.NewSet(facts, rules)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+
+	conn := &recorder{caps: set}
+	conn.store = &journal{session: conn}
+
+	return conn
+}
+
+// note records one thing the executor asked of this session, in the order it asked.
+func (r *recorder) note(call string) {
+	r.calls = append(r.calls, call)
+}
+
+// Exec records the statement and where it ran, failing the one a test asked it to fail.
+func (r *recorder) Exec(_ context.Context, stmt driver.Statement) error {
+	r.note(r.describeExec(stmt))
+
+	if stmt.SQL == r.fail {
+		return errRefused
+	}
+
+	return nil
+}
+
+// describeExec records whether the statement ran inside the transaction or outside it.
+func (r *recorder) describeExec(stmt driver.Statement) string {
+	if r.inTx {
+		return "exec " + stmt.SQL
+	}
+
+	return "exec-outside-any-transaction " + stmt.SQL
+}
+
+// Transact records the boundary and commits only when the work returns nil.
+func (r *recorder) Transact(ctx context.Context, work driver.Work) error {
+	r.note("begin")
+	r.inTx = true
+
+	err := work(ctx)
+
+	r.inTx = false
+
+	if err != nil {
+		r.note("rollback")
+
+		return err
+	}
+
+	r.note("commit")
+
+	return nil
+}
+
+// Lock records the acquire and hands back a release that records itself and its context.
+func (r *recorder) Lock(context.Context) (driver.Unlock, error) {
+	if r.lockErr != nil {
+		return nil, r.lockErr
+	}
+
+	r.note("lock")
+
+	return func(ctx context.Context) error {
+		r.note(live(ctx, "unlock"))
+
+		return nil
+	}, nil
+}
+
+// live marks a call whose context was already canceled, which some call paths must never inherit.
+func live(ctx context.Context, call string) string {
+	if ctx.Err() != nil {
+		return call + "-on-a-canceled-context"
+	}
+
+	return call
+}
+
+// Capabilities reports the declaration this session was built with.
+func (r *recorder) Capabilities() capability.Set { return r.caps }
+
+// History reports this session's store, or none at all when a test staged none.
+func (r *recorder) History() history.Store {
+	if r.store == nil {
+		return nil
+	}
+
+	return r.store
+}
+
+// ServerVersion reports the version the declaration was resolved against.
+func (r *recorder) ServerVersion() string { return r.caps.Server() }
+
+// Close releases nothing, since this session holds nothing.
+func (r *recorder) Close(context.Context) error { return nil }
+
+// compile-time proof that the recorder satisfies the contract a real session does.
+var _ driver.Conn = (*recorder)(nil)
+
+// journal is a history store with no database, recording what the executor asked of it.
+type journal struct {
+	session *recorder
+	runs    []history.Record
+	table   bool
+	ensure  error
+	list    error
+	latest  error
+	record  error
+	failed  error
+}
+
+// Ensure records the call and creates the table, unless a test staged a failure.
+func (j *journal) Ensure(context.Context) error {
+	j.session.note("ensure")
+
+	if j.ensure != nil {
+		return j.ensure
+	}
+
+	j.table = true
+
+	return nil
+}
+
+// List returns every recorded run, reporting a table nothing created as the contract requires.
+func (j *journal) List(context.Context) ([]history.Record, error) {
+	j.session.note("list")
+
+	if j.list != nil {
+		return nil, j.list
+	}
+
+	if !j.table {
+		return nil, history.ErrNoTable
+	}
+
+	return j.runs, nil
+}
+
+// Latest returns the most recent run, and whether there has been one at all.
+func (j *journal) Latest(context.Context) (history.Record, bool, error) {
+	j.session.note("latest")
+
+	if j.latest != nil {
+		return history.Record{}, false, j.latest
+	}
+
+	if !j.table {
+		return history.Record{}, false, history.ErrNoTable
+	}
+
+	if len(j.runs) == 0 {
+		return history.Record{}, false, nil
+	}
+
+	return j.runs[len(j.runs)-1], true, nil
+}
+
+// Record appends a run that completed, holding the caller to what a row must carry.
+func (j *journal) Record(_ context.Context, rec history.Record) error {
+	j.session.note(j.describeWrite("record", rec))
+
+	if j.record != nil {
+		return j.record
+	}
+
+	return j.write(rec, history.Applied, "", 0)
+}
+
+// MarkFailed appends a run that failed without changing the schema.
+func (j *journal) MarkFailed(ctx context.Context, rec history.Record, cause error) error {
+	j.session.note(live(ctx, j.describeWrite("mark-failed", rec)))
+
+	if j.failed != nil {
+		return j.failed
+	}
+
+	return j.write(rec, history.Failed, cause.Error(), 0)
+}
+
+// MarkDirty appends a run that failed partway, naming the last statement that succeeded.
+func (j *journal) MarkDirty(_ context.Context, rec history.Record, last int32, cause error) error {
+	j.session.note(j.describeWrite("mark-dirty", rec))
+
+	return j.write(rec, history.Dirty, cause.Error(), last)
+}
+
+// describeWrite records which row was written and whether a transaction was open at the time.
+func (j *journal) describeWrite(call string, rec history.Record) string {
+	if j.session.inTx {
+		return call + " " + rec.Version
+	}
+
+	return call + "-outside-any-transaction " + rec.Version
+}
+
+// write stamps the build and holds the record to what a run must carry, as a real store does.
+func (j *journal) write(rec history.Record, outcome history.Outcome, failure string, last int32) error {
+	rec.Outcome = outcome
+	rec.Error = failure
+	rec.LastStatement = last
+	rec = rec.Stamp()
+
+	if err := rec.Validate(); err != nil {
+		return err
+	}
+
+	j.runs = append(j.runs, rec)
+
+	return nil
+}
+
+// compile-time proof that the journal satisfies the store contract a real one does.
+var _ history.Store = (*journal)(nil)
+
+// source hands back the operations a test staged per migration, and remembers what it was asked.
+type source struct {
+	ops        map[string]ir.Operations
+	fail       map[string]error
+	asked      []string
+	directions []ir.Direction
+}
+
+// Emit returns what a test staged for this migration, or the failure it staged instead.
+func (s *source) Emit(_ context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+	s.asked = append(s.asked, m.Version)
+	s.directions = append(s.directions, dir)
+
+	if err := s.fail[m.Version]; err != nil {
+		return nil, err
+	}
+
+	return s.ops[m.Version], nil
+}
+
+// compiler turns a staged operation into the one statement its table name spells.
+type compiler struct{}
+
+// Compile renders the statement a staged operation stands for, refusing anything else.
+func (compiler) Compile(op ir.Operation) ([]driver.Statement, error) {
+	drop, ok := op.(ir.DropTable)
+	if !ok {
+		return nil, fmt.Errorf("the staged compiler was given %s", op.Kind())
+	}
+
+	return []driver.Statement{{SQL: drop.Table, NoTransaction: standalone(drop.Table)}}, nil
+}
+
+// standalone reports whether a staged statement declared it cannot run inside a transaction.
+func standalone(sql string) bool {
+	return sql != "" && sql[0] >= 'A' && sql[0] <= 'Z'
+}
+
+// operations turns a spec into one operation per statement, mirroring statements at the IR level.
+func operations(spec string) ir.Operations {
+	ops := make(ir.Operations, 0, len(spec))
+
+	for i, letter := range spec {
+		ops = append(ops, ir.DropTable{Table: fmt.Sprintf("%c%d", letter, i)})
+	}
+
+	return ops
+}
+
+// versionAt renders the nth staged migration's version, ordered as the sequence it was given in.
+func versionAt(n int) string {
+	return fmt.Sprintf("20260727T1530%02d", n)
+}
+
+// nameAt renders the nth staged migration's name.
+func nameAt(n int) string {
+	return fmt.Sprintf("migration_%d", n)
+}
+
+// bodyAt renders what the nth staged migration's file holds, which its source digest covers.
+func bodyAt(n int) string {
+	return "-- migration " + versionAt(n) + "\n"
+}
+
+// migrationAt returns the nth staged migration, parsed through the grammar a real one comes from.
+func migrationAt(t *testing.T, n int) migration.Migration {
+	t.Helper()
+
+	m, err := migration.Parse(versionAt(n) + "_" + nameAt(n) + ".sql")
+	if err != nil {
+		t.Fatalf("staging migration %d: %v", n, err)
+	}
+
+	return m
+}
+
+// staged builds the options an apply run is given, one spec of statement letters per migration.
+func staged(t *testing.T, specs ...string) (Options, *source) {
+	t.Helper()
+
+	files := make([]history.File, 0, len(specs))
+	src := &source{ops: map[string]ir.Operations{}, fail: map[string]error{}}
+
+	for i, spec := range specs {
+		m := migrationAt(t, i)
+		files = append(files, history.NewFile(m, []byte(bodyAt(i))))
+		src.ops[m.Version] = operations(spec)
+	}
+
+	return Options{
+		Planner:    plan.Planner{Compiler: compiler{}},
+		Source:     src,
+		Migrations: files,
+		Clock:      clock(),
+		Runtime:    runtimeName,
+	}, src
+}
+
+// ran returns the row a previous invocation left for the nth staged migration, as it applied it.
+func ran(t *testing.T, n int, batch int64, ordinal int32) history.Record {
+	t.Helper()
+
+	m := migrationAt(t, n)
+
+	return history.Record{
+		Batch:         batch,
+		Ordinal:       ordinal,
+		Version:       m.Version,
+		Name:          m.Name,
+		Direction:     ir.Up,
+		Outcome:       history.Applied,
+		Checksum:      sumOf(n),
+		AppliedAt:     start.Add(-time.Hour),
+		Duration:      time.Second,
+		Driver:        "recorder",
+		Runtime:       runtimeName,
+		EngineVersion: "test",
+		IRVersion:     ir.Version,
+	}
+}
+
+// sumOf is the checksum a previous run of the nth staged migration recorded, source half first.
+func sumOf(n int) checksum.Checksum {
+	return checksum.Checksum{
+		Source: checksum.OfSource([]byte(bodyAt(n))),
+		IR:     checksum.OfSource([]byte("whatever that run emitted")),
+	}
+}

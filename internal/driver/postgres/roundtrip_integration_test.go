@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -595,7 +594,7 @@ func checkTheImpliedNotNullIsNotRestored(t *testing.T, session *pgConn, target s
 func apply(t *testing.T, session *pgConn, ops ir.Operations) {
 	t.Helper()
 
-	if err := engine.Apply(t.Context(), session, compileAll(t, ops)); err != nil {
+	if err := applyOps(t, session, ops); err != nil {
 		t.Fatalf("applying %s: %v", describeKinds(ops), err)
 	}
 }

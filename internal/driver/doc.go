@@ -41,6 +41,14 @@
 // and returns no error: there is nothing left to fail. A driver builds it inside Open, alongside
 // the capability set, and Store's own methods each carry the context they need.
 //
+// A store's writes must go through the session's open transaction when there is one. ADR 0013's
+// "a migration is recorded before its transaction commits" rests entirely on that, and nothing here
+// can express it: History takes no transaction and Record takes no handle, so a store that used a
+// second connection would compile, pass every test it has, and leave a row claiming a migration was
+// applied that the rollback discarded. It is the same unenforced obligation ADR 0019 recorded for
+// ErrNoTable, and it is checked the same way — per driver, by a test that discards a transaction
+// after the row was written and asserts the row is gone.
+//
 // internal/history never imports this package. It is named here as a return type, so the
 // dependency runs one way and the other direction is an import cycle. ADR 0011 recorded that as a
 // review rule because depguard cannot express it — the deny prefix deliberately leaves this
@@ -97,8 +105,10 @@
 //
 // It did: internal/engine's Groups splits a statement list into consecutive runs that agree on the
 // flag, and Transact brackets one run. Nothing any driver compiles sets the flag yet, so a
-// migration is one run today and the executor refuses more than one, naming M13-T4 — which is
-// where the flag stops being hypothetical.
+// migration is one run today; the executor's loop over runs is written, and what it still refuses
+// is a migration of more than one run, or one whose single run is not transactional and so has no
+// transaction for its history row to be written inside. Both name M13-T4, which is where the flag
+// stops being hypothetical.
 //
 // # Transactions
 //

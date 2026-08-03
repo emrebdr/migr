@@ -6,9 +6,10 @@
 // invariant #3), and this package is the one place the table's shape is written down — otherwise
 // PostgreSQL, SQLite, and MySQL would each invent a different one.
 //
-// Status: contract complete (M2-T5), the first Store satisfying it in M3-T6 (PostgreSQL), and
-// reconciliation complete (M4-T3). Checksum verification and exit code 4 are M4-T7.
-// See docs/adr/0013-migration-history.md and docs/adr/0019-history-reconciliation.md.
+// Status: contract complete (M2-T5), the first Store satisfying it in M3-T6 (PostgreSQL),
+// reconciliation complete (M4-T3), and the executor that writes through it in M4-T5. Checksum
+// verification and exit code 4 are M4-T7. See docs/adr/0013-migration-history.md,
+// docs/adr/0019-history-reconciliation.md and docs/adr/0021-apply-executor.md.
 //
 // # Two vocabularies, deliberately kept apart
 //
@@ -138,6 +139,13 @@
 // executor. That needs no clock, no randomness, and no engine feature, and it is exactly the
 // order a rollback reverses. Both number from one, so the zero value is not a valid position.
 //
+// M4-T5 settled what those numbers mean. A batch is one more than that database's own last recorded
+// run, read through Latest, so a batch belongs to one database: no lock spans two, migr down
+// reverses one database's last batch, and a shared number could name a batch that database never
+// used. An ordinal numbers the runs an invocation actually performed rather than the migrations it
+// considered, so a queue that skipped two already-applied migrations still starts at one. See
+// docs/adr/0021-apply-executor.md.
+//
 // # This package reads no clock
 //
 // AppliedAt and Duration are fields a caller fills in. forbidigo bans time.Now everywhere outside
@@ -153,7 +161,12 @@
 //
 // Record writes Applied, MarkFailed writes Failed, MarkDirty writes Dirty and takes the statement
 // index that outcome needs. A caller therefore cannot record a failure marked applied, and cannot
-// mark a run dirty without saying where it stopped. Outcome, Error, and LastStatement are
+// mark a run dirty without saying where it stopped.
+//
+// Record is called inside the migration's transaction and MarkFailed after its rollback, which is
+// the only order either can have: the transaction being discarded cannot carry a row describing
+// itself, and PostgreSQL refuses every statement in an aborted one until it ends (M4-T5). MarkDirty
+// has no caller until M4-T9. Outcome, Error, and LastStatement are
 // consequently read-side fields: populated by List and Latest, ignored on write. The alternative
 // was a second struct differing in three fields, which is a worse trade than three documented
 // fields.

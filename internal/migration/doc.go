@@ -44,8 +44,8 @@
 //
 // The sort is Kahn's, with the ready set drained in version order. That makes the timestamp the
 // tiebreak among migrations nothing constrains relative to each other, and it makes the result a
-// total sequence rather than a graph: M4-T5 aborts a queue and M4-T8 steps through one, and handing
-// either a graph would leave both re-deriving this.
+// total sequence rather than a graph: M4-T5 runs a queue in exactly this order and M4-T8 steps
+// through one, and handing either a graph would leave both re-deriving this.
 //
 // An edge names a version, because that is the key discovery proves unique, the one a history row
 // joins on, and the one `migr down --to` names. Every message renders a filename instead, since a

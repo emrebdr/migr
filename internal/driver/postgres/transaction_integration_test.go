@@ -13,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/emrebdr/migr/internal/driver"
-	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -134,6 +133,41 @@ func compileAll(t *testing.T, ops ir.Operations) []driver.Statement {
 	return stmts
 }
 
+// applyOps runs a fixture's operations as one transaction, not through the executor on purpose.
+func applyOps(t *testing.T, session *pgConn, ops ir.Operations) error {
+	t.Helper()
+
+	stmts := compileAll(t, ops)
+
+	return session.Transact(t.Context(), func(ctx context.Context) error {
+		for i, stmt := range stmts {
+			if err := session.Exec(ctx, stmt); err != nil {
+				return &fixtureError{position: i + 1, err: err}
+			}
+		}
+
+		return nil
+	})
+}
+
+// fixtureError names the fixture statement that failed, so a test can say which one did.
+type fixtureError struct {
+	// position is the statement's place in the fixture, counting from one as golden files do.
+	position int
+	// err is what the server reported.
+	err error
+}
+
+// Error names the position and what went wrong there.
+func (e *fixtureError) Error() string {
+	return fmt.Sprintf("statement %d: %v", e.position, e.err)
+}
+
+// Unwrap reports the cause, so errors.As reaches the server's own error.
+func (e *fixtureError) Unwrap() error {
+	return e.err
+}
+
 // groundwork is a migration that succeeds, establishing the schema the failing one starts from.
 func groundwork(t *testing.T) ir.Operations {
 	t.Helper()
@@ -177,7 +211,7 @@ func TestAFailedMigrationLeavesTheSchemaExactlyAsItWas(t *testing.T) {
 
 			empty := describeSchema(t, observer, target)
 
-			if err := engine.Apply(t.Context(), session, compileAll(t, groundwork(t))); err != nil {
+			if err := applyOps(t, session, groundwork(t)); err != nil {
 				t.Fatalf("the groundwork migration failed: %v", err)
 			}
 
@@ -188,7 +222,7 @@ func TestAFailedMigrationLeavesTheSchemaExactlyAsItWas(t *testing.T) {
 					"assertion after this point would pass for the wrong reason")
 			}
 
-			err := engine.Apply(t.Context(), session, compileAll(t, halfway(t)))
+			err := applyOps(t, session, halfway(t))
 			if err == nil {
 				t.Fatal("the deliberately failing migration reported success")
 			}
@@ -214,13 +248,13 @@ func TestAFailedMigrationLeavesTheSchemaExactlyAsItWas(t *testing.T) {
 func checkServerRejected(t *testing.T, err error) {
 	t.Helper()
 
-	var failure *engine.StatementError
+	var failure *fixtureError
 	if !errors.As(err, &failure) {
 		t.Fatalf("the migration failed with %v, which names no statement", err)
 	}
 
-	if failure.Position != 3 {
-		t.Errorf("the failure reports statement %d, want the third", failure.Position)
+	if failure.position != 3 {
+		t.Errorf("the failure reports statement %d, want the third", failure.position)
 	}
 
 	var pgErr *pgconn.PgError
@@ -243,7 +277,7 @@ func TestTheStatementsBeforeTheFailureRanAndWereDiscarded(t *testing.T) {
 	session := sessionIn(t, dsn, target)
 	observer := sessionIn(t, dsn, target)
 
-	if err := engine.Apply(t.Context(), session, compileAll(t, groundwork(t))); err != nil {
+	if err := applyOps(t, session, groundwork(t)); err != nil {
 		t.Fatalf("the groundwork migration failed: %v", err)
 	}
 
@@ -286,17 +320,17 @@ func TestTheSessionIsStillUsableAfterAFailedMigration(t *testing.T) {
 
 	session := sessionIn(t, dsn, target)
 
-	if err := engine.Apply(t.Context(), session, compileAll(t, groundwork(t))); err != nil {
+	if err := applyOps(t, session, groundwork(t)); err != nil {
 		t.Fatalf("the groundwork migration failed: %v", err)
 	}
 
-	if err := engine.Apply(t.Context(), session, compileAll(t, halfway(t))); err == nil {
+	if err := applyOps(t, session, halfway(t)); err == nil {
 		t.Fatal("the deliberately failing migration reported success")
 	}
 
-	if err := engine.Apply(t.Context(), session, compileAll(t, ir.Operations{
+	if err := applyOps(t, session, ir.Operations{
 		ir.CreateTable{Table: "after", Columns: []ir.Column{{Name: "id", Type: probeType(t, "int64")}}},
-	})); err != nil {
+	}); err != nil {
 		t.Fatalf("the session did not survive the failed migration: %v", err)
 	}
 
@@ -354,7 +388,7 @@ func TestAMigrationThatFaultsPartwayIsDiscardedRatherThanCommitted(t *testing.T)
 		t.Log("returned at all. Otherwise a panic mid-migration commits everything before it.")
 	}
 
-	if err := engine.Apply(t.Context(), session, compileAll(t, groundwork(t))); err != nil {
+	if err := applyOps(t, session, groundwork(t)); err != nil {
 		t.Errorf("the session did not survive the fault: %v", err)
 	}
 }
@@ -443,13 +477,13 @@ func TestTheMigrationLockOutlivesTheTransactionItBrackets(t *testing.T) {
 
 	held("after the acquire")
 
-	if err := engine.Apply(t.Context(), session, compileAll(t, groundwork(t))); err != nil {
+	if err := applyOps(t, session, groundwork(t)); err != nil {
 		t.Fatalf("the groundwork migration failed: %v", err)
 	}
 
 	held("after a committed migration")
 
-	if err := engine.Apply(t.Context(), session, compileAll(t, halfway(t))); err == nil {
+	if err := applyOps(t, session, halfway(t)); err == nil {
 		t.Fatal("the deliberately failing migration reported success")
 	}
 

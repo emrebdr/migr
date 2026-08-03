@@ -6,7 +6,9 @@
 // (M5-T4), and CI catching a migration that will not compile is what makes the executor's lazy
 // operation seam survivable (ADR 0021).
 //
-// Status: compilation complete (M4-T5). Decomposing unsafe operations into safe sequences is
+// Status: compilation complete (M4-T5), and compiling a rollback's inverses in M4-T6 — a Plan
+// carries the direction it was compiled in, which is what a history row records rather than a
+// parameter traveling beside it. Decomposing unsafe operations into safe sequences is
 // M13-T5, and annotating a plan with lock verdicts is M13-T6.
 //
 // # A step carries the operation and the statements together

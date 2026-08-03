@@ -12,7 +12,7 @@ import (
 
 // Source yields the operations one migration emits, and is asked only about migrations that run.
 type Source interface {
-	// Emit returns the operations one migration performs in one direction.
+	// Emit returns the operations one migration performs, or ErrNoDownAuthored for a down it has none of.
 	Emit(ctx context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error)
 }
 

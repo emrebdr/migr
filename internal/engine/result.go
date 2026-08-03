@@ -37,6 +37,6 @@ type Skipped struct {
 	Version string
 	// Migration is the file it was found in, zero when only the history names it.
 	Migration migration.Migration
-	// State is what reconciliation resolved it to, which is applied or missing and nothing else.
+	// State is what reconciliation resolved it to: applied or missing going up, pending going down.
 	State history.State
 }

@@ -300,6 +300,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0019](docs/adr/0019-history-reconciliation.md) | Reconciliation replays the whole log, and a half-applied migration is a fifth state |
 | [0020](docs/adr/0020-lock-contention.md) | Lock contention: one budget, no retry, and a holder read after the fact |
 | [0021](docs/adr/0021-apply-executor.md) | The apply queue reconciles under the lock, and a batch belongs to one database |
+| [0022](docs/adr/0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

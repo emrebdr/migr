@@ -126,6 +126,10 @@
 // ReverseAll inverts a list and reverses its order, but only if every operation in it can be
 // inverted. A partial reversal that stops halfway is worse than refusing to start.
 //
+// internal/engine is what calls it, and only for a migration whose source authored no down of its
+// own — an authored one beats a derived one, which is what invariant #10 promises. Failing whole is
+// what lets a rollback refuse before undoing anything (M4-T6, ADR 0022).
+//
 // # Destructiveness
 //
 // Every operation classifies itself, so adding one forces a verdict rather than leaving a

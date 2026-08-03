@@ -146,6 +146,11 @@
 // considered, so a queue that skipped two already-applied migrations still starts at one. See
 // docs/adr/0021-apply-executor.md.
 //
+// A rollback is its own invocation and takes its own batch, so its rows cannot collide with the ones
+// they undo. The order it undoes in is byRun reflected — (batch, ordinal) descending, read from the
+// run that applied each migration — which is why this key rather than the clock is what a rollback
+// can be built on at all (M4-T6, engine.newestFirst).
+//
 // # This package reads no clock
 //
 // AppliedAt and Duration are fields a caller fills in. forbidigo bans time.Now everywhere outside
@@ -166,7 +171,13 @@
 // Record is called inside the migration's transaction and MarkFailed after its rollback, which is
 // the only order either can have: the transaction being discarded cannot carry a row describing
 // itself, and PostgreSQL refuses every statement in an aborted one until it ends (M4-T5). MarkDirty
-// has no caller until M4-T9. Outcome, Error, and LastStatement are
+// has no caller until M4-T9.
+//
+// M4-T6 is what first writes a down row, and what first produces the case this package's own fold
+// was written for: a failed down leaves the fold unchanged, so "a failed rollback leaves the
+// migration applied" stopped being a claim and became a path. A down row's Checksum.IR covers the
+// inverse operations that run emitted, so one version's rows can carry two different IR digests and
+// nothing may compare them to each other (ADR 0022). Outcome, Error, and LastStatement are
 // consequently read-side fields: populated by List and Latest, ignored on write. The alternative
 // was a second struct differing in three fields, which is a worse trade than three documented
 // fields.

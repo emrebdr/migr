@@ -1023,9 +1023,15 @@ func TestAMigrationOfSeveralRunsRecordsInsideTheLastTransactionalOne(t *testing.
 	opts, _ := staged(t, "a")
 
 	exec := &executor{conn: conn, store: conn.store, opts: opts, batch: 1}
-	rec := exec.newRecord(queued{migration: migrationAt(t, 0), ordinal: 1}, sumOf(0))
+	ready := prepared{
+		item:     queued{migration: migrationAt(t, 0), ordinal: 1},
+		compiled: plan.Plan{Direction: ir.Up},
+		groups:   Groups(statements("aBc")),
+		sum:      sumOf(0),
+	}
+	rec := exec.newRecord(ready)
 
-	if err := exec.runMigration(t.Context(), Groups(statements("aBc")), exec.recorder(&rec)); err != nil {
+	if err := exec.runMigration(t.Context(), ready.groups, exec.recorder(&rec)); err != nil {
 		t.Fatalf("runMigration: %v", err)
 	}
 

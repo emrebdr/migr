@@ -5,6 +5,8 @@ package postgres
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +34,8 @@ type staged struct {
 	name string
 	// ops are the operations it emits, which the executor asks for only if it will run.
 	ops ir.Operations
+	// down is the undo it authored, and staging none makes the executor derive one.
+	down ir.Operations
 	// probe runs while the executor is under the migration lock, when a test wants to look.
 	probe func(t *testing.T)
 }
@@ -44,7 +48,7 @@ type queueSource struct {
 }
 
 // Emit returns the staged operations, running the staged probe first where there is one.
-func (s *queueSource) Emit(_ context.Context, m migration.Migration, _ ir.Direction) (ir.Operations, error) {
+func (s *queueSource) Emit(_ context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
 	s.asked = append(s.asked, m.Version)
 
 	for _, item := range s.staged {
@@ -56,10 +60,23 @@ func (s *queueSource) Emit(_ context.Context, m migration.Migration, _ ir.Direct
 			item.probe(s.t)
 		}
 
-		return item.ops, nil
+		return staging(item, dir)
 	}
 
 	return nil, errors.New("nothing staged this migration")
+}
+
+// staging returns what a staged migration performs in one direction, or asks for a derived undo.
+func staging(item staged, dir ir.Direction) (ir.Operations, error) {
+	if dir != ir.Down {
+		return item.ops, nil
+	}
+
+	if item.down == nil {
+		return nil, engine.ErrNoDownAuthored
+	}
+
+	return item.down, nil
 }
 
 // queueOptions builds what an apply run is given from the migrations a test staged, in order.
@@ -521,4 +538,274 @@ func TestTheMigrationLockIsHeldForTheWholeQueueAndGivenBackAfterward(t *testing.
 	t.Log("The probe runs while the executor is asking what the second migration does, which is")
 	t.Log("under the lock by construction. That is what makes 'reconciled under the lock' a")
 	t.Log("property rather than a claim: what is pending cannot change while the queue runs.")
+}
+
+// partialAccountsIndex creates an index no v1 operation can express, which is what raw is for.
+const partialAccountsIndex = `CREATE INDEX "idx_accounts_partial" ON "accounts" ("id") WHERE "id" > 0`
+
+// addPartialIndex is a migration nothing can invert, because raw's effect is opaque to the framework.
+func addPartialIndex() staged {
+	return staged{
+		version: "20260727T153400",
+		name:    "add_partial_index",
+		ops:     ir.Operations{ir.Raw{Driver: Name, SQL: partialAccountsIndex}},
+	}
+}
+
+// archiveAccounts undoes createAccounts by renaming rather than dropping, which no inverse derives.
+func archiveAccounts(t *testing.T) staged {
+	t.Helper()
+
+	item := createAccounts(t)
+	item.down = ir.Operations{ir.RenameTable{From: "accounts", To: "accounts_archived"}}
+
+	return item
+}
+
+func TestApplyingAQueueAndRollingItBackRestoresTheSchemaDigestExactly(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			dsn := dsnFor(server.env, server.dsn)
+			target := scratchSchema(t, dsn)
+
+			session := queueSession(t, dsn, target)
+			observer := queueSession(t, dsn, target)
+
+			if _, err := engine.Apply(t.Context(), session,
+				queueOptions(t, createAccounts(t))); err != nil {
+				t.Fatalf("preparing the history table: %v", err)
+			}
+
+			empty := describeSchema(t, observer, target)
+
+			if _, err := engine.Rollback(t.Context(), session,
+				queueOptions(t, createAccounts(t))); err != nil {
+				t.Fatalf("clearing the schema: %v", err)
+			}
+
+			bare := describeSchema(t, observer, target)
+			if bare == empty {
+				t.Fatal("rolling back the groundwork migration changed nothing another session " +
+					"can see, so every assertion below would pass for the wrong reason")
+			}
+
+			opts := queueOptions(t, createAccounts(t), addNickname(t))
+
+			if _, err := engine.Apply(t.Context(), session, opts); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+
+			if describeSchema(t, observer, target) == bare {
+				t.Fatal("the queue that reported success changed nothing")
+			}
+
+			if _, err := engine.Rollback(t.Context(), session, opts); err != nil {
+				t.Fatalf("Rollback: %v", err)
+			}
+
+			if restored := describeSchema(t, observer, target); restored != bare {
+				t.Errorf("rolling the queue back did not restore the schema it found:\n%s",
+					diffLines(bare, restored))
+			}
+
+			t.Log("This is the property the whole task exists for, and it is asserted against the")
+			t.Log("server rather than against the operations: the inverses are derived, compiled")
+			t.Log("and run, and what a second session sees afterwards is what it saw before.")
+			t.Logf("The digest is this package's own, not internal/schema's snapshot: %s replaces "+
+				"this with the neutral comparison.", snapshotSupersededBy)
+		})
+	}
+}
+
+func TestARollbackUndoesTheMigrationsNewestFirstAgainstTheServer(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+
+	opts := queueOptions(t, createAccounts(t), addNickname(t))
+
+	if _, err := engine.Apply(t.Context(), session, opts); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	result, err := engine.Rollback(t.Context(), session, opts)
+	if err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	if len(result.Runs) != 2 {
+		t.Fatalf("the rollback undid %d migrations, want two", len(result.Runs))
+	}
+
+	if result.Runs[0].Migration.Version != addNickname(t).version {
+		t.Errorf("the rollback undid %s first, want the newest migration",
+			result.Runs[0].Migration.Version)
+	}
+
+	t.Log("The server is the assertion as well as the order: undone oldest first, the first")
+	t.Log("statement would drop the table and the second would try to drop a column of it.")
+}
+
+func TestARollbackRecordsOneDownRunPerMigrationInANewBatch(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+
+	opts := queueOptions(t, createAccounts(t), addNickname(t))
+
+	if _, err := engine.Apply(t.Context(), session, opts); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	if _, err := engine.Rollback(t.Context(), session, opts); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	runs := recordedRuns(t, session)
+	if len(runs) != 4 {
+		t.Fatalf("the history holds %d rows, want an up and a down for each migration", len(runs))
+	}
+
+	for i, rec := range runs[:2] {
+		if rec.Direction != ir.Up || rec.Batch != 1 {
+			t.Errorf("row %d is a %s in batch %d, want an up in batch 1", i, rec.Direction, rec.Batch)
+		}
+	}
+
+	for i, rec := range runs[2:] {
+		if rec.Direction != ir.Down || rec.Batch != 2 || rec.Ordinal != int32(i)+1 {
+			t.Errorf("row %d is a %s at (batch %d, ordinal %d), want a down at (2, %d)",
+				i+2, rec.Direction, rec.Batch, rec.Ordinal, i+1)
+		}
+	}
+
+	if runs[2].Version != addNickname(t).version {
+		t.Errorf("the first down undoes %s, want the newest migration", runs[2].Version)
+	}
+
+	t.Log("The log is append-only, so a rollback adds rows rather than deleting the ones it")
+	t.Log("undoes -- and it takes its own batch, which is what makes (batch, ordinal) unique.")
+}
+
+func TestAnIrreversibleMigrationHaltsTheRollbackWithTheSchemaUntouched(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+	observer := queueSession(t, dsn, target)
+
+	opts := queueOptions(t, createAccounts(t), addPartialIndex(), addNickname(t))
+
+	if _, err := engine.Apply(t.Context(), session, opts); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	before := describeSchema(t, observer, target)
+
+	_, err := engine.Rollback(t.Context(), session, opts)
+	if !errors.Is(err, ir.ErrIrreversible) {
+		t.Fatalf("Rollback returned %v, want a refusal reporting ir.ErrIrreversible", err)
+	}
+
+	if after := describeSchema(t, observer, target); after != before {
+		t.Errorf("the refused rollback changed the schema:\n%s", diffLines(before, after))
+	}
+
+	for _, rec := range recordedRuns(t, session) {
+		if rec.Direction == ir.Down {
+			t.Errorf("a down run was recorded for %s despite the refusal", rec.Version)
+		}
+	}
+
+	t.Log("The irreversible migration is in the middle, so a lazy rollback would have undone the")
+	t.Log("newest one and then refused. raw is opaque to the framework by construction, which is")
+	t.Log("why its own refusal tells the author to write the undo as a raw operation in Down.")
+}
+
+func TestARolledBackMigrationIsAppliedAgainFromItsUp(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+	observer := queueSession(t, dsn, target)
+
+	opts := queueOptions(t, createAccounts(t), addNickname(t))
+
+	if _, err := engine.Apply(t.Context(), session, opts); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	applied := describeSchema(t, observer, target)
+
+	if _, err := engine.Rollback(t.Context(), session, opts); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	result, err := engine.Apply(t.Context(), session, opts)
+	if err != nil {
+		t.Fatalf("re-applying: %v", err)
+	}
+
+	if len(result.Runs) != 2 || result.Batch != 3 {
+		t.Fatalf("the re-apply ran %d migrations under batch %d, want two under batch 3",
+			len(result.Runs), result.Batch)
+	}
+
+	if again := describeSchema(t, observer, target); again != applied {
+		t.Errorf("re-applying after a rollback reached a different schema:\n%s",
+			diffLines(applied, again))
+	}
+
+	var directions []ir.Direction
+	for _, rec := range recordedRuns(t, session) {
+		directions = append(directions, rec.Direction)
+	}
+
+	want := []ir.Direction{ir.Up, ir.Up, ir.Down, ir.Down, ir.Up, ir.Up}
+	if !slices.Equal(directions, want) {
+		t.Errorf("the log reads %v, want %v", directions, want)
+	}
+
+	t.Log("Rolling forward again runs the original Up rather than reversing the Down that undid")
+	t.Log("it, which is why a down's inverse is never needed and why the log keeps both.")
+}
+
+func TestAnAuthoredDownIsRunInsteadOfADerivedOne(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+	observer := queueSession(t, dsn, target)
+
+	derived := queueOptions(t, createAccounts(t))
+
+	if _, err := engine.Apply(t.Context(), session, derived); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	applied := describeSchema(t, observer, target)
+
+	if _, err := engine.Rollback(t.Context(), session,
+		queueOptions(t, archiveAccounts(t))); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	archived := describeSchema(t, observer, target)
+	if archived == applied {
+		t.Fatal("the authored down changed nothing another session can see")
+	}
+
+	if !strings.Contains(archived, "accounts_archived") {
+		t.Errorf("the schema does not hold the table the authored down renamed to:\n%s", archived)
+	}
+
+	if strings.Contains(archived, "\"accounts\"") {
+		t.Errorf("the derived inverse ran as well, dropping what the authored down kept:\n%s",
+			archived)
+	}
+
+	t.Log("The derived inverse of create_table is drop_table, so a run that ignored the authored")
+	t.Log("down would have destroyed the table this one deliberately kept.")
 }

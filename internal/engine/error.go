@@ -37,6 +37,12 @@ var ErrDirty = errors.New("a migration left the schema between states")
 // ErrUnknownState marks a reconciled state this build has no rule for, for errors.Is.
 var ErrUnknownState = errors.New("this build does not know that migration state")
 
+// ErrNoDownAuthored marks a migration whose source carries no down of its own, for the engine to derive one.
+var ErrNoDownAuthored = errors.New("this migration authors no down of its own")
+
+// ErrMissing marks a version the database carries that no migration file describes, for errors.Is.
+var ErrMissing = errors.New("the database carries a version no migration file describes")
+
 // stamp renders a recorded instant in a message, in UTC because a history row is read anywhere.
 const stamp = "2006-01-02 15:04:05 UTC"
 
@@ -105,6 +111,22 @@ func dirtyError(st history.Status) error {
 	return fmt.Errorf("%w: %s stopped after statement %d and nothing here can resolve that -- the "+
 		"dirty-state model that makes such a run recoverable is M4-T9's",
 		ErrDirty, describeVersion(st), st.Recorded.LastStatement)
+}
+
+// missingError refuses the whole rollback, naming a version the database carries and no file does.
+func missingError(st history.Status) error {
+	return fmt.Errorf("%w: %s -- a rollback runs newest first, so stepping around it would undo "+
+		"the migrations applied after it and leave a schema nothing describes. migr up skips such "+
+		"a version because it has nothing to run for it, and this run has",
+		ErrMissing, describeVersion(st))
+}
+
+// irreversibleError refuses the whole rollback, naming what has no inverse and why nothing ran.
+func irreversibleError(cause error) error {
+	return fmt.Errorf("nothing here can undo it: %w -- and the whole rollback is refused before "+
+		"anything runs, because one that stopped at an operation with no inverse would leave a "+
+		"schema no migration describes (ADR 0008); author a down for this migration to roll it back",
+		cause)
 }
 
 // unknownStateError refuses a run rather than guessing at a state this build has no rule for.

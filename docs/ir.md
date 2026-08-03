@@ -997,6 +997,12 @@ This fails whole. If any operation in the list cannot be inverted, the reversal 
 all rather than a partial list — a rollback that stops halfway leaves a schema in a state no
 migration describes.
 
+The rollback executor consumes that guarantee one level up: it inverts every migration in the queue
+before running any of them, so an operation with no inverse halts the run before the first statement
+rather than after the newer migrations have already been undone. A list is inverted only for a
+migration whose source authored no `Down` of its own; an authored one is run as written. See
+[ADR 0022](adr/0022-rollback-executor.md).
+
 ### 8.4 Reversing twice is not the identity
 
 Worth stating because it surprises people. Operations fall into three groups:

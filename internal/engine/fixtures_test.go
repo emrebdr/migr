@@ -292,8 +292,11 @@ var _ history.Store = (*journal)(nil)
 
 // source hands back the operations a test staged per migration, and remembers what it was asked.
 type source struct {
+	session    *recorder
 	ops        map[string]ir.Operations
+	down       map[string]ir.Operations
 	fail       map[string]error
+	failUp     map[string]error
 	asked      []string
 	directions []ir.Direction
 }
@@ -303,24 +306,56 @@ func (s *source) Emit(_ context.Context, m migration.Migration, dir ir.Direction
 	s.asked = append(s.asked, m.Version)
 	s.directions = append(s.directions, dir)
 
+	if s.session != nil {
+		s.session.note("emit " + m.Version + " " + string(dir))
+	}
+
 	if err := s.fail[m.Version]; err != nil {
+		return nil, err
+	}
+
+	if dir == ir.Down {
+		return s.emitDown(m)
+	}
+
+	if err := s.failUp[m.Version]; err != nil {
 		return nil, err
 	}
 
 	return s.ops[m.Version], nil
 }
 
-// compiler turns a staged operation into the one statement its table name spells.
+// emitDown returns the down a test authored, or the sentinel that asks the engine to derive one.
+func (s *source) emitDown(m migration.Migration) (ir.Operations, error) {
+	authored, ok := s.down[m.Version]
+	if !ok {
+		return nil, ErrNoDownAuthored
+	}
+
+	return authored, nil
+}
+
+// stagedTable is the table every staged operation names, since only the index names carry meaning.
+const stagedTable = "staged"
+
+// compiler turns a staged index operation into the one statement its index name spells.
 type compiler struct{}
 
 // Compile renders the statement a staged operation stands for, refusing anything else.
 func (compiler) Compile(op ir.Operation) ([]driver.Statement, error) {
-	drop, ok := op.(ir.DropTable)
-	if !ok {
-		return nil, fmt.Errorf("the staged compiler was given %s", op.Kind())
+	switch typed := op.(type) {
+	case ir.AddIndex:
+		return statement(typed.Name), nil
+	case ir.DropIndex:
+		return statement(typed.Name), nil
 	}
 
-	return []driver.Statement{{SQL: drop.Table, NoTransaction: standalone(drop.Table)}}, nil
+	return nil, fmt.Errorf("the staged compiler was given %s", op.Kind())
+}
+
+// statement renders one staged operation, uppercase meaning it cannot run inside a transaction.
+func statement(name string) []driver.Statement {
+	return []driver.Statement{{SQL: name, NoTransaction: standalone(name)}}
 }
 
 // standalone reports whether a staged statement declared it cannot run inside a transaction.
@@ -333,10 +368,20 @@ func operations(spec string) ir.Operations {
 	ops := make(ir.Operations, 0, len(spec))
 
 	for i, letter := range spec {
-		ops = append(ops, ir.DropTable{Table: fmt.Sprintf("%c%d", letter, i)})
+		ops = append(ops, addIndex(fmt.Sprintf("%c%d", letter, i)))
 	}
 
 	return ops
+}
+
+// addIndex is a staged operation that reverses cleanly, which is what a rollback fixture needs.
+func addIndex(name string) ir.AddIndex {
+	return ir.AddIndex{Table: stagedTable, Name: name, Columns: []string{"id"}}
+}
+
+// unrecorded is a staged operation with no inverse, because it records nothing to restore.
+func unrecorded(name string) ir.DropIndex {
+	return ir.DropIndex{Table: stagedTable, Name: name}
 }
 
 // versionAt renders the nth staged migration's version, ordered as the sequence it was given in.
@@ -371,7 +416,12 @@ func staged(t *testing.T, specs ...string) (Options, *source) {
 	t.Helper()
 
 	files := make([]history.File, 0, len(specs))
-	src := &source{ops: map[string]ir.Operations{}, fail: map[string]error{}}
+	src := &source{
+		ops:    map[string]ir.Operations{},
+		down:   map[string]ir.Operations{},
+		fail:   map[string]error{},
+		failUp: map[string]error{},
+	}
 
 	for i, spec := range specs {
 		m := migrationAt(t, i)
@@ -409,6 +459,16 @@ func ran(t *testing.T, n int, batch int64, ordinal int32) history.Record {
 		EngineVersion: "test",
 		IRVersion:     ir.Version,
 	}
+}
+
+// undone returns the row a previous rollback left for the nth staged migration, as it undid it.
+func undone(t *testing.T, n int, batch int64, ordinal int32) history.Record {
+	t.Helper()
+
+	rec := ran(t, n, batch, ordinal)
+	rec.Direction = ir.Down
+
+	return rec
 }
 
 // sumOf is the checksum a previous run of the nth staged migration recorded, source half first.

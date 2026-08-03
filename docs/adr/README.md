@@ -31,6 +31,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0019](0019-history-reconciliation.md) | Reconciliation replays the whole log, and a half-applied migration is a fifth state | Accepted | Where `ErrNoTable` lives, how absence is made unmissable, and why status is folded rather than looked up |
 | [0020](0020-lock-contention.md) | Lock contention: one budget, no retry, and a holder read after the fact | Accepted | How long to wait, where the sentinel lives, what an operator is told, and what "recoverable" means per strategy |
 | [0021](0021-apply-executor.md) | The apply queue reconciles under the lock, and a batch belongs to one database | Accepted | Where a migration's operations come from, who decides what is pending, what a batch numbers, and where the history write sits |
+| [0022](0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it | Accepted | Where a down comes from, what order a rollback undoes in, what halts one before it starts, and what a down row records |
 
 ## When to write one
 

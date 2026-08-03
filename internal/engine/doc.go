@@ -7,8 +7,9 @@
 // opens databases (M4-T1, M4-T2). Turning operations into statements is internal/plan, which needs
 // no database either. What arrives here is a sequence and a way to compile it.
 //
-// Status: the queue is complete (M4-T5). The dirty-state model is M4-T9, rollback is M4-T6, and the
-// transaction opt-out is completed in M13-T4. See docs/adr/0021-apply-executor.md.
+// Status: both queues are complete — apply in M4-T5 and rollback in M4-T6. The dirty-state model is
+// M4-T9, narrowing either queue with --step and --to is M4-T8, and the transaction opt-out is
+// completed in M13-T4. See docs/adr/0021-apply-executor.md and docs/adr/0022-rollback-executor.md.
 //
 // # What Apply is given, and why the operations arrive late
 //
@@ -37,6 +38,15 @@
 //	per migration      Emit, hash, compile, group, refuse, run, record inside the last transaction
 //	unlock             deferred, so it runs after the rollback rather than before it
 //
+// A rollback runs the same steps in the same order with one difference, and it is the difference
+// this executor exists to make: the whole queue is emitted, inverted, compiled and refusal-checked
+// before the first statement of any of it runs, and only then is a batch allocated.
+//
+//	classifyDown       applied runs, pending is skipped, missing refuses along with drifted and dirty
+//	invert             every migration: Emit down, derive where none was authored, compile, refuse
+//	Latest             after invert, so a refused rollback allocates no batch at all
+//	per migration      run, record inside the last transaction
+//
 // Lock before Ensure, because two runs racing between the existence check and the CREATE TABLE
 // collide on a catalog index, and the advisory key is derived from schema and table names and so
 // needs no table to exist.
@@ -58,6 +68,51 @@
 // giving an advisory lock back included, so a release that ran before the rollback would turn a
 // failed migration into a failed release as well — and the second failure is the one an operator
 // reads.
+//
+// # Why an apply is lazy and a rollback is not
+//
+// An apply emits one migration at a time, because migration 5's operations may depend on the column
+// migration 4 just created — emitted up front, 5 would be emitted against a database where 4 has not
+// run. The stated cost is that a migration which will not load is found only after the ones before
+// it applied (ADR 0021).
+//
+// A rollback cannot pay that cost. It runs newest first, so an irreversible migration at position
+// three would be met only after five and four had been undone, leaving a database carrying
+// migrations whose successors are gone — a schema nothing describes. Irreversibility is a property
+// of the migration rather than of the run, so it is knowable before anything happens, and the whole
+// queue is therefore inverted before any of it runs. ir.ReverseAll refuses whole for the same reason
+// one level down: a partial reversal is worse than none (ADR 0008).
+//
+// The mirror-image price is real and is not hidden: a down is emitted while the migrations after it
+// are still applied, rather than against the state it will run against. No shape avoids both.
+//
+// # A migration that authors no down
+//
+// The source is asked for the down direction first, because a down its author wrote beats one this
+// framework guessed at — that is what invariant #10 promises. A source that reports
+// ErrNoDownAuthored gets its up operations asked for and inverted with ir.ReverseAll.
+//
+// Deriving here rather than in each SDK is the argument that put grouping here rather than in each
+// driver: three SDKs must not reach three different inverses for one migration. The sentinel lives
+// beside the interface that consumes it, which is history.ErrNoTable's precedent, and every source
+// owes it.
+//
+// The hazard is stated rather than hidden. Deriving re-emits a migration's up against a database
+// where it is already applied, and ADR 0009 permits a migration to branch on live query results, so
+// one that emits differently the second time yields an inverse of something that never ran. The
+// history records only a digest, so nothing can catch it after the fact; verifying an inverse
+// against the live schema needs introspection and is M11-T2's. Authoring a down avoids it entirely.
+//
+// # The order a rollback undoes in is the order the runs happened
+//
+// Not version order: a declared dependency may point backwards in time, which ADR 0018 makes the use
+// case rather than a mistake, so a later-timestamped migration can have run first. Not the reverse
+// of the reconciled report either: that is the order the current files would run in, and a
+// dependency edge added after both applied makes it disagree with what happened.
+//
+// The order is (Batch, Ordinal) descending, read from the run that applied each migration — the
+// exact inverse of history.byRun. That pair is the history table's primary key, so no two runs can
+// tie and the order is total.
 //
 // # A batch belongs to one database
 //
@@ -117,7 +172,14 @@
 //   - any migration reconciling to drifted (M4-T7) or dirty (M4-T9). Both refuse the whole run
 //     rather than the migration, including the ones queued ahead of it: running until the queue
 //     reaches the problem leaves a partially migrated database for a condition that was knowable
-//     before the first statement.
+//     before the first statement. Drift refuses a rollback for a stronger reason than it refuses an
+//     apply — the undo about to run was authored by bytes that are not the ones that ran;
+//   - a version the database carries that no file describes, on a rollback only. An apply skips it
+//     because there is nothing to run for it; a rollback runs newest first, so it sits in front of
+//     every migration older than it and stepping around it would undo them while it stays. The case
+//     that decides the rule is migr down against a misconfigured migrations.dir: every applied
+//     version reconciles to missing, and a skip rule reports nothing to undo against a fully
+//     migrated database.
 //
 // The switch on history.State carries no default, so exhaustive names this package the day a sixth
 // state arrives — M13-T14 already says it needs one. The trailing return is the answer for a state
@@ -137,7 +199,13 @@
 //
 // The last is the hole M3-T5 left: its refusal counted groups, so a migration that was entirely
 // standalone statements passed it and was rejected by the driver instead. Both belong to M13-T4,
-// which deletes two preconditions rather than rewriting an executor.
+// which deletes two preconditions rather than rewriting an executor — for both directions at once,
+// since an inverse groups independently of what it inverts and a migration that applied cleanly may
+// have a down these refuse.
+//
+// On a rollback all four fire during invert, so they are batch-wide preconditions rather than
+// per-migration ones. That is strictly stronger than the apply path, where they fire as the queue
+// reaches each migration.
 //
 // # A failure aborts; it never undoes
 //
@@ -145,6 +213,11 @@
 // error names the migration and the operation the failing statement was compiled from (invariant
 // #9). Result is populated alongside that error, which is unusual in Go and is the point: without
 // it an operator cannot see which migrations did commit.
+//
+// A rollback that fails partway is the same shape: what it undid stays undone, what it had not
+// reached stays applied, and the migration it failed on stays applied too — a failed down leaves the
+// fold unchanged, which is what internal/history means by "a failed rollback leaves the migration
+// applied".
 //
 // A run that failed is recorded after its transaction has rolled back, on a context that outlives
 // whatever canceled it, and the write is joined into the failure rather than replacing it.

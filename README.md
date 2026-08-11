@@ -301,6 +301,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0020](docs/adr/0020-lock-contention.md) | Lock contention: one budget, no retry, and a holder read after the fact |
 | [0021](docs/adr/0021-apply-executor.md) | The apply queue reconciles under the lock, and a batch belongs to one database |
 | [0022](docs/adr/0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it |
+| [0023](docs/adr/0023-batch-narrowing.md) | `--to` names the state to end in, and narrowing is a prefix of the run order |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

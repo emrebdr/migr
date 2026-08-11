@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/emrebdr/migr/internal/checksum"
@@ -44,6 +45,21 @@ var ErrNoDownAuthored = errors.New("this migration authors no down of its own")
 
 // ErrMissing marks a version the database carries that no migration file describes, for errors.Is.
 var ErrMissing = errors.New("the database carries a version no migration file describes")
+
+// ErrNoSteps marks a step count that would leave a run with nothing to act on, for errors.Is.
+var ErrNoSteps = errors.New("a step count must name at least one migration")
+
+// ErrUnknownVersion marks a version to stop at that this run reconciled to nothing, for errors.Is.
+var ErrUnknownVersion = errors.New("no migration in this run carries that version")
+
+// ErrNotApplied marks a version to roll back to that the database does not carry, for errors.Is.
+var ErrNotApplied = errors.New("this database does not carry that version")
+
+// ErrNoBatch marks a batch selector given to an apply, which has no batch to select.
+var ErrNoBatch = errors.New("only a rollback can act on the last batch")
+
+// ErrUnknownScope marks a selector this build has no rule for, for errors.Is.
+var ErrUnknownScope = errors.New("this build does not know that way of narrowing a run")
 
 // stamp renders a recorded instant in a message, in UTC because a history row is read anywhere.
 const stamp = "2006-01-02 15:04:05 UTC"
@@ -203,6 +219,54 @@ func irreversibleError(cause error) error {
 		"anything runs, because one that stopped at an operation with no inverse would leave a "+
 		"schema no migration describes (ADR 0008); author a down for this migration to roll it back",
 		cause)
+}
+
+// stepsError refuses a step count that names no migration, which is a typo rather than a request.
+func stepsError(steps int32) error {
+	return fmt.Errorf("%w, and %d names none -- a run that would act on nothing is a mistyped "+
+		"count rather than a request for one, and omitting the flag is how you ask for everything",
+		ErrNoSteps, steps)
+}
+
+// blankVersionError refuses a version to stop at that names nothing, before anything is compared.
+func blankVersionError() error {
+	return fmt.Errorf("%w: the version to stop at is blank", ErrUnknownVersion)
+}
+
+// unknownVersionError refuses a version to stop at that this run reconciled to nothing at all.
+func unknownVersionError(version string, reconciled []string) error {
+	return fmt.Errorf("%w: %q -- this run reconciled %s. A version that is not one of those is "+
+		"either a typo or a migration this run was never given, and applying every migration or "+
+		"none of them are both worse answers than stopping",
+		ErrUnknownVersion, version, describeVersions(reconciled))
+}
+
+// notAppliedError refuses leaving a database at a version it does not carry, which it cannot do.
+func notAppliedError(version string, applied []string) error {
+	return fmt.Errorf("%w: %q, so it cannot be left at it -- this database carries %s. Rolling "+
+		"back to a version that is not applied would have to guess whether you meant to stop "+
+		"before it or to undo everything",
+		ErrNotApplied, version, describeVersions(applied))
+}
+
+// noBatchError refuses a batch selector on an apply, where nothing queued has been in a batch.
+func noBatchError() error {
+	return fmt.Errorf("%w: a pending migration has never run, so it belongs to no batch and there "+
+		"is no last one to act on. Going up, --step and --to are what narrow a run", ErrNoBatch)
+}
+
+// unknownScopeError refuses a run rather than guessing at a selector this build has no rule for.
+func unknownScopeError(kind string) error {
+	return fmt.Errorf("%w: %q", ErrUnknownScope, kind)
+}
+
+// describeVersions lists the versions a refusal can offer instead, saying so plainly when none.
+func describeVersions(versions []string) string {
+	if len(versions) == 0 {
+		return "no migrations at all"
+	}
+
+	return strings.Join(versions, ", ")
 }
 
 // unknownStateError refuses a run rather than guessing at a state this build has no rule for.

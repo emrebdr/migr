@@ -31,6 +31,8 @@ type Options struct {
 	Clock Clock
 	// Runtime is the language migrations are written in, spelled as migr.yaml spells it.
 	Runtime string
+	// Scope narrows what this run acts on, and an unset one acts on everything the direction can.
+	Scope Scope
 }
 
 // check reports what an apply run was not given, before it takes a lock it could not use.
@@ -51,5 +53,5 @@ func (o Options) check() error {
 		return ErrNoRuntime
 	}
 
-	return nil
+	return o.Scope.check()
 }

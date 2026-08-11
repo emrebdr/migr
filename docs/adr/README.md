@@ -32,6 +32,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0020](0020-lock-contention.md) | Lock contention: one budget, no retry, and a holder read after the fact | Accepted | How long to wait, where the sentinel lives, what an operator is told, and what "recoverable" means per strategy |
 | [0021](0021-apply-executor.md) | The apply queue reconciles under the lock, and a batch belongs to one database | Accepted | Where a migration's operations come from, who decides what is pending, what a batch numbers, and where the history write sits |
 | [0022](0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it | Accepted | Where a down comes from, what order a rollback undoes in, what halts one before it starts, and what a down row records |
+| [0023](0023-batch-narrowing.md) | `--to` names the state to end in, and narrowing is a prefix of the run order | Accepted | What `--step` and `--to` select in each direction, which batch a bare `migr down` acts on, and where a refusal sits relative to a scope |
 
 ## When to write one
 

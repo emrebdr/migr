@@ -7,10 +7,10 @@
 // opens databases (M4-T1, M4-T2). Turning operations into statements is internal/plan, which needs
 // no database either. What arrives here is a sequence and a way to compile it.
 //
-// Status: both queues are complete — apply in M4-T5 and rollback in M4-T6 — and drift reporting in
-// M4-T7. The dirty-state model is M4-T9, narrowing either queue with --step and --to is M4-T8, and
-// the transaction opt-out is completed in M13-T4. See docs/adr/0021-apply-executor.md and
-// docs/adr/0022-rollback-executor.md.
+// Status: both queues are complete — apply in M4-T5 and rollback in M4-T6 — with drift reporting in
+// M4-T7 and narrowing in M4-T8. The dirty-state model is M4-T9 and the transaction opt-out is
+// completed in M13-T4. See docs/adr/0021-apply-executor.md, docs/adr/0022-rollback-executor.md and
+// docs/adr/0023-batch-narrowing.md.
 //
 // # What Apply is given, and why the operations arrive late
 //
@@ -35,6 +35,7 @@
 //	Read               after Ensure
 //	Reconcile          pure
 //	classify           switch on history.State, no default; refusals fire before any statement
+//	narrow             a prefix of what survived, before the ordinals are assigned
 //	Latest             only when something will run
 //	per migration      Emit, hash, compile, group, refuse, run, record inside the last transaction
 //	unlock             deferred, so it runs after the rollback rather than before it
@@ -44,6 +45,7 @@
 // before the first statement of any of it runs, and only then is a batch allocated.
 //
 //	classifyDown       applied runs, pending is skipped, missing refuses along with drifted and dirty
+//	newestFirst        then narrow, since "the last two applied" needs the run order to mean anything
 //	invert             every migration: Emit down, derive where none was authored, compile, refuse
 //	Latest             after invert, so a refused rollback allocates no batch at all
 //	per migration      run, record inside the last transaction
@@ -115,6 +117,41 @@
 // exact inverse of history.byRun. That pair is the history table's primary key, so no two runs can
 // tie and the order is total.
 //
+// # Narrowing is a prefix of the order the run is already in
+//
+// Scope is exactly one of All, Steps, To, or LastBatch, and its zero value is All — so options
+// nobody narrowed behave as they did before the field existed. All four select a leading run of the
+// queue; they differ only in how that run ends.
+//
+// Nothing here compares two versions, and that is the point. Going up the sequence is
+// migration.Order's, where ADR 0018 makes a backwards-pointing declared dependency the use case;
+// going down it is (Batch, Ordinal) descending, which ADR 0022 chose over version-descending by
+// name. A prefix of either is meaningful and a version comparison over either is wrong — and wrong
+// in a way that every version-ordered fixture would agree with.
+//
+// --to names the state the database should end in rather than the last migration acted on, so
+// up --to X applies through X and down --to X leaves X applied. Going up the cut is taken over the
+// report rather than over the queue, because X may already be applied and a hotfix inserted behind
+// it must still run. Going down the queue has been re-sorted, so the cut is taken there and a
+// version the database does not carry is refused rather than guessed at.
+//
+// LastBatch reads the highest recorded.Batch among the applied queue, which is the anchor up run of
+// each migration the database still carries. It deliberately does not read Latest: that is
+// direction- and outcome-blind, so after one rollback the highest batch in the table is the
+// rollback's own, and a second migr down would report nothing to do while every earlier batch stayed
+// unreachable. LastBatch is a rollback's alone — a pending migration has never run and belongs to no
+// batch — and an apply given it is refused before the lock.
+//
+// Narrowing happens after the state switch, so a drifted, dirty or missing migration refuses the
+// whole run even when the scope would never have reached it. That is deliberate: those are
+// properties of the reconciled database rather than of one invocation's appetite. It over-refuses
+// for missing, which ADR 0023 records rather than hides.
+//
+// migr down with no arguments rolls back the last batch. The zero Scope is not that, because a zero
+// value meaning something different per direction is one nobody can read at a call site — so M5-T2's
+// down command passes LastBatch() when neither flag is given, and that line is the last piece of
+// M4-T8's done-when.
+//
 // # A batch belongs to one database
 //
 // A batch is one migr invocation against one database, and it is one more than that database's own
@@ -123,7 +160,7 @@
 // used. Two databases in one migr.yaml therefore get unrelated numbers, and migr up loops.
 //
 // It is read from Latest rather than from the log already in hand, because the batch is a decision
-// about writing while the log was read for reconciling — and M4-T8 will filter that log by --step
+// about writing while the log was read for reconciling — and M4-T8 now filters that log by --step
 // and --to, at which point a maximum taken from it is the maximum of a filtered slice. Under the
 // lock the two cannot disagree.
 //

@@ -16,6 +16,10 @@ func Apply(ctx context.Context, conn driver.Conn, opts Options) (Result, error) 
 		return Result{}, err
 	}
 
+	if err := opts.Scope.checkUp(); err != nil {
+		return Result{}, err
+	}
+
 	return e.locked(ctx, e.applyAll)
 }
 
@@ -26,7 +30,7 @@ func (e *executor) applyAll(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 
-	queue, skipped, err := classify(report)
+	queue, skipped, err := classify(report, e.opts.Scope)
 	if err != nil {
 		return Result{}, err
 	}

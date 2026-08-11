@@ -951,3 +951,224 @@ func TestARolledBackMigrationIsFreeToBeEdited(t *testing.T) {
 	t.Log("Invariant #6 protects applied migrations. One the database no longer carries is free")
 	t.Log("to change, which is why the fold reports pending rather than drifted for it.")
 }
+
+// narrowed returns the options a queue test uses with one selector applied to it.
+func narrowed(t *testing.T, scope engine.Scope, items ...staged) engine.Options {
+	t.Helper()
+
+	opts := queueOptions(t, items...)
+	opts.Scope = scope
+
+	return opts
+}
+
+func TestRollingBackTheLastBatchLeavesTheOneBeforeItApplied(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			dsn := dsnFor(server.env, server.dsn)
+			target := scratchSchema(t, dsn)
+
+			session := queueSession(t, dsn, target)
+			observer := queueSession(t, dsn, target)
+
+			first := createAccounts(t)
+			second := addNickname(t)
+
+			if _, err := engine.Apply(t.Context(), session, queueOptions(t, first)); err != nil {
+				t.Fatalf("applying the first batch: %v", err)
+			}
+
+			afterFirst := describeSchema(t, observer, target)
+
+			if _, err := engine.Apply(t.Context(), session,
+				queueOptions(t, first, second)); err != nil {
+				t.Fatalf("applying the second batch: %v", err)
+			}
+
+			if describeSchema(t, observer, target) == afterFirst {
+				t.Fatal("the second batch changed nothing another session can see, so the " +
+					"assertion below would pass for the wrong reason")
+			}
+
+			result, err := engine.Rollback(t.Context(), session,
+				narrowed(t, engine.LastBatch(), first, second))
+			if err != nil {
+				t.Fatalf("Rollback: %v", err)
+			}
+
+			if len(result.Runs) != 1 || result.Runs[0].Migration.Version != second.version {
+				t.Fatalf("the rollback undid %d migrations, want the second batch alone",
+					len(result.Runs))
+			}
+
+			if after := describeSchema(t, observer, target); after != afterFirst {
+				t.Errorf("the schema did not return to what the first batch left:\n%s",
+					diffLines(afterFirst, after))
+			}
+
+			t.Log("This is migr down with no arguments: one invocation is the unit an operator")
+			t.Log("undoes, and the migration before it in the same repository stays applied.")
+		})
+	}
+}
+
+func TestASecondRollbackOfTheLastBatchTakesTheBatchBeforeIt(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+	observer := queueSession(t, dsn, target)
+
+	first := createAccounts(t)
+	second := addNickname(t)
+
+	if err := session.History().Ensure(t.Context()); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+
+	empty := describeSchema(t, observer, target)
+
+	if _, err := engine.Apply(t.Context(), session, queueOptions(t, first)); err != nil {
+		t.Fatalf("applying the first batch: %v", err)
+	}
+
+	if _, err := engine.Apply(t.Context(), session, queueOptions(t, first, second)); err != nil {
+		t.Fatalf("applying the second batch: %v", err)
+	}
+
+	for i := range 2 {
+		result, err := engine.Rollback(t.Context(), session,
+			narrowed(t, engine.LastBatch(), first, second))
+		if err != nil {
+			t.Fatalf("rollback %d: %v", i+1, err)
+		}
+
+		if len(result.Runs) != 1 {
+			t.Fatalf("rollback %d undid %d migrations, want one batch's worth", i+1,
+				len(result.Runs))
+		}
+	}
+
+	if after := describeSchema(t, observer, target); after != empty {
+		t.Errorf("two rollbacks did not return the schema to empty:\n%s", diffLines(empty, after))
+	}
+
+	t.Log("Latest is direction-blind, so after the first rollback the highest batch in the table")
+	t.Log("is that rollback's own. Reading the batch from Latest would report nothing to undo")
+	t.Log("here, and the first batch would be unreachable forever.")
+}
+
+func TestSteppingOneUpAndOneDownRoundTripsTheSchemaDigest(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+	observer := queueSession(t, dsn, target)
+
+	first := createAccounts(t)
+	second := addNickname(t)
+
+	if _, err := engine.Apply(t.Context(), session, queueOptions(t, first)); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	afterFirst := describeSchema(t, observer, target)
+
+	stepped, err := engine.Apply(t.Context(), session,
+		narrowed(t, engine.Steps(1), first, second))
+	if err != nil {
+		t.Fatalf("stepping up: %v", err)
+	}
+
+	if len(stepped.Runs) != 1 || stepped.Runs[0].Ordinal != 1 {
+		t.Fatalf("--step 1 ran %d migrations at ordinal %d, want one numbered from one",
+			len(stepped.Runs), stepped.Runs[0].Ordinal)
+	}
+
+	back, err := engine.Rollback(t.Context(), session,
+		narrowed(t, engine.Steps(1), first, second))
+	if err != nil {
+		t.Fatalf("stepping down: %v", err)
+	}
+
+	if len(back.Runs) != 1 {
+		t.Fatalf("--step 1 undid %d migrations, want one", len(back.Runs))
+	}
+
+	if after := describeSchema(t, observer, target); after != afterFirst {
+		t.Errorf("one step up and one step down did not round-trip:\n%s",
+			diffLines(afterFirst, after))
+	}
+}
+
+func TestNarrowingToAVersionLandsTheSchemaOnTheStateThatVersionDescribes(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+	observer := queueSession(t, dsn, target)
+
+	first := createAccounts(t)
+	second := addNickname(t)
+
+	if _, err := engine.Apply(t.Context(), session,
+		narrowed(t, engine.To(first.version), first, second)); err != nil {
+		t.Fatalf("applying up to the first: %v", err)
+	}
+
+	atFirst := describeSchema(t, observer, target)
+
+	if strings.Contains(atFirst, "nickname") {
+		t.Fatalf("--to the first version applied the second as well:\n%s", atFirst)
+	}
+
+	if _, err := engine.Apply(t.Context(), session, queueOptions(t, first, second)); err != nil {
+		t.Fatalf("applying the rest: %v", err)
+	}
+
+	if _, err := engine.Rollback(t.Context(), session,
+		narrowed(t, engine.To(first.version), first, second)); err != nil {
+		t.Fatalf("rolling back to the first: %v", err)
+	}
+
+	if after := describeSchema(t, observer, target); after != atFirst {
+		t.Errorf("--to did not land on the state that version describes:\n%s",
+			diffLines(atFirst, after))
+	}
+
+	t.Log("Both runs name the same version and both leave the database at it -- applying")
+	t.Log("through it going up, undoing everything newer going down.")
+}
+
+func TestANarrowedRollbackRecordsAFreshBatchNumberedFromOne(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+
+	first := createAccounts(t)
+	second := addNickname(t)
+
+	if _, err := engine.Apply(t.Context(), session, queueOptions(t, first, second)); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	result, err := engine.Rollback(t.Context(), session,
+		narrowed(t, engine.Steps(1), first, second))
+	if err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	if result.Batch != 2 {
+		t.Errorf("the narrowed rollback recorded under batch %d, want one past the apply",
+			result.Batch)
+	}
+
+	runs := recordedRuns(t, session)
+
+	last := runs[len(runs)-1]
+	if last.Batch != 2 || last.Ordinal != 1 || last.Direction != ir.Down {
+		t.Errorf("the down row is (batch %d, ordinal %d, %s), want (2, 1, down)",
+			last.Batch, last.Ordinal, last.Direction)
+	}
+}

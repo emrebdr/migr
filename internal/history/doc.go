@@ -151,6 +151,12 @@
 // run that applied each migration — which is why this key rather than the clock is what a rollback
 // can be built on at all (M4-T6, engine.newestFirst).
 //
+// Which batch migr down acts on is a third question, and Latest cannot answer it. Latest has no
+// WHERE clause: a down row, a failed row and a dirty row each count as the most recent run, which is
+// correct for allocating the next batch and wrong for selecting one to undo. The batch a bare
+// rollback acts on is the highest Batch among the anchor runs of the migrations the database still
+// carries — Status.Recorded, which is also the batch migr status prints (M4-T8, ADR 0023).
+//
 // # This package reads no clock
 //
 // AppliedAt and Duration are fields a caller fills in. forbidigo bans time.Now everywhere outside

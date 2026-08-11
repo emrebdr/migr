@@ -23,19 +23,26 @@ type queued struct {
 	source checksum.Digest
 	// recorded is the run that put it in the state this queue acts on, and the order a rollback reverses.
 	recorded history.Record
+	// state is what reconciliation resolved it to, which is what a narrowed run reports it still in.
+	state history.State
 	// ordinal is its position within the batch, counting from one.
 	ordinal int32
 }
 
-// selected walks a report once, refusing a version it sees twice and asking a rule what each does.
-func selected(report history.Report, queues func(history.Status) (bool, error)) ([]queued, []Skipped, error) {
+// resolved reads a report's statuses, refusing one over a database that turned out to have no history.
+func resolved(report history.Report) ([]history.Status, error) {
 	statuses, present := report.Resolved()
 	if !present {
-		return nil, nil, fmt.Errorf("%w, though creating it reported success -- reading that as "+
+		return nil, fmt.Errorf("%w, though creating it reported success -- reading that as "+
 			"'no runs yet' would make a fully migrated database look virgin (ADR 0019)",
 			history.ErrNoTable)
 	}
 
+	return statuses, nil
+}
+
+// selected walks a report once, refusing a version it sees twice and asking a rule what each does.
+func selected(statuses []history.Status, queues func(history.Status) (bool, error)) ([]queued, []Skipped, error) {
 	var queue []queued
 
 	var skipped []Skipped
@@ -63,6 +70,7 @@ func selected(report history.Report, queues func(history.Status) (bool, error)) 
 			migration: st.Migration,
 			source:    st.Source,
 			recorded:  st.Recorded,
+			state:     st.State,
 		})
 	}
 
@@ -70,23 +78,43 @@ func selected(report history.Report, queues func(history.Status) (bool, error)) 
 }
 
 // classify splits a reconciliation report into what an apply run will apply and what it will not.
-func classify(report history.Report) ([]queued, []Skipped, error) {
-	queue, skipped, err := selected(report, runnable)
+func classify(report history.Report, scope Scope) ([]queued, []Skipped, error) {
+	statuses, err := resolved(report)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return number(queue), skipped, nil
+	queue, skipped, err := selected(statuses, runnable)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	queue, dropped, err := scope.narrowUp(queue, statuses)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return number(queue), append(skipped, dropped...), nil
 }
 
 // classifyDown splits it into what a rollback will undo, newest first, or refuses the whole run.
-func classifyDown(report history.Report) ([]queued, []Skipped, error) {
-	queue, skipped, err := selected(report, reversible)
+func classifyDown(report history.Report, scope Scope) ([]queued, []Skipped, error) {
+	statuses, err := resolved(report)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return number(newestFirst(queue)), skipped, nil
+	queue, skipped, err := selected(statuses, reversible)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	queue, dropped, err := scope.narrowDown(newestFirst(queue))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return number(queue), append(skipped, dropped...), nil
 }
 
 // runnable reports whether a reconciled migration should run, refusing the states nothing can.

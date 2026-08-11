@@ -6,7 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emrebdr/migr/internal/checksum"
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/engine"
+	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/ir"
 )
 
 func TestExitCode(t *testing.T) {
@@ -61,6 +65,80 @@ func TestGivingUpOnTheLockExitsWithTheLockContentionCode(t *testing.T) {
 				t.Log("(invariant #1), so the contract's sentinel is the only thing it can read.")
 			}
 		})
+	}
+}
+
+func TestAnEditedMigrationExitsWithTheChecksumDriftCode(t *testing.T) {
+	drift := &engine.DriftError{
+		Version:   "20260727T153000",
+		Direction: ir.Up,
+		Recorded:  checksum.Checksum{Source: checksum.OfSource([]byte("as applied"))},
+		Source:    checksum.OfSource([]byte("as edited")),
+	}
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{name: "on its own", err: drift},
+		{name: "found through a wrap", err: fmt.Errorf("applying migrations: %w", drift)},
+		{name: "as the bare sentinel", err: engine.ErrDrifted},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ExitCode(tt.err); got != ExitDrift {
+				t.Errorf("ExitCode = %d, want %d", got, ExitDrift)
+				t.Log("CLAUDE.md §5 assigns 4 to checksum drift, and invariant #6 makes a mismatch")
+				t.Log("a hard error no flag repairs. The engine refuses before anything runs, so")
+				t.Log("the sentinel is the only thing internal/cli has to read.")
+			}
+		})
+	}
+}
+
+func TestAnUnreadableChecksumIsNotDrift(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "a checksum that will not parse",
+			err: &history.CorruptError{
+				Table: "migr_migrations", Field: "checksum", Err: checksum.ErrMalformed,
+			},
+		},
+		{
+			name: "a row written under a scheme this build cannot compute",
+			err: &history.CorruptError{
+				Table: "migr_migrations",
+				Field: "checksum",
+				Err:   &checksum.SchemeError{Received: "migr2", Supported: checksum.Supported()},
+			},
+		},
+		{name: "the bare corrupt sentinel", err: history.ErrCorrupt},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ExitCode(tt.err); got != ExitRuntime {
+				t.Errorf("ExitCode = %d, want %d", got, ExitRuntime)
+				t.Log("A row this build cannot read needs manual repair and one under a future")
+				t.Log("scheme needs a newer migr. Neither is someone editing an applied migration,")
+				t.Log("and reporting either as exit 4 is how operators learn to ignore exit 4.")
+			}
+		})
+	}
+}
+
+func TestAnExplicitExitCodeStillBeatsTheDriftSentinel(t *testing.T) {
+	drift := &engine.DriftError{Version: "20260727T153000"}
+
+	err := NewExitError(ExitValidation, drift)
+	if got := ExitCode(err); got != ExitValidation {
+		t.Errorf("ExitCode = %d, want %d", got, ExitValidation)
+		t.Log("A command that classified a failure itself has more context than this fallback,")
+		t.Log("and migr validate will classify drift as one problem among several it reports.")
 	}
 }
 

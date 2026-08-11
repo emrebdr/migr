@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 // runCLI executes the root command with args, returning stdout, stderr and error.
@@ -169,5 +172,31 @@ func TestUnknownFlagFails(t *testing.T) {
 func TestVersionRejectsPositionalArgs(t *testing.T) {
 	if _, _, err := runCLI(t, "version", "extra"); err == nil {
 		t.Fatal("expected an error for unexpected positional argument")
+	}
+}
+
+// repairing names the flags that would bypass checksum verification, which invariant #6 forbids.
+var repairing = []string{
+	"repair",
+	"baseline",
+	"skip-checksum",
+	"ignore-drift",
+	"allow-drift",
+	"no-verify-checksum",
+}
+
+func TestNoFlagRepairsARecordedChecksum(t *testing.T) {
+	for _, cmd := range append(newRootCmd().Commands(), newRootCmd()) {
+		for _, flags := range []*pflag.FlagSet{cmd.PersistentFlags(), cmd.Flags()} {
+			flags.VisitAll(func(f *pflag.Flag) {
+				if slices.Contains(repairing, f.Name) {
+					t.Errorf("migr %s registers --%s", cmd.Name(), f.Name)
+					t.Log("Invariant #6: applied migrations are immutable, a checksum mismatch is a")
+					t.Log("hard error, and any repair path must be an explicit, separately-named")
+					t.Log("command that says exactly what it is changing -- never a flag on up or")
+					t.Log("down, where it silently rewrites what the next run compares against.")
+				}
+			})
+		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/emrebdr/migr/internal/checksum"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/history"
@@ -36,6 +37,8 @@ type staged struct {
 	ops ir.Operations
 	// down is the undo it authored, and staging none makes the executor derive one.
 	down ir.Operations
+	// body overrides what its file holds, so a test can edit a migration after applying it.
+	body string
 	// probe runs while the executor is under the migration lock, when a test wants to look.
 	probe func(t *testing.T)
 }
@@ -132,7 +135,18 @@ func parseStaged(t *testing.T, item staged) migration.Migration {
 
 // stagedBody is what a staged migration's file holds, which its source digest covers.
 func stagedBody(item staged) string {
+	if item.body != "" {
+		return item.body
+	}
+
 	return "-- migration " + item.version + "\n"
+}
+
+// rewritten returns the same migration with its file edited, as someone amending it in place would.
+func rewritten(item staged) staged {
+	item.body = stagedBody(item) + "-- and a line its author added afterwards\n"
+
+	return item
 }
 
 // createAccounts is the migration every queue test starts from, and the one later ones need.
@@ -808,4 +822,132 @@ func TestAnAuthoredDownIsRunInsteadOfADerivedOne(t *testing.T) {
 
 	t.Log("The derived inverse of create_table is drop_table, so a run that ignored the authored")
 	t.Log("down would have destroyed the table this one deliberately kept.")
+}
+
+func TestAnEditedMigrationRefusesTheRunAndReportsBothChecksums(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			dsn := dsnFor(server.env, server.dsn)
+			target := scratchSchema(t, dsn)
+
+			session := queueSession(t, dsn, target)
+			observer := queueSession(t, dsn, target)
+
+			first := createAccounts(t)
+			if _, err := engine.Apply(t.Context(), session, queueOptions(t, first)); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+
+			applied := describeSchema(t, observer, target)
+			recorded := recordedRuns(t, session)
+
+			_, err := engine.Apply(t.Context(), session,
+				queueOptions(t, rewritten(first), addNickname(t)))
+			if !errors.Is(err, engine.ErrDrifted) {
+				t.Fatalf("Apply returned %v, want a refusal reporting ErrDrifted", err)
+			}
+
+			var drift *engine.DriftError
+			if !errors.As(err, &drift) {
+				t.Fatalf("errors.As found no *engine.DriftError in %T", err)
+			}
+
+			if drift.Recorded != recorded[0].Checksum {
+				t.Errorf("the refusal reports %v recorded, want %v -- the value in the table",
+					drift.Recorded, recorded[0].Checksum)
+			}
+
+			if drift.Source != checksum.OfSource([]byte(stagedBody(rewritten(first)))) {
+				t.Errorf("the refusal reports %v on disk, want what the edited file hashes to",
+					drift.Source)
+			}
+
+			if drift.Source == drift.Recorded.Source {
+				t.Fatal("the two halves the message compares are equal, so the message would " +
+					"report drift while showing an operator two identical digests")
+			}
+
+			for _, want := range []string{drift.Recorded.String(), drift.Source.String()} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the message does not carry %s in full:\n%v", want, err)
+				}
+			}
+
+			if after := describeSchema(t, observer, target); after != applied {
+				t.Errorf("the refused run changed the schema:\n%s", diffLines(applied, after))
+			}
+
+			if runs := recordedRuns(t, session); len(runs) != len(recorded) {
+				t.Errorf("the history grew from %d rows to %d despite the refusal",
+					len(recorded), len(runs))
+			}
+
+			t.Log("The pending migration queued behind the edited one is what makes this a whole-run")
+			t.Log("refusal rather than a per-migration one: it would otherwise have applied first.")
+		})
+	}
+}
+
+func TestAnEditedMigrationRefusesARollbackToo(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+	observer := queueSession(t, dsn, target)
+
+	first := createAccounts(t)
+	if _, err := engine.Apply(t.Context(), session, queueOptions(t, first)); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	applied := describeSchema(t, observer, target)
+
+	_, err := engine.Rollback(t.Context(), session, queueOptions(t, rewritten(first)))
+	if !errors.Is(err, engine.ErrDrifted) {
+		t.Fatalf("Rollback returned %v, want a refusal reporting ErrDrifted", err)
+	}
+
+	if !strings.Contains(err.Error(), "stronger reason") {
+		t.Errorf("the refusal does not say why a rollback's is the stronger one:\n%v", err)
+	}
+
+	if after := describeSchema(t, observer, target); after != applied {
+		t.Errorf("the refused rollback changed the schema:\n%s", diffLines(applied, after))
+	}
+
+	t.Log("Going down, the undo about to run would be derived from bytes that are not the ones")
+	t.Log("that ran -- so the inverse would describe a schema change this database never made.")
+}
+
+func TestARolledBackMigrationIsFreeToBeEdited(t *testing.T) {
+	dsn := dsnFor(servers[0].env, servers[0].dsn)
+	target := scratchSchema(t, dsn)
+
+	session := queueSession(t, dsn, target)
+
+	first := createAccounts(t)
+	if _, err := engine.Apply(t.Context(), session, queueOptions(t, first)); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	if _, err := engine.Rollback(t.Context(), session, queueOptions(t, first)); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	result, err := engine.Apply(t.Context(), session, queueOptions(t, rewritten(first)))
+	if err != nil {
+		t.Fatalf("re-applying an edited migration the database no longer carries: %v", err)
+	}
+
+	if len(result.Runs) != 1 {
+		t.Fatalf("the run applied %d migrations, want the edited one", len(result.Runs))
+	}
+
+	runs := recordedRuns(t, session)
+	if got := runs[len(runs)-1].Checksum.Source; got != checksum.OfSource([]byte(stagedBody(rewritten(first)))) {
+		t.Errorf("the new row records %v, want the edited file's digest", got)
+	}
+
+	t.Log("Invariant #6 protects applied migrations. One the database no longer carries is free")
+	t.Log("to change, which is why the fold reports pending rather than drifted for it.")
 }

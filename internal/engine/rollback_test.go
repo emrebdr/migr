@@ -322,15 +322,29 @@ func TestADriftedMigrationRefusesTheWholeRollback(t *testing.T) {
 	conn := newRecorder(t, true)
 	conn.store.table = true
 
-	edited := ran(t, 0, 1, 1)
-	edited.Checksum.Source = checksum.OfSource([]byte("what the file used to hold"))
-	conn.store.runs = []history.Record{edited}
+	was := ran(t, 0, 1, 1)
+	was.Checksum.Source = checksum.OfSource([]byte("what the file used to hold"))
+	conn.store.runs = []history.Record{was}
 
 	opts, _ := staged(t, "a")
 
 	_, err := Rollback(t.Context(), conn, opts)
 	if !errors.Is(err, ErrDrifted) {
 		t.Fatalf("Rollback returned %v, want a refusal reporting ErrDrifted", err)
+	}
+
+	var drift *DriftError
+	if !errors.As(err, &drift) {
+		t.Fatalf("errors.As found no *DriftError in %T", err)
+	}
+
+	if drift.Direction != ir.Down {
+		t.Errorf("the refusal reports direction %q, want the one the run was performing",
+			drift.Direction)
+	}
+
+	if !strings.Contains(err.Error(), "stronger reason") {
+		t.Errorf("the refusal does not say why a rollback's is the stronger one: %v", err)
 	}
 
 	t.Log("Drift refuses a rollback for a stronger reason than it refuses an apply: the undo")

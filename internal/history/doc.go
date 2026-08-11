@@ -7,8 +7,8 @@
 // PostgreSQL, SQLite, and MySQL would each invent a different one.
 //
 // Status: contract complete (M2-T5), the first Store satisfying it in M3-T6 (PostgreSQL),
-// reconciliation complete (M4-T3), and the executor that writes through it in M4-T5. Checksum
-// verification and exit code 4 are M4-T7. See docs/adr/0013-migration-history.md,
+// reconciliation complete (M4-T3), the executor that writes through it in M4-T5, and the drift
+// this fold decides reported as exit code 4 in M4-T7. See docs/adr/0013-migration-history.md,
 // docs/adr/0019-history-reconciliation.md and docs/adr/0021-apply-executor.md.
 //
 // # Two vocabularies, deliberately kept apart
@@ -32,7 +32,7 @@
 //
 // There is deliberately no State.Blocking. Blocking works on the run axis because a dirty run
 // blocks every command identically; a state does not — drifted blocks up and down but not status,
-// and missing blocks neither — so one bool would be three different answers. M4-T5, M4-T7 and
+// and missing blocks neither — so one bool would be three different answers. M4-T5, M4-T6 and
 // M4-T9 each switch on State with no default instead, which is what makes exhaustive name every
 // one of them the day a sixth state arrives. M13-T14 already says it needs one.
 //

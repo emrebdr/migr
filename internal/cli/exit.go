@@ -4,14 +4,21 @@ import (
 	"errors"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/engine"
 )
 
 // Exit codes, as documented in CLAUDE.md §5.
 //
 // ExitCode resolves an explicit ExitError first, so a command may always classify a failure
-// itself. Below that it reads driver.ErrLockTimeout, because giving up on the migration lock is
-// contention rather than a runtime error, and recognizing the contract's sentinel in one place is
-// what saves every command from having to remember it.
+// itself. Below that it reads two sentinels, because recognizing them in one place is what saves
+// every command from having to remember them: driver.ErrLockTimeout, since giving up on the
+// migration lock is contention rather than a runtime error, and engine.ErrDrifted, since an
+// applied migration that was edited is the one failure invariant #6 gives a code of its own.
+//
+// Nothing else resolves itself here, and the boundary is deliberate. A history row this build
+// cannot read reports history.ErrCorrupt and a row written under a future checksum scheme reports
+// checksum.SchemeError; the first needs manual repair and the second needs a newer migr, so
+// neither is drift. Reporting either as exit code 4 is how operators learn to ignore exit code 4.
 const (
 	ExitOK         = 0
 	ExitRuntime    = 1
@@ -51,6 +58,10 @@ func ExitCode(err error) int {
 
 	if errors.Is(err, driver.ErrLockTimeout) {
 		return ExitLock
+	}
+
+	if errors.Is(err, engine.ErrDrifted) {
+		return ExitDrift
 	}
 
 	return ExitRuntime

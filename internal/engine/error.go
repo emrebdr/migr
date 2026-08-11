@@ -3,7 +3,9 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/emrebdr/migr/internal/checksum"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
@@ -99,11 +101,85 @@ func describeOperation(op ir.Operation) string {
 	return " (" + op.Kind().String() + ")"
 }
 
+// DriftError reports an applied migration whose file no longer hashes to what the run recorded.
+type DriftError struct {
+	// Migration is the migration that was edited, so the message names it (invariant #9).
+	Migration migration.Migration
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string
+	// Direction is the run this refused, since drift refuses a rollback for a stronger reason.
+	Direction ir.Direction
+	// Recorded is the checksum the run wrote, both halves, exactly as the history row holds it.
+	Recorded checksum.Checksum
+	// Source is what the file hashes to now, and it is the only half drift is decided on.
+	Source checksum.Digest
+	// AppliedAt is when the run that recorded it started.
+	AppliedAt time.Time
+	// Batch is the batch that run belonged to.
+	Batch int64
+	// Ordinal is its position within that batch.
+	Ordinal int32
+}
+
+// driftTemplate renders the two values on their own lines, since comparing 64 hex characters is the message's whole job.
+const driftTemplate = `%s: an applied migration has been edited since it was applied.
+The source half of its checksum moved, and it is the only half drift is decided on:
+
+  recorded   %s
+             applied %s, batch %d ordinal %d
+  on disk    source %s
+
+The recorded IR half is what that run emitted, and nothing here recomputes it: doing so
+needs a language runtime and a live database, and a migration may branch on live query
+results, so a mismatch there would not be drift (ADR 0009).
+
+Restore the file to the bytes that were applied, or write a new migration for the change.
+No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
+first statement.%s`
+
+// undoingDrift is the further reason a rollback refuses, which an apply has no equivalent of.
+const undoingDrift = "\n\nA rollback refuses for a stronger reason than an apply does: the " +
+	"undo about to run\nwould be authored by bytes that are not the ones that ran."
+
+// Error names the migration, both values in full, and which half moved.
+func (e *DriftError) Error() string {
+	return fmt.Sprintf(driftTemplate,
+		describeMigration(e.Migration, e.Version),
+		e.Recorded.String(),
+		e.AppliedAt.UTC().Format(stamp),
+		e.Batch,
+		e.Ordinal,
+		e.Source.String(),
+		describeDirection(e.Direction),
+	)
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrDrifted) succeeds.
+func (e *DriftError) Unwrap() error {
+	return ErrDrifted
+}
+
+// describeDirection adds what a rollback owes an operator beyond what an apply does.
+func describeDirection(dir ir.Direction) string {
+	if dir != ir.Down {
+		return ""
+	}
+
+	return undoingDrift
+}
+
 // driftedError refuses the whole run, naming the migration edited after it was applied.
-func driftedError(st history.Status) error {
-	return fmt.Errorf("%w: %s was applied at %s and its source has changed since -- verifying "+
-		"checksums and reporting exit code 4 is M4-T7's, so nothing here can say which half moved",
-		ErrDrifted, describeVersion(st), st.Recorded.AppliedAt.UTC().Format(stamp))
+func driftedError(st history.Status, dir ir.Direction) error {
+	return &DriftError{
+		Migration: st.Migration,
+		Version:   st.Version,
+		Direction: dir,
+		Recorded:  st.Recorded.Checksum,
+		Source:    st.Source,
+		AppliedAt: st.Recorded.AppliedAt,
+		Batch:     st.Recorded.Batch,
+		Ordinal:   st.Recorded.Ordinal,
+	}
 }
 
 // dirtyError refuses the whole run, naming the migration whose last run stopped partway.
@@ -142,9 +218,14 @@ func duplicateError(version string) error {
 
 // describeVersion names a migration by its filename, falling back to the version a file cannot.
 func describeVersion(st history.Status) string {
-	if st.Migration == (migration.Migration{}) {
-		return "version " + st.Version
+	return describeMigration(st.Migration, st.Version)
+}
+
+// describeMigration names a migration by its filename, falling back to the version a file cannot.
+func describeMigration(m migration.Migration, version string) string {
+	if m == (migration.Migration{}) {
+		return "version " + version
 	}
 
-	return st.Migration.Filename()
+	return m.Filename()
 }

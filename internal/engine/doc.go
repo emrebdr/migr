@@ -7,9 +7,10 @@
 // opens databases (M4-T1, M4-T2). Turning operations into statements is internal/plan, which needs
 // no database either. What arrives here is a sequence and a way to compile it.
 //
-// Status: both queues are complete — apply in M4-T5 and rollback in M4-T6. The dirty-state model is
-// M4-T9, narrowing either queue with --step and --to is M4-T8, and the transaction opt-out is
-// completed in M13-T4. See docs/adr/0021-apply-executor.md and docs/adr/0022-rollback-executor.md.
+// Status: both queues are complete — apply in M4-T5 and rollback in M4-T6 — and drift reporting in
+// M4-T7. The dirty-state model is M4-T9, narrowing either queue with --step and --to is M4-T8, and
+// the transaction opt-out is completed in M13-T4. See docs/adr/0021-apply-executor.md and
+// docs/adr/0022-rollback-executor.md.
 //
 // # What Apply is given, and why the operations arrive late
 //
@@ -169,11 +170,11 @@
 //     yet" makes a fully migrated production database look virgin (ADR 0019);
 //   - two entries claiming one version, which Discover already refuses but which arrives here as a
 //     caller's slice;
-//   - any migration reconciling to drifted (M4-T7) or dirty (M4-T9). Both refuse the whole run
-//     rather than the migration, including the ones queued ahead of it: running until the queue
-//     reaches the problem leaves a partially migrated database for a condition that was knowable
-//     before the first statement. Drift refuses a rollback for a stronger reason than it refuses an
-//     apply — the undo about to run was authored by bytes that are not the ones that ran;
+//   - any migration reconciling to drifted or dirty (M4-T9). Both refuse the whole run rather than
+//     the migration, including the ones queued ahead of it: running until the queue reaches the
+//     problem leaves a partially migrated database for a condition that was knowable before the
+//     first statement. Drift refuses a rollback for a stronger reason than it refuses an apply —
+//     the undo about to run was authored by bytes that are not the ones that ran;
 //   - a version the database carries that no file describes, on a rollback only. An apply skips it
 //     because there is nothing to run for it; a rollback runs newest first, so it sits in front of
 //     every migration older than it and stepping around it would undo them while it stays. The case
@@ -206,6 +207,23 @@
 // On a rollback all four fire during invert, so they are batch-wide preconditions rather than
 // per-migration ones. That is strictly stronger than the apply path, where they fire as the queue
 // reaches each migration.
+//
+// # What a drifted migration is told, and what it is not told
+//
+// DriftError is a block rather than a sentence, which every other refusal here is. Comparing two
+// 64-character hex digests is the whole job of this one message, and two values a terminal wraps
+// into one paragraph cannot be compared at all.
+//
+// It shows the recorded checksum in full — both halves, exactly as the history row holds it — and
+// the recomputed source digest in full beside it. There is no recomputed IR half and none is
+// invented: producing one needs a language runtime and a live database, and ADR 0009 permits a
+// migration to branch on live query results, so a mismatch there would have three possible causes
+// and only one of them would be drift. Rendering a placeholder inside a migr1: value would be a
+// checksum no parser accepts, which is worse than an absence the message explains.
+//
+// Nothing here recomputes or re-compares anything. history.stateOf already decided this, on
+// Checksum.Source alone, and this package adds no second comparison — a second one is how the two
+// answers start to disagree. What M4-T7 added is the message and the exit code, not the check.
 //
 // # A failure aborts; it never undoes
 //

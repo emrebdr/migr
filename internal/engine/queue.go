@@ -8,6 +8,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/checksum"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 )
 
@@ -96,7 +97,7 @@ func runnable(st history.Status) (bool, error) {
 	case history.StateApplied, history.StateMissing:
 		return false, nil
 	case history.StateDrifted:
-		return false, driftedError(st)
+		return false, driftedError(st, ir.Up)
 	case history.StateDirty:
 		return false, dirtyError(st)
 	}
@@ -114,7 +115,7 @@ func reversible(st history.Status) (bool, error) {
 	case history.StateMissing:
 		return false, missingError(st)
 	case history.StateDrifted:
-		return false, driftedError(st)
+		return false, driftedError(st, ir.Down)
 	case history.StateDirty:
 		return false, dirtyError(st)
 	}

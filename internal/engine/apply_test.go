@@ -448,9 +448,9 @@ func TestADriftedMigrationRefusesTheWholeRunBeforeAnythingRuns(t *testing.T) {
 	conn := newRecorder(t, true)
 	conn.store.table = true
 
-	edited := ran(t, 1, 1, 1)
-	edited.Checksum.Source = checksum.OfSource([]byte("what the file used to hold"))
-	conn.store.runs = []history.Record{edited}
+	was := ran(t, 1, 1, 1)
+	was.Checksum.Source = checksum.OfSource([]byte("what the file used to hold"))
+	conn.store.runs = []history.Record{was}
 
 	opts, _ := staged(t, "a", "b")
 
@@ -459,8 +459,25 @@ func TestADriftedMigrationRefusesTheWholeRunBeforeAnythingRuns(t *testing.T) {
 		t.Fatalf("Apply returned %v, want a refusal reporting ErrDrifted", err)
 	}
 
-	if !strings.Contains(err.Error(), "M4-T7") {
-		t.Errorf("the refusal does not name the task that lifts it: %v", err)
+	var drift *DriftError
+	if !errors.As(err, &drift) {
+		t.Fatalf("errors.As found no *DriftError in %T", err)
+	}
+
+	if drift.Recorded != was.Checksum {
+		t.Errorf("the refusal reports %v recorded, want the checksum the history row holds",
+			drift.Recorded)
+	}
+
+	if drift.Source != checksum.OfSource([]byte(bodyAt(1))) {
+		t.Errorf("the refusal reports %v on disk, want what the file hashes to now", drift.Source)
+		t.Log("The recomputed half has to come from the file rather than from the row, or the")
+		t.Log("two values always agree and the message can never report the difference.")
+	}
+
+	if drift.Direction != ir.Up {
+		t.Errorf("the refusal reports direction %q, want the one the run was performing",
+			drift.Direction)
 	}
 
 	for _, call := range conn.calls {

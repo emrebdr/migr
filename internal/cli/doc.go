@@ -19,6 +19,18 @@
 // Anything not explicitly tagged with an ExitError resolves to ExitRuntime, so
 // an unclassified failure can never be mistaken for success.
 //
+// Two contract sentinels resolve themselves below that tag, so no command has to
+// remember them: driver.ErrLockTimeout is contention rather than a runtime error,
+// and engine.ErrDrifted is the one failure invariant #6 gives a code of its own.
+// Both are sentinels rather than concrete types because invariant #1 forbids this
+// package from naming a driver at all.
+//
+// Nothing else resolves itself, and that boundary is what keeps exit code 4 worth
+// reading. A history row this build cannot decode reports history.ErrCorrupt and
+// one written under a future scheme reports checksum.SchemeError; the first needs
+// manual repair, the second needs a newer migr, and neither is someone editing an
+// applied migration.
+//
 // # Command construction
 //
 // newRootCmd returns a fresh command on every call rather than sharing a

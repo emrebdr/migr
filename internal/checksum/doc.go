@@ -3,7 +3,7 @@
 // Applied migrations are immutable and a mismatch is a hard error that no flag repairs
 // (CLAUDE.md invariant #6), which makes a false positive as expensive as a missed one.
 //
-// Status: complete (M1-T6). Verification and drift reporting are M4-T7.
+// Status: complete (M1-T6), with verification and drift reporting wired up in M4-T7.
 //
 // # The migr1 scheme
 //
@@ -31,6 +31,19 @@
 // has three possible causes — the file changed, the database changed, the SDK changed — and
 // only the first is drift. Reporting the other two as exit code 4 is how operators learn to
 // ignore exit code 4.
+//
+// # Where the comparison lives, and how many there are
+//
+// One, and it is not here. history.stateOf compares a file's recomputed source digest against the
+// anchor run's recorded one and reports StateDrifted; internal/engine refuses on that state and
+// renders engine.DriftError; internal/cli maps engine.ErrDrifted to exit code 4. Nothing else in
+// the repository compares two checksums, and nothing should — a second comparison is how two
+// answers about one migration start to disagree, and a comparison written against Checksum rather
+// than against Checksum.Source is the exact mistake ADR 0009 spent its Context section on.
+//
+// This package therefore exposes no Equal, no Verify, and no drift type. Checksum is comparable,
+// so == exists for a test that wants it, and the halves are separate fields so a caller has to
+// name the one it means.
 //
 // # Normalization covers transport, not authorship
 //

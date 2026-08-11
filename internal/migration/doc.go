@@ -6,8 +6,9 @@
 // executor, and so M4-T2's dependency DAG and M4-T3's reconciliation build on a type rather than
 // on a package that also opens databases.
 //
-// Status: discovery, version ordering, and the dependency overlay complete (M4-T1, M4-T2).
-// Checksum verification is M4-T7.
+// Status: discovery, version ordering, and the dependency overlay complete (M4-T1, M4-T2). A
+// discovered migration is hashed by its caller through history.NewFile, and the drift that decides
+// is reported in M4-T7.
 //
 // Reconciliation against history is internal/history, which imports this package (M4-T3). That is
 // what turned the leaf property above from a review rule into a compiler-enforced one: importing

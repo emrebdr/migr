@@ -198,10 +198,76 @@ func driftedError(st history.Status, dir ir.Direction) error {
 	}
 }
 
+// DirtyError reports a run whose statements outlived the failure, with nothing here to undo them.
+type DirtyError struct {
+	// Migration is the migration that stopped partway, so the message names it (invariant #9).
+	Migration migration.Migration
+	// Direction is what the run was performing, since a rollback can leave this state too.
+	Direction ir.Direction
+	// LastStatement is the 1-based position of the last statement that succeeded, as the row records it.
+	LastStatement int32
+	// Statements is how many the migration compiled to, so the message can say how far it got.
+	Statements int32
+	// Batch is the batch the run belonged to.
+	Batch int64
+	// Ordinal is its position within that batch.
+	Ordinal int32
+	// TransactionalDDL is what the session declared, since a false one is what most needs explaining.
+	TransactionalDDL bool
+	// Err is what stopped it, a *StatementError where a statement did.
+	Err error
+}
+
+// dirtyTemplate puts the statement that failed under the range that did not, since both are acted on.
+const dirtyTemplate = `this migration left the schema between states -- statements 1 through %d of
+%d succeeded and nothing rolled them back.
+
+  failed at   %v
+  recorded    batch %d, ordinal %d, dirty at statement %d
+%s
+Both up and down refuse against this database until the dirty state is resolved explicitly, and
+nothing here undoes it -- nothing here knows what the statement that failed left behind.`
+
+// autoCommitting is why a session's own declaration explains the window, when it is the reason.
+const autoCommitting = "\nThis session reports no transactional DDL, so a migration is not one " +
+	"all-or-nothing unit here.\n"
+
+// Error names how far the run got, what stopped it, and what the row it wrote says.
+func (e *DirtyError) Error() string {
+	return fmt.Sprintf(dirtyTemplate,
+		e.LastStatement,
+		e.Statements,
+		e.Err,
+		e.Batch,
+		e.Ordinal,
+		e.LastStatement,
+		describeAtomicity(e.TransactionalDDL),
+	)
+}
+
+// Unwrap reports the sentinel and the cause, so errors.Is finds either.
+func (e *DirtyError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrDirty}
+	}
+
+	return []error{ErrDirty, e.Err}
+}
+
+// describeAtomicity explains the window with the session's own declaration, where that is the reason.
+func describeAtomicity(transactional bool) string {
+	if transactional {
+		return ""
+	}
+
+	return autoCommitting
+}
+
 // dirtyError refuses the whole run, naming the migration whose last run stopped partway.
 func dirtyError(st history.Status) error {
-	return fmt.Errorf("%w: %s stopped after statement %d and nothing here can resolve that -- the "+
-		"dirty-state model that makes such a run recoverable is M4-T9's",
+	return fmt.Errorf("%w: %s stopped after statement %d, so its schema is between states and "+
+		"nothing here can tell which -- resolving that is an explicit command's, and resuming from "+
+		"that statement is M9-T6's. Neither up nor down runs against this database until then",
 		ErrDirty, describeVersion(st), st.Recorded.LastStatement)
 }
 

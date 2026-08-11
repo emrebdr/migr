@@ -177,7 +177,9 @@
 // Record is called inside the migration's transaction and MarkFailed after its rollback, which is
 // the only order either can have: the transaction being discarded cannot carry a row describing
 // itself, and PostgreSQL refuses every statement in an aborted one until it ends (M4-T5). MarkDirty
-// has no caller until M4-T9.
+// is written on that same path since M4-T9, chosen over MarkFailed when the failing run's statements
+// outlived the failure rather than when the driver declares no transactional DDL — a standalone run
+// and an earlier committed one both survive on a driver that declares it has (ADR 0024).
 //
 // M4-T6 is what first writes a down row, and what first produces the case this package's own fold
 // was written for: a failed down leaves the fold unchanged, so "a failed rollback leaves the

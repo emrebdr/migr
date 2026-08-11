@@ -1172,3 +1172,54 @@ func TestANarrowedRollbackRecordsAFreshBatchNumberedFromOne(t *testing.T) {
 			last.Batch, last.Ordinal, last.Direction)
 	}
 }
+
+func TestADirtyRowReadBackFromTheServerRefusesBothDirections(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			dsn := dsnFor(server.env, server.dsn)
+			target := scratchSchema(t, dsn)
+
+			session := queueSession(t, dsn, target)
+			observer := queueSession(t, dsn, target)
+
+			first := createAccounts(t)
+			opts := queueOptions(t, first)
+
+			if _, err := engine.Apply(t.Context(), session, opts); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+
+			applied := describeSchema(t, observer, target)
+			stopped := recordedRuns(t, session)[0]
+			stopped.Batch = 2
+
+			if err := session.History().MarkDirty(t.Context(), stopped, 2,
+				errors.New("the server refused a statement")); err != nil {
+				t.Fatalf("MarkDirty: %v", err)
+			}
+
+			_, up := engine.Apply(t.Context(), session, opts)
+			if !errors.Is(up, engine.ErrDirty) {
+				t.Errorf("Apply returned %v, want a refusal reporting ErrDirty", up)
+			}
+
+			_, down := engine.Rollback(t.Context(), session, opts)
+			if !errors.Is(down, engine.ErrDirty) {
+				t.Errorf("Rollback returned %v, want a refusal reporting ErrDirty", down)
+			}
+
+			if !strings.Contains(up.Error(), "statement 2") {
+				t.Errorf("the refusal does not name where the run stopped: %v", up)
+			}
+
+			if after := describeSchema(t, observer, target); after != applied {
+				t.Errorf("a refused run changed the schema:\n%s", diffLines(applied, after))
+			}
+
+			t.Log("PostgreSQL has transactional DDL and checkRunnable still refuses a multi-run")
+			t.Log("migration, so no engine run against this server can produce a dirty row -- M9-T7")
+			t.Log("is where a real one first appears. What is held here is the other half: a dirty")
+			t.Log("row written to a real table reads back, folds to StateDirty, and blocks both ways.")
+		})
+	}
+}

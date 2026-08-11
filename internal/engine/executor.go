@@ -112,8 +112,10 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 	rec := e.newRecord(ready)
 	e.position = 0
 
-	if err := e.runMigration(ctx, ready.groups, e.recorder(&rec)); err != nil {
-		return Run{}, e.fail(ready.item, ready.compiled, e.recordFailure(ctx, rec, err))
+	survived, err := e.runMigration(ctx, ready.groups, e.recorder(&rec))
+	if err != nil {
+		return Run{}, e.fail(ready.item, ready.compiled,
+			e.recordFailure(ctx, rec, survived, e.leftDirty(ready, survived, err)))
 	}
 
 	return Run{
@@ -132,19 +134,11 @@ func (e *executor) checkRunnable(groups []Group) error {
 			"happened", ErrNothingToRun)
 	}
 
-	caps := e.conn.Capabilities()
-
-	if !caps.TransactionalDDL() {
-		return fmt.Errorf("%w: %s reports no transactional DDL, so a failure partway would leave "+
-			"the schema half changed with nothing recording how far it got -- the dirty-state model "+
-			"that makes such a run recoverable is M4-T9's", ErrNotAtomic, caps.Driver())
-	}
-
 	if len(groups) > 1 {
 		return fmt.Errorf("%w: it compiles to %d runs, because %d of its statements declare they "+
-			"cannot run inside a transaction, and nothing here can record partial progress across "+
-			"two commits -- that dirty-state model is M4-T9's, and splitting a migration around "+
-			"such a statement is M13-T4's",
+			"cannot run inside a transaction, and nothing here splits a migration around one -- "+
+			"that is M13-T4's, which needs only to delete this refusal, since a failure partway "+
+			"through such a split already records how far it got",
 			ErrNotAtomic, len(groups), countStandalone(groups))
 	}
 
@@ -183,17 +177,40 @@ func lastTransactional(groups []Group) int {
 	return last
 }
 
-// runMigration runs a migration's runs in order, recording it inside the last transactional one.
-func (e *executor) runMigration(ctx context.Context, groups []Group, record driver.Work) error {
+// runMigration runs a migration's runs in order, reporting how many statements a failure left behind.
+func (e *executor) runMigration(ctx context.Context, groups []Group, record driver.Work) (int32, error) {
 	records := lastTransactional(groups)
+
+	var committed int32
 
 	for i, group := range groups {
 		if err := e.runGroup(ctx, group, record, i == records); err != nil {
-			return err
+			return e.durable(group, committed, err), err
 		}
+
+		committed = e.position
 	}
 
-	return nil
+	return 0, nil
+}
+
+// durable reports how many of a migration's statements survive a failure in the run that failed.
+func (e *executor) durable(group Group, committed int32, err error) int32 {
+	if group.Transactional && e.conn.Capabilities().TransactionalDDL() {
+		return committed
+	}
+
+	return e.reached(err)
+}
+
+// reached reports the position the failing run got to, which is one before the statement that failed.
+func (e *executor) reached(err error) int32 {
+	var failure *StatementError
+	if errors.As(err, &failure) {
+		return failure.Position - 1
+	}
+
+	return e.position
 }
 
 // runGroup executes one run, bracketing it in a transaction when its statements can share one.
@@ -253,10 +270,33 @@ func (e *executor) recorder(rec *history.Record) driver.Work {
 }
 
 // recordFailure appends the run that failed, on a context that outlives whatever canceled it.
-func (e *executor) recordFailure(ctx context.Context, rec history.Record, cause error) error {
+func (e *executor) recordFailure(ctx context.Context, rec history.Record, survived int32, cause error) error {
 	rec.Duration = elapsed(rec.AppliedAt, e.opts.Clock())
+	outliving := context.WithoutCancel(ctx)
 
-	return errors.Join(cause, e.store.MarkFailed(context.WithoutCancel(ctx), rec, cause))
+	if survived < 1 {
+		return errors.Join(cause, e.store.MarkFailed(outliving, rec, cause))
+	}
+
+	return errors.Join(cause, e.store.MarkDirty(outliving, rec, survived, cause))
+}
+
+// leftDirty describes the window a failure opened, for a run whose statements outlived it.
+func (e *executor) leftDirty(ready prepared, survived int32, cause error) error {
+	if survived < 1 {
+		return cause
+	}
+
+	return &DirtyError{
+		Migration:        ready.item.migration,
+		Direction:        ready.compiled.Direction,
+		LastStatement:    survived,
+		Statements:       ready.compiled.Len(),
+		Batch:            e.batch,
+		Ordinal:          ready.item.ordinal,
+		TransactionalDDL: e.conn.Capabilities().TransactionalDDL(),
+		Err:              cause,
+	}
 }
 
 // fail names the migration a failure happened in, and the operation it came from where there is one.

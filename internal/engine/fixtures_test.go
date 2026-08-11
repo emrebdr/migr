@@ -184,6 +184,7 @@ type journal struct {
 	latest  error
 	record  error
 	failed  error
+	dirty   error
 }
 
 // Ensure records the call and creates the table, unless a test staged a failure.
@@ -256,8 +257,12 @@ func (j *journal) MarkFailed(ctx context.Context, rec history.Record, cause erro
 }
 
 // MarkDirty appends a run that failed partway, naming the last statement that succeeded.
-func (j *journal) MarkDirty(_ context.Context, rec history.Record, last int32, cause error) error {
-	j.session.note(j.describeWrite("mark-dirty", rec))
+func (j *journal) MarkDirty(ctx context.Context, rec history.Record, last int32, cause error) error {
+	j.session.note(live(ctx, j.describeWrite("mark-dirty", rec)))
+
+	if j.dirty != nil {
+		return j.dirty
+	}
 
 	return j.write(rec, history.Dirty, cause.Error(), last)
 }

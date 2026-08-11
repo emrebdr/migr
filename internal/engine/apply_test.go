@@ -508,12 +508,17 @@ func TestADirtyMigrationRefusesTheWholeRunBeforeAnythingRuns(t *testing.T) {
 		t.Fatalf("Apply returned %v, want a refusal reporting ErrDirty", err)
 	}
 
-	if !strings.Contains(err.Error(), "M4-T9") {
-		t.Errorf("the refusal does not name the task that lifts it: %v", err)
-	}
-
 	if !strings.Contains(err.Error(), "statement 4") {
 		t.Errorf("the refusal does not say how far the dirty run got: %v", err)
+	}
+
+	var dirty *DirtyError
+	if errors.As(err, &dirty) {
+		t.Errorf("a migration refused for being dirty reports itself as one that just became "+
+			"dirty: %v", err)
+		t.Log("Both report ErrDirty, deliberately -- errors.Is is what a caller reaches for. What")
+		t.Log("separates them is errors.As, so a run that changed nothing must not carry the type")
+		t.Log("that describes a window it opened.")
 	}
 
 	for _, call := range conn.calls {
@@ -762,26 +767,33 @@ func TestAMigrationThatCompilesToNothingIsRefusedBeforeAnythingRuns(t *testing.T
 	t.Log("changes nothing\" failure, one layer up from the Compile it forbids it in.")
 }
 
-func TestASessionWithoutTransactionalDDLIsRefused(t *testing.T) {
+func TestASessionWithoutTransactionalDDLRunsRatherThanBeingRefused(t *testing.T) {
 	conn := newRecorder(t, false)
+	conn.store.table = true
+
 	opts, _ := staged(t, "abc")
 
-	_, err := Apply(t.Context(), conn, opts)
-	if !errors.Is(err, ErrNotAtomic) {
-		t.Fatalf("Apply returned %v, want a refusal reporting ErrNotAtomic", err)
+	result, err := Apply(t.Context(), conn, opts)
+	if err != nil {
+		t.Fatalf("Apply returned %v, want the migration to run", err)
 	}
 
-	if !strings.Contains(err.Error(), "M4-T9") {
-		t.Errorf("the refusal does not name the task that lifts it: %v", err)
+	if len(result.Runs) != 1 {
+		t.Fatalf("the run applied %d migrations, want the one it was given", len(result.Runs))
 	}
 
-	if slices.Contains(conn.calls, "begin") {
-		t.Errorf("the session was asked for %v before the refusal", conn.calls)
+	want := []string{
+		"lock", "ensure", "list", "latest",
+		"begin", "exec a0", "exec b1", "exec c2", "record " + versionAt(0), "commit",
+		"unlock",
+	}
+	if !slices.Equal(conn.calls, want) {
+		t.Fatalf("the session was asked for\n  %v\nwant\n  %v", conn.calls, want)
 	}
 
-	t.Log("The branch reads Capabilities().TransactionalDDL() and never a driver name. MySQL")
-	t.Log("declares false in M9-T3, and CLAUDE.md §11 forbids the if driver == \"mysql\" this")
-	t.Log("would otherwise become.")
+	t.Log("A session with no transactional DDL is exactly what MySQL declares in M9-T3, and it")
+	t.Log("still goes through Transact: the driver is the only thing that knows what one means")
+	t.Log("on its engine. What changes is what a failure records, not how a success runs.")
 }
 
 func TestAMigrationThatCannotBeOneTransactionIsRefused(t *testing.T) {
@@ -1048,8 +1060,13 @@ func TestAMigrationOfSeveralRunsRecordsInsideTheLastTransactionalOne(t *testing.
 	}
 	rec := exec.newRecord(ready)
 
-	if err := exec.runMigration(t.Context(), ready.groups, exec.recorder(&rec)); err != nil {
+	survived, err := exec.runMigration(t.Context(), ready.groups, exec.recorder(&rec))
+	if err != nil {
 		t.Fatalf("runMigration: %v", err)
+	}
+
+	if survived != 0 {
+		t.Errorf("a run that succeeded reports %d statements left behind, want none", survived)
 	}
 
 	want := []string{

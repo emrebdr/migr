@@ -33,6 +33,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0021](0021-apply-executor.md) | The apply queue reconciles under the lock, and a batch belongs to one database | Accepted | Where a migration's operations come from, who decides what is pending, what a batch numbers, and where the history write sits |
 | [0022](0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it | Accepted | Where a down comes from, what order a rollback undoes in, what halts one before it starts, and what a down row records |
 | [0023](0023-batch-narrowing.md) | `--to` names the state to end in, and narrowing is a prefix of the run order | Accepted | What `--step` and `--to` select in each direction, which batch a bare `migr down` acts on, and where a refusal sits relative to a scope |
+| [0024](0024-dirty-runs.md) | A run is dirty when its statements outlived the failure | Accepted | What separates a failed run from a dirty one, what a non-transactional session changes, and what record-before-commit means where DDL auto-commits |
 
 ## When to write one
 

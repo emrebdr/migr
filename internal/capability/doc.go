@@ -113,7 +113,9 @@
 // Both are fields on a struct rather than methods on an interface, so adding either reopens no
 // driver. That is ADR 0004's retrofit-cost argument applied to the model that argument created,
 // and it is why Set is a struct. Facts.TransactionalDDL was the third and arrived in M3-T3, so
-// M4-T9 reads a field rather than adding one.
+// M4-T9 read a field rather than adding one — and then found that the field answers only one of the
+// three ways a failure leaves statements behind, so the engine asks what survived and consults this
+// only for the run it is in (ADR 0024).
 //
 // Three capabilities the milestone plan names are deliberately absent, because no v1 operation can
 // request them: a partial index (add_index has no predicate), a deferrable constraint (no

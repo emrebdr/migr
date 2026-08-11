@@ -8,9 +8,9 @@
 // no database either. What arrives here is a sequence and a way to compile it.
 //
 // Status: both queues are complete — apply in M4-T5 and rollback in M4-T6 — with drift reporting in
-// M4-T7 and narrowing in M4-T8. The dirty-state model is M4-T9 and the transaction opt-out is
-// completed in M13-T4. See docs/adr/0021-apply-executor.md, docs/adr/0022-rollback-executor.md and
-// docs/adr/0023-batch-narrowing.md.
+// M4-T7, narrowing in M4-T8, and the dirty-state model in M4-T9. The transaction opt-out is
+// completed in M13-T4. See docs/adr/0021-apply-executor.md, docs/adr/0022-rollback-executor.md,
+// docs/adr/0023-batch-narrowing.md and docs/adr/0024-dirty-runs.md.
 //
 // # What Apply is given, and why the operations arrive late
 //
@@ -223,15 +223,12 @@
 // state arrives — M13-T14 already says it needs one. The trailing return is the answer for a state
 // this build cannot interpret, and it refuses rather than guessing.
 //
-// Four are refused per migration, before its first statement, each naming the task that lifts it:
+// Three are refused per migration, before its first statement, each naming the task that lifts it:
 //
 //   - one that compiles to no statements at all, because reporting success for a schema change that
 //     never happened is the driver conformance suite's own failure, one layer up;
-//   - one whose session declares no transactional DDL, because a failure partway would leave the
-//     schema half changed with nothing recording how far it got. That is M4-T9's, and the branch
-//     reads capability.Set.TransactionalDDL and never a driver name (CLAUDE.md §11);
-//   - one that groups into more than one run, because two runs means two commits and nothing here
-//     can record partial progress across them;
+//   - one that groups into more than one run, because nothing here splits a migration around a
+//     statement that cannot share a transaction;
 //   - one whose single run is not transactional, because then there is no transaction for its
 //     history row to be written inside.
 //
@@ -239,11 +236,43 @@
 // standalone statements passed it and was rejected by the driver instead. Both belong to M13-T4,
 // which deletes two preconditions rather than rewriting an executor — for both directions at once,
 // since an inverse groups independently of what it inverts and a migration that applied cleanly may
-// have a down these refuse.
+// have a down these refuse. Neither still refuses because partial progress could not be recorded;
+// M4-T9 removed that reason, and a fourth refusal with it.
 //
-// On a rollback all four fire during invert, so they are batch-wide preconditions rather than
+// On a rollback all three fire during invert, so they are batch-wide preconditions rather than
 // per-migration ones. That is strictly stronger than the apply path, where they fire as the queue
 // reaches each migration.
+//
+// # A run is dirty when its statements outlived the failure
+//
+// A failed run recorded as failed says the schema is unchanged and the next up may proceed. That is
+// true only when something took the statements back, so the executor asks what did rather than
+// asking what the driver declares:
+//
+//	the failing run was transactional and the session has transactional DDL   nothing survived
+//	the failing run was standalone                                            it ran bare
+//	the session has no transactional DDL                                      its DDL auto-committed
+//	any run that completed before the one that failed                         already durable
+//
+// Only the third is what M4-T9's done-when names, and branching on capability.Set.TransactionalDDL
+// alone would see only that one. The other two happen on PostgreSQL, which reports true — so that
+// rule would record a half-changed schema as failed the day M13-T4 lands multi-run migrations, and
+// tell the next up to proceed against it.
+//
+// Zero survivors is MarkFailed and one or more is MarkDirty, but that split is not a convention this
+// package remembers: history.Record.Validate refuses a dirty row that names no statement and a
+// non-dirty row that names one. The index recorded is the last statement that *succeeded*, which is
+// one before StatementError.Position, because M9-T6 resumes from it and an off-by-one there replays
+// a statement that already ran. A failure with no statement position at all — a commit, or the
+// history write itself — happened after every statement in its run took effect, so the counter is
+// the answer.
+//
+// A transactional group still goes through Transact on a session that reports no transactional DDL.
+// The driver is the only thing that knows what a transaction means on its engine, and MySQL's DML is
+// transactional even where its DDL is not. The honest consequence is that ADR 0013's
+// record-before-commit buys nothing there: the first DDL statement implicitly commits, so the
+// history row lands in a different transaction from the schema change it describes. That window is
+// what a dirty row exists to describe rather than a defect in it. See docs/adr/0024-dirty-runs.md.
 //
 // # What a drifted migration is told, and what it is not told
 //

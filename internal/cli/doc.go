@@ -119,6 +119,38 @@
 // file it ran from -- and a status with no file carries a zero Migration, whose
 // Filename() is the string "_", so the renderer asks before it calls it.
 //
-// Status: init, create, up, down, status, history, version, and config. The rest
-// land across M5 (see TASKS.md).
+// # What a plan prints, and what it does not yet
+//
+// migr plan is engine.Preview rendered in full: --dry-run prints the statement
+// counts and this prints the statements, off one pipeline, so there is no second
+// preview to drift out of sync. --down plans the rollback, which is the
+// direction that most needs it -- an authored down is the only thing standing
+// between an operator and statements nobody wrote, and a .sql migration that
+// authors none is refused here rather than partway through migr down.
+//
+// Each operation carries the verdict this engine gives it, printed whether it is
+// native or emulated: a label that appears only when something is unusual is one
+// nobody learns to read. The verdict is resolved here rather than on
+// plan.Planner, which internal/plan/doc.go reserves for M13-T6.
+//
+// It does not print lock impact, and that is not an omission. Every .sql
+// migration compiles to ir.Raw, which PostgreSQL declares LockUnknown, so every
+// line of every plan M5 can produce would read `unknown`. The lock axis and
+// --safety are M13-T6, by name. Nor does it mark a statement that cannot run
+// inside a transaction: no driver sets Statement.NoTransaction yet, and
+// engine.checkRunnable refuses such a migration before a plan could print one.
+// TestPlanRefusesAMigrationNothingCanRunInOneTransaction fails the day M13-T4
+// changes that, which is when the marker is worth adding.
+//
+// # A plan prints before its error where a run does not
+//
+// A run that failed having done nothing prints no summary: "nothing to do" above
+// a refusal is two answers to one question. A plan that compiled two of three
+// migrations produced two thirds of what was asked for, and the refusal is the
+// answer those two are the context for -- so it prints them and then fails. A
+// plan that compiled nothing prints nothing, which is the same rule, not an
+// exception to it. Reporting every refusal rather than the first is M5-T5's.
+//
+// Status: init, create, up, down, status, history, plan, version, and config.
+// The rest land across M5 (see TASKS.md).
 package cli

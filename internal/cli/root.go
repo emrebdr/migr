@@ -62,7 +62,8 @@ func rootCmd(opts *options) *cobra.Command {
 
 	registerGlobalFlags(cmd, opts)
 	cmd.AddCommand(newVersionCmd(opts), newConfigCmd(opts), newInitCmd(opts), newCreateCmd(opts),
-		newUpCmd(opts), newDownCmd(opts), newStatusCmd(opts), newHistoryCmd(opts))
+		newUpCmd(opts), newDownCmd(opts), newStatusCmd(opts), newHistoryCmd(opts),
+		newPlanCmd(opts))
 
 	return cmd
 }

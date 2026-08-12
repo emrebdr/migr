@@ -47,4 +47,9 @@
 // Capability verdicts are deliberately not here yet. Compile lives on driver.Compiler and needs no
 // session; a capability.Set is built inside Open and needs one. A Verdict field would be zero at
 // every call site today, which is the stub shape ADR 0011 and the conformance suite both reject.
+//
+// M5-T4 built `migr plan` without changing that. It resolves a verdict per operation at the render
+// site, from the session it already holds, purely to label an emulation -- so nothing was added
+// here that engine.Apply would carry and never read. M13-T6 is still where a set becomes a Planner
+// field, because rewriting an operation is planning and labeling one is not.
 package plan

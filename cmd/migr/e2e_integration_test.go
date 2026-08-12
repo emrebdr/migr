@@ -313,6 +313,51 @@ func TestStatusAndHistoryReportTheRoundTripAgainstPostgreSQL(t *testing.T) {
 	}
 }
 
+func TestPlanPrintsTheStatementsARealServerWouldRun(t *testing.T) {
+	config := project(t)
+
+	if err := migr(t, config, "down"); err != nil {
+		t.Logf("clearing what an earlier run left behind: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := migr(t, config, "down"); err != nil {
+			t.Errorf("leaving the server as this suite found it: %v", err)
+		}
+	})
+
+	rows := len(recorded(t))
+	planned := migrOut(t, config, "plan")
+
+	for _, want := range []string{
+		"CREATE TABLE e2e_users (id bigint PRIMARY KEY);",
+		"CREATE INDEX idx_e2e_users_id ON e2e_users (id);",
+		"CREATE TABLE e2e_teams (id bigint PRIMARY KEY);",
+		"native",
+	} {
+		if !strings.Contains(planned, want) {
+			t.Errorf("migr plan does not print %q:\n%s", want, planned)
+		}
+	}
+
+	if got := len(recorded(t)); got != rows {
+		t.Fatalf("a plan wrote %d history rows", got-rows)
+	}
+
+	if err := migr(t, config, "up"); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+
+	undo := migrOut(t, config, "plan", "--down")
+	for _, want := range []string{"DROP TABLE e2e_teams;", "DROP TABLE e2e_users;"} {
+		if !strings.Contains(undo, want) {
+			t.Errorf("migr plan --down does not print %q:\n%s", want, undo)
+			t.Log("A rollback is the direction that most needs this: an authored down is the only")
+			t.Log("thing standing between an operator and statements nobody wrote.")
+		}
+	}
+}
+
 func TestNarrowingWorksAgainstARealServer(t *testing.T) {
 	config := project(t)
 

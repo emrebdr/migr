@@ -47,7 +47,7 @@ func directionCmd(opts *options, dir ir.Direction, cmd *cobra.Command) *cobra.Co
 	return cmd
 }
 
-// narrowing is what --step, --to, and --dry-run were given, before any of them becomes a scope.
+// narrowing is what --step, --to, --dry-run, and --down were given, before any becomes a scope.
 type narrowing struct {
 	// step acts on the first N migrations the direction would act on.
 	step int32
@@ -55,14 +55,30 @@ type narrowing struct {
 	to string
 	// dry stops the run before its first statement, reporting what it would have done.
 	dry bool
+	// down selects the rollback, for the one command that is not already a direction.
+	down bool
 }
 
 // register binds the flags that narrow a run and the one that stops it before its first statement.
 func (n *narrowing) register(cmd *cobra.Command, dir ir.Direction) {
+	n.selectors(cmd, describeStep(dir))
+	cmd.Flags().BoolVar(&n.dry, "dry-run", false, "report what would run, and execute none of it")
+}
+
+// selectors binds the flags that narrow which migrations a direction acts on.
+func (n *narrowing) selectors(cmd *cobra.Command, step string) {
 	f := cmd.Flags()
-	f.Int32Var(&n.step, "step", 0, describeStep(dir))
+	f.Int32Var(&n.step, "step", 0, step)
 	f.StringVar(&n.to, "to", "", "leave the database at this version")
-	f.BoolVar(&n.dry, "dry-run", false, "report what would run, and execute none of it")
+}
+
+// direction reports which way the flags asked for, for a command that is not itself one.
+func (n narrowing) direction() ir.Direction {
+	if n.down {
+		return ir.Down
+	}
+
+	return ir.Up
 }
 
 // describeStep says what a step counts, which is not the same set in the two directions.

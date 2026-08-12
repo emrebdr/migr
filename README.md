@@ -193,7 +193,8 @@ suite is what holds that true as both SDKs evolve.
 | `migr up` / `migr down` | apply / roll back, by step or to a version | **works today** |
 | `migr status` | applied, pending, missing, drifted, dirty | **works today** |
 | `migr history` | the execution log, rollbacks and failures included | **works today** |
-| `migr plan` | dry run: compiled statements, annotated with lock impact | planned |
+| `migr plan` | compiled statements per migration, either direction | **works today** |
+| `migr plan --safety` | the same, annotated with lock impact | planned |
 | `migr validate` | run validators without touching the database | planned |
 | `migr diff` | introspect, diff against the desired schema, emit a migration | planned |
 | `migr seed` | data seeds, kept separate from schema migrations | planned |

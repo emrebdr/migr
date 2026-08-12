@@ -223,10 +223,20 @@ func (s planSummary) String() string {
 			describeStatements(step.Statements))
 	}
 
-	fmt.Fprintf(&b, "\nwould %s %s%s. nothing was executed and nothing was recorded.\n",
-		presentTense(s.Direction), describeMigrations(len(s.Steps)), describeSkipped(s.Skipped))
+	fmt.Fprintf(&b, "\nwould %s %s%s. nothing was executed and nothing was recorded.\n%s\n",
+		presentTense(s.Direction), describeMigrations(len(s.Steps)), describeSkipped(s.Skipped),
+		describePlanCommand(s.Direction))
 
 	return b.String()
+}
+
+// describePlanCommand points at the command that prints the statements this one only counted.
+func describePlanCommand(dir ir.Direction) string {
+	if dir == ir.Down {
+		return "run `migr plan --down` to see the statements themselves."
+	}
+
+	return "run `migr plan` to see the statements themselves."
 }
 
 // describeBatch names the batch an invocation used, which one that ran nothing never allocated.

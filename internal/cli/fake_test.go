@@ -31,6 +31,12 @@ type fake struct {
 	table bool
 	// refuse is the statement this database rejects, empty when it rejects none.
 	refuse string
+	// unsupported is the SQL whose operation this driver will not compile at all.
+	unsupported string
+	// emulates names the strategy this driver achieves every operation by, empty when it is native.
+	emulates string
+	// outsideTx is the SQL that compiles to a statement which cannot share a transaction.
+	outsideTx string
 	// lockErr is what acquiring the migration lock reports, nil when it succeeds.
 	lockErr error
 	// inTx reports whether a transaction is open, which is what a history write must be inside.
@@ -44,7 +50,7 @@ func (f *fake) registry(t *testing.T) *driver.Registry {
 	registry := driver.NewRegistry()
 
 	err := registry.Register(fakeName, func(driver.Options) (driver.Driver, error) {
-		return &fakeDriver{fake: f, caps: fakeCapabilities(t)}, nil
+		return &fakeDriver{fake: f, caps: f.capabilities(t)}, nil
 	})
 	if err != nil {
 		t.Fatalf("registering the fake driver: %v", err)
@@ -90,13 +96,13 @@ func (f *fake) asked(call string) bool {
 	return false
 }
 
-// fakeCapabilities declares every operation native and lock-free, which no real driver may do.
-func fakeCapabilities(t *testing.T) capability.Set {
+// capabilities declares every operation lock-free, and the support this test asked the driver for.
+func (f *fake) capabilities(t *testing.T) capability.Set {
 	t.Helper()
 
 	rules := make(map[ir.Kind]capability.Rule, len(ir.Kinds()))
 	for _, kind := range ir.Kinds() {
-		rules[kind] = capability.Fixed(capability.Native(capability.LockFree))
+		rules[kind] = f.verdict
 	}
 
 	set, err := capability.NewSet(capability.Facts{
@@ -110,6 +116,29 @@ func fakeCapabilities(t *testing.T) capability.Set {
 
 	return set
 }
+
+// verdict answers both axes, and must agree with Compile or the conformance biconditional is broken.
+func (f *fake) verdict(op ir.Operation) capability.Verdict {
+	if f.refuses(op) {
+		return capability.Unsupported(refusalReason)
+	}
+
+	if f.emulates != "" {
+		return capability.Emulated(f.emulates, capability.LockFree)
+	}
+
+	return capability.Native(capability.LockFree)
+}
+
+// refuses reports whether this driver will not compile an operation at all.
+func (f *fake) refuses(op ir.Operation) bool {
+	raw, ok := op.(ir.Raw)
+
+	return ok && f.unsupported != "" && raw.SQL == f.unsupported
+}
+
+// refusalReason is why the fake driver refuses the operation a test told it to refuse.
+const refusalReason = "this fake engine has no such thing"
 
 // fakeDriver compiles raw SQL to itself and opens the one session a test reads afterwards.
 type fakeDriver struct {
@@ -131,7 +160,21 @@ func (d *fakeDriver) Compile(op ir.Operation) ([]driver.Statement, error) {
 		return nil, fmt.Errorf("raw SQL addressed to %q reached %q", raw.Driver, fakeName)
 	}
 
-	return []driver.Statement{{SQL: raw.SQL}}, nil
+	if d.fake.refuses(op) {
+		return nil, driver.Unsupported(fakeName, op.Kind(), refusalReason)
+	}
+
+	first := driver.Statement{SQL: raw.SQL, NoTransaction: raw.SQL == d.fake.outsideTx}
+	if d.fake.emulates == "" {
+		return []driver.Statement{first}, nil
+	}
+
+	return []driver.Statement{first, {SQL: emulationStep(d.fake.emulates)}}, nil
+}
+
+// emulationStep is the extra statement an emulated operation costs, so one op becomes several.
+func emulationStep(strategy string) string {
+	return "-- achieved by " + strategy
 }
 
 // Open hands back the session, which holds no connection to give away.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/emrebdr/migr/internal/config"
+	"github.com/emrebdr/migr/internal/driver"
 )
 
 // noon is the instant these tests create migrations at, in a zone two hours ahead of UTC.
@@ -19,14 +20,25 @@ var noon = time.Date(2026, 7, 27, 17, 30, 0, 0, time.FixedZone("CEST", 2*60*60))
 // noonVersion is the version noon renders to, which is that same instant in UTC.
 const noonVersion = "20260727T153000"
 
+// tick is how far a staged clock advances per reading, so a run's duration is never zero.
+const tick = 250 * time.Millisecond
+
 // runIn executes the root command inside dir, with the clock fixed so a version is predictable.
 func runIn(t *testing.T, dir string, at time.Time, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+
+	return runWith(t, dir, at, nil, args...)
+}
+
+// runWith executes the root command against a registry of drivers, on a clock that starts at at.
+func runWith(t *testing.T, dir string, at time.Time, drivers *driver.Registry,
+	args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	t.Chdir(dir)
 
 	var out, errOut bytes.Buffer
 
-	cmd := rootCmd(&options{clock: func() time.Time { return at }})
+	cmd := rootCmd(&options{clock: ticking(at), drivers: drivers})
 	cmd.SetArgs(args)
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
@@ -34,6 +46,16 @@ func runIn(t *testing.T, dir string, at time.Time, args ...string) (stdout, stde
 	err = cmd.ExecuteContext(context.Background())
 
 	return out.String(), errOut.String(), err
+}
+
+// ticking returns a clock starting at at and advancing one tick per reading, so durations are real.
+func ticking(at time.Time) func() time.Time {
+	return func() time.Time {
+		now := at
+		at = at.Add(tick)
+
+		return now
+	}
 }
 
 // initialized runs init in a fresh directory with a DSN in the environment, ready for create.

@@ -59,5 +59,28 @@
 // so without one there is no way to assert the filename create wrote, and no way
 // to reach the two-creates-in-one-second case at all except by racing.
 //
-// Status: init, create, version, and config. The rest land across M5 (see TASKS.md).
+// # Which database a command reaches
+//
+// The driver registry is a parameter of Execute rather than something this
+// package builds: cmd/migr is the only place that may name a concrete driver
+// (invariant #1), and registration is explicit so a duplicate name is reportable
+// (ADR 0011). Passing it in is also what lets the untagged suite drive every
+// command against a fake database with no Docker at all.
+//
+// config.Target resolves --database, else the "default" key, else the only
+// database defined, else it refuses naming them all. It never fans out. A
+// migr.yaml holding a development target and a production one is an ordinary
+// file, and `migr up` reaching production because nobody typed a flag is not a
+// mistake a tool should be able to make (ADR 0026, F).
+//
+// # A summary prints before its error
+//
+// engine.Result is populated alongside a failure, which is the whole reason it
+// is a value rather than a field on the error -- so a run that fails on the
+// third migration prints the two that committed and then fails. A run that
+// failed having done nothing prints no summary at all: "nothing to do" above a
+// refusal is two answers to one question, and the first one is wrong.
+//
+// Status: init, create, up, down, version, and config. The rest land across M5
+// (see TASKS.md).
 package cli

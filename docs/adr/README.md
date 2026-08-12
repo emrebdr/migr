@@ -35,6 +35,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0023](0023-batch-narrowing.md) | `--to` names the state to end in, and narrowing is a prefix of the run order | Accepted | What `--step` and `--to` select in each direction, which batch a bare `migr down` acts on, and where a refusal sits relative to a scope |
 | [0024](0024-dirty-runs.md) | A run is dirty when its statements outlived the failure | Accepted | What separates a failed run from a dirty one, what a non-transactional session changes, and what record-before-commit means where DDL auto-commits |
 | [0025](0025-sql-source-language.md) | SQL is a source language, and `migr create` writes what `Parse` reads | Accepted | What a scaffolded project names and contains, where the `.sql` file format lives, how a filename is produced, and what the interim format gives up |
+| [0026](0026-dry-run-and-sql-sources.md) | A dry run reads what an apply ensures | Accepted | Why a preview is an entry point rather than a flag, what a database with no history table means to it, how a `.sql` file becomes statements, and which database a bare command targets |
 
 ## When to write one
 

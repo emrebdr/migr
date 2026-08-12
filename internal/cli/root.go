@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/emrebdr/migr/internal/driver"
 )
 
 // options holds the values bound to the root command's persistent flags.
@@ -16,17 +18,18 @@ type options struct {
 	verbosity  int
 	log        *slog.Logger
 	clock      func() time.Time
+	drivers    *driver.Registry
 }
 
 // Execute builds the root command and runs it against the given arguments.
-func Execute(ctx context.Context, args []string) error {
-	cmd := newRootCmd()
+func Execute(ctx context.Context, drivers *driver.Registry, args []string) error {
+	cmd := rootCmd(&options{drivers: drivers})
 	cmd.SetArgs(args)
 
 	return cmd.ExecuteContext(ctx)
 }
 
-// newRootCmd constructs a fresh root command with all subcommands attached.
+// newRootCmd constructs a fresh root command with no drivers, for the commands that reach no database.
 func newRootCmd() *cobra.Command {
 	return rootCmd(&options{})
 }
@@ -58,7 +61,8 @@ func rootCmd(opts *options) *cobra.Command {
 	}
 
 	registerGlobalFlags(cmd, opts)
-	cmd.AddCommand(newVersionCmd(opts), newConfigCmd(opts), newInitCmd(opts), newCreateCmd(opts))
+	cmd.AddCommand(newVersionCmd(opts), newConfigCmd(opts), newInitCmd(opts), newCreateCmd(opts),
+		newUpCmd(opts), newDownCmd(opts))
 
 	return cmd
 }

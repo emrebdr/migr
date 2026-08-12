@@ -26,10 +26,20 @@ func main() {
 
 // run executes the CLI and returns the process exit code.
 func run() int {
-	err := cli.Execute(context.Background(), os.Args[1:])
+	err := execute()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "migr: %v\n", err)
 	}
 
 	return cli.ExitCode(err)
+}
+
+// execute builds the driver registry this binary carries and runs the command line against it.
+func execute() error {
+	registry, err := drivers()
+	if err != nil {
+		return err
+	}
+
+	return cli.Execute(context.Background(), registry, os.Args[1:])
 }

@@ -8,9 +8,28 @@
 // no database either. What arrives here is a sequence and a way to compile it.
 //
 // Status: both queues are complete — apply in M4-T5 and rollback in M4-T6 — with drift reporting in
-// M4-T7, narrowing in M4-T8, and the dirty-state model in M4-T9. The transaction opt-out is
-// completed in M13-T4. See docs/adr/0021-apply-executor.md, docs/adr/0022-rollback-executor.md,
-// docs/adr/0023-batch-narrowing.md and docs/adr/0024-dirty-runs.md.
+// M4-T7, narrowing in M4-T8, the dirty-state model in M4-T9, and previewing in M5-T2. The
+// transaction opt-out is completed in M13-T4. See docs/adr/0021-apply-executor.md,
+// docs/adr/0022-rollback-executor.md, docs/adr/0023-batch-narrowing.md,
+// docs/adr/0024-dirty-runs.md and docs/adr/0026-dry-run-and-sql-sources.md.
+//
+// # A preview reads what an apply ensures
+//
+// Preview is the third entry point, and it runs the same pipeline the other two do — reconcile,
+// classify, emit, compile — stopping before the first statement. Only the last step differs, so a
+// dry run and the run it describes cannot drift apart into two answers.
+//
+// It does not Ensure. Creating the history table is a write, and a command whose entire promise is
+// that it makes none may not make that one either. So it is the only caller for which a database
+// with no history table is an answer rather than a bug: resolved refuses that report because an
+// apply has just ensured one, while a preview folds against an empty-but-present log and reports
+// Recorded: false beside the queue. That is not ADR 0019's mistake, which is reading absent as
+// empty *silently* — a preview says so in the first line of its output and applies nothing either
+// way.
+//
+// It does take the lock, because it reconciles, and reconciling outside the lock reports on a
+// database another run is still changing. A dry run can therefore exit 3, which is the cost of the
+// answer being true at the moment it is printed.
 //
 // # What Apply is given, and why the operations arrive late
 //

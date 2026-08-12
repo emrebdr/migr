@@ -41,14 +41,16 @@ func newExecutor(conn driver.Conn, opts Options) (*executor, error) {
 	return &executor{conn: conn, store: store, opts: opts}, nil
 }
 
-// invocation is what one run does under the migration lock, which is an apply or a rollback.
-type invocation func(ctx context.Context) (Result, error)
+// invocation is what one run does under the migration lock: an apply, a rollback, or a preview.
+type invocation[T any] func(ctx context.Context) (T, error)
 
 // locked takes the migration lock, runs the invocation, and gives the lock back after it returns.
-func (e *executor) locked(ctx context.Context, work invocation) (result Result, err error) {
+func locked[T any](ctx context.Context, e *executor, work invocation[T]) (result T, err error) {
+	var none T
+
 	unlock, err := e.conn.Lock(ctx)
 	if err != nil {
-		return Result{}, err
+		return none, err
 	}
 
 	defer func() { err = errors.Join(err, unlock(context.WithoutCancel(ctx))) }()
@@ -62,6 +64,11 @@ func (e *executor) reconcile(ctx context.Context) (history.Report, error) {
 		return history.Report{}, fmt.Errorf("preparing the migration history: %w", err)
 	}
 
+	return e.fold(ctx)
+}
+
+// fold reads the history and folds it against the migrations it was given, creating nothing.
+func (e *executor) fold(ctx context.Context) (history.Report, error) {
 	log, err := history.Read(ctx, e.store)
 	if err != nil {
 		return history.Report{}, fmt.Errorf("reading the migration history: %w", err)

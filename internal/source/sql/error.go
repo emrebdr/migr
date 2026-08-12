@@ -1,0 +1,71 @@
+package sql
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/emrebdr/migr/internal/ir"
+)
+
+// ErrMalformed marks a .sql file whose sections cannot be read as this format, for errors.Is.
+var ErrMalformed = errors.New("this file is not a migr SQL migration")
+
+// FormatError reports a file this package refuses, and what about its shape it refuses.
+type FormatError struct {
+	// File is the migration filename at fault, as it appears in the migrations directory.
+	File string
+	// Detail states what about the file is wrong, in terms its author can act on.
+	Detail string
+}
+
+// Error names the file first, then what is wrong with it.
+func (e *FormatError) Error() string {
+	return fmt.Sprintf("%s: %s", e.File, e.Detail)
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrMalformed) succeeds.
+func (e *FormatError) Unwrap() error {
+	return ErrMalformed
+}
+
+// malformed builds the verdict for a file this package refuses, naming the file first.
+func malformed(file, detail string) error {
+	return &FormatError{File: file, Detail: detail}
+}
+
+// missingMarker refuses a file with no up section, rather than reading the whole file as one.
+func missingMarker(file string) error {
+	return malformed(file, fmt.Sprintf("it has no %q line, so nothing here can say which of its "+
+		"statements are the migration and which are the undo. A file whose marker is misspelled "+
+		"would otherwise run its down section during an apply", MarkerUp))
+}
+
+// repeatedMarker refuses a file carrying one marker twice, naming both lines.
+func repeatedMarker(file, marker string, first, second int) error {
+	return malformed(file, fmt.Sprintf("it carries %q on lines %d and %d, and a section has one "+
+		"beginning: nothing here can say which of them opens it", marker, first, second))
+}
+
+// markersReversed refuses a file whose down section precedes its up section.
+func markersReversed(file string) error {
+	return malformed(file, fmt.Sprintf("its %q line comes before its %q line, and a migration is "+
+		"applied before it is ever rolled back", MarkerDown, MarkerUp))
+}
+
+// strayStatement refuses SQL above the first marker, which belongs to no direction.
+func strayStatement(file string, line int) error {
+	return malformed(file, fmt.Sprintf("line %d holds SQL above the %q line, which belongs to "+
+		"neither direction and would never run. Move it into a section, or make it a %s comment",
+		line, MarkerUp, lineComment))
+}
+
+// unreadable reports a migration whose file could not be read at all.
+func unreadable(file string, err error) error {
+	return fmt.Errorf("reading %s: %w", file, err)
+}
+
+// unknownDirection reports a direction that is neither of the two a migration runs.
+func unknownDirection(file string, dir ir.Direction) error {
+	return malformed(file, fmt.Sprintf("it was asked for direction %q, which is neither %q nor %q",
+		dir, ir.Up, ir.Down))
+}

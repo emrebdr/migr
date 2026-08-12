@@ -61,6 +61,14 @@ var ErrNoBatch = errors.New("only a rollback can act on the last batch")
 // ErrUnknownScope marks a selector this build has no rule for, for errors.Is.
 var ErrUnknownScope = errors.New("this build does not know that way of narrowing a run")
 
+// ErrUnknownDirection marks a direction that is neither of the two a migration runs, for errors.Is.
+var ErrUnknownDirection = errors.New("this build does not know that direction")
+
+// unknownDirectionError reports a direction that is neither up nor down, naming what was asked for.
+func unknownDirectionError(dir ir.Direction) error {
+	return fmt.Errorf("%w: %q is neither %q nor %q", ErrUnknownDirection, dir, ir.Up, ir.Down)
+}
+
 // stamp renders a recorded instant in a message, in UTC because a history row is read anywhere.
 const stamp = "2006-01-02 15:04:05 UTC"
 

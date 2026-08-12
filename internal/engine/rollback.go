@@ -17,7 +17,7 @@ func Rollback(ctx context.Context, conn driver.Conn, opts Options) (Result, erro
 		return Result{}, err
 	}
 
-	return e.locked(ctx, e.rollbackAll)
+	return locked(ctx, e, e.rollbackAll)
 }
 
 // rollbackAll undoes what the database carries, inverting all of it before running any of it.
@@ -54,20 +54,30 @@ func (e *executor) invert(ctx context.Context, queue []queued) ([]prepared, erro
 	inverted := make([]prepared, 0, len(queue))
 
 	for _, item := range queue {
-		ops, err := e.undo(ctx, item)
+		ready, err := e.reverse(ctx, item)
 		if err != nil {
-			return nil, e.fail(item, plan.Plan{}, err)
-		}
-
-		ready, err := e.prepare(item, ir.Down, ops)
-		if err != nil {
-			return nil, e.fail(item, plan.Plan{}, err)
+			return nil, err
 		}
 
 		inverted = append(inverted, ready)
 	}
 
 	return inverted, nil
+}
+
+// reverse asks how to undo one migration and compiles that, which is everything before it runs.
+func (e *executor) reverse(ctx context.Context, item queued) (prepared, error) {
+	ops, err := e.undo(ctx, item)
+	if err != nil {
+		return prepared{}, e.fail(item, plan.Plan{}, err)
+	}
+
+	ready, err := e.prepare(item, ir.Down, ops)
+	if err != nil {
+		return prepared{}, e.fail(item, plan.Plan{}, err)
+	}
+
+	return ready, nil
 }
 
 // undo asks the source what a migration undoes, falling back to deriving it from what it does.

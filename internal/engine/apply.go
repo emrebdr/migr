@@ -20,7 +20,7 @@ func Apply(ctx context.Context, conn driver.Conn, opts Options) (Result, error) 
 		return Result{}, err
 	}
 
-	return e.locked(ctx, e.applyAll)
+	return locked(ctx, e, e.applyAll)
 }
 
 // applyAll reconciles against the history and applies whatever is pending, one migration at a time.
@@ -65,16 +65,26 @@ func (e *executor) applyQueue(ctx context.Context, queue []queued, skipped []Ski
 
 // applyOne asks what one migration does, prepares it, and runs it, recording it before it commits.
 func (e *executor) applyOne(ctx context.Context, item queued) (Run, error) {
+	ready, err := e.forward(ctx, item)
+	if err != nil {
+		return Run{}, err
+	}
+
+	return e.perform(ctx, ready)
+}
+
+// forward asks what one migration does and compiles it, which is everything an apply does before it runs.
+func (e *executor) forward(ctx context.Context, item queued) (prepared, error) {
 	ops, err := e.opts.Source.Emit(ctx, item.migration, ir.Up)
 	if err != nil {
-		return Run{}, e.fail(item, plan.Plan{},
+		return prepared{}, e.fail(item, plan.Plan{},
 			fmt.Errorf("asking what this migration does: %w", err))
 	}
 
 	ready, err := e.prepare(item, ir.Up, ops)
 	if err != nil {
-		return Run{}, e.fail(item, plan.Plan{}, err)
+		return prepared{}, e.fail(item, plan.Plan{}, err)
 	}
 
-	return e.perform(ctx, ready)
+	return ready, nil
 }

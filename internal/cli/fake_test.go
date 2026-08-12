@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
@@ -55,6 +56,27 @@ func (f *fake) registry(t *testing.T) *driver.Registry {
 // note records one thing a run asked of this database, in the order it asked.
 func (f *fake) note(call string) {
 	f.calls = append(f.calls, call)
+}
+
+// record stages the row one run would have written, holding it to what a real store would have.
+func (f *fake) record(t *testing.T, rec history.Record) {
+	t.Helper()
+
+	rec.Driver = fakeName
+	rec.Runtime = string(config.LanguageSQL)
+
+	if rec.AppliedAt.IsZero() {
+		rec.AppliedAt = noon.UTC()
+	}
+
+	rec = rec.Stamp()
+
+	if err := rec.Validate(); err != nil {
+		t.Fatalf("staging a history row: %v", err)
+	}
+
+	f.table = true
+	f.runs = append(f.runs, rec)
 }
 
 // asked reports whether a run made the named call.

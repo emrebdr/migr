@@ -81,6 +81,44 @@
 // failed having done nothing prints no summary at all: "nothing to do" above a
 // refusal is two answers to one question, and the first one is wrong.
 //
-// Status: init, create, up, down, version, and config. The rest land across M5
-// (see TASKS.md).
+// # A report takes no lock
+//
+// status and history only ever read, and they read without the migration lock.
+// A preview takes it because it answers "what will run", and an answer about a
+// database someone else is changing is not one; a status answers "what is" and
+// does not promise to act on it. Locking would make a read-only report block a
+// deploy and give it an exit code 3 of its own, when it is exactly the command
+// an operator wants during one (ADR 0027, A).
+//
+// They exit 0 having found drift or a dirty migration. The five states are the
+// output, not the failure -- migr up is already the gate that exits 4 and 1, and
+// one database holding both would have to pick between them.
+//
+// A database with no history table is printed as itself: one sentence, plus how
+// many migration files are on disk, and no rows. Not N pendings, which is what a
+// preview says and what ADR 0019 exists to prevent -- read that way, a fully
+// migrated production database looks virgin.
+//
+// The fold is history.Read plus history.Reconcile, called here rather than
+// through engine.inspect, whose substitution of a present-empty log is exactly
+// what that paragraph refuses. session.log narrows the store to history.Reader,
+// so no report can write, Ensure, or repair.
+//
+// # What a command reaches for
+//
+// open split into resolve (config and target), files (discovery and hashing),
+// and connect (driver and session), so what a command needs is visible in which
+// it calls. status skips the source, since it compiles nothing -- and a project
+// whose language has no runtime until M6-T10 can therefore still ask for its
+// status. history skips discovery too: the log is the database's, and refusing
+// to print it because the migrations directory is broken removes the tool
+// somebody reached for to diagnose that.
+//
+// Consequently status renders a filename and history renders version_name. No
+// history row records an extension, deliberately, since a run may outlive the
+// file it ran from -- and a status with no file carries a zero Migration, whose
+// Filename() is the string "_", so the renderer asks before it calls it.
+//
+// Status: init, create, up, down, status, history, version, and config. The rest
+// land across M5 (see TASKS.md).
 package cli

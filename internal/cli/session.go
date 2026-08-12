@@ -26,18 +26,30 @@ var executable = map[config.Language]string{
 	config.LanguageTypeScript: "M7-T8",
 }
 
-// session is one open database and everything an apply or a rollback needs to run against it.
+// target is the one database a command reaches, resolved from the config and reaching nothing yet.
+type target struct {
+	// cfg is the whole resolved configuration, defaults applied and secrets expanded.
+	cfg *config.Config
+	// name is the key migr.yaml holds this database under.
+	name string
+	// db is what that key resolved to, DSN included.
+	db config.Database
+	// fsys is the migrations directory, which a command reads only if it needs the files.
+	fsys fs.FS
+}
+
+// session is one open database, and the name a report or a run prints it under.
 type session struct {
-	// conn is the pinned session every statement and every history write goes through.
+	// conn is the pinned session every statement and every history read goes through.
 	conn driver.Conn
 	// database is the name migr.yaml holds this target under.
 	database string
-	// options is what the engine was given beyond that connection.
+	// options is what the engine was given beyond that connection, bare for a command that runs nothing.
 	options engine.Options
 }
 
-// open resolves the config, discovers the migrations, and connects to the database a command targets.
-func open(ctx context.Context, opts *options, scope engine.Scope) (*session, error) {
+// resolve loads the config and names the one database this invocation targets, connecting to nothing.
+func resolve(opts *options) (*target, error) {
 	cfg, err := config.Load(config.Resolve(opts.configPath))
 	if err != nil {
 		return nil, NewExitError(ExitValidation, err)
@@ -48,34 +60,75 @@ func open(ctx context.Context, opts *options, scope engine.Scope) (*session, err
 		return nil, NewExitError(ExitValidation, err)
 	}
 
-	fsys := os.DirFS(cfg.Migrations.Dir)
+	return &target{cfg: cfg, name: name, db: db, fsys: os.DirFS(cfg.Migrations.Dir)}, nil
+}
 
-	files, err := discover(fsys)
+// files discovers the migrations directory, orders it, and hashes what each file currently holds.
+func (t *target) files(opts *options) ([]history.File, error) {
+	files, err := discover(t.fsys)
 	if err != nil {
 		return nil, NewExitError(ExitValidation, err)
 	}
 
-	source, err := sourceFor(cfg.Migrations.Language, fsys, db.Driver)
+	opts.log.Debug("discovered migrations", "dir", t.cfg.Migrations.Dir, "migrations", len(files))
+
+	return files, nil
+}
+
+// source returns what reads this project's migrations, or why nothing can run them yet.
+func (t *target) source() (engine.Source, error) {
+	source, err := sourceFor(t.cfg.Migrations.Language, t.fsys, t.db.Driver)
 	if err != nil {
 		return nil, NewExitError(ExitValidation, err)
 	}
 
-	d, conn, err := connect(ctx, opts, cfg, name, db)
+	return source, nil
+}
+
+// connect opens the one pinned session everything this command does goes through.
+func (t *target) connect(ctx context.Context, opts *options) (*session, error) {
+	d, conn, err := dial(ctx, opts, t)
 	if err != nil {
 		return nil, err
 	}
 
-	opts.log.Info("connected", "database", name, "driver", db.Driver,
-		"server", conn.ServerVersion(), "migrations", len(files))
+	opts.log.Info("connected", "database", t.name, "driver", t.db.Driver,
+		"server", conn.ServerVersion())
 
-	return &session{conn: conn, database: name, options: engine.Options{
-		Planner:    plan.Planner{Compiler: d},
-		Source:     source,
-		Migrations: files,
-		Clock:      opts.clock,
-		Runtime:    string(cfg.Migrations.Language),
-		Scope:      scope,
+	return &session{conn: conn, database: t.name, options: engine.Options{
+		Planner: plan.Planner{Compiler: d},
 	}}, nil
+}
+
+// open resolves the target, discovers the migrations, and opens a session ready to run a direction.
+func open(ctx context.Context, opts *options, scope engine.Scope) (*session, error) {
+	t, err := resolve(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := t.files(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	source, err := t.source()
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := t.connect(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	s.options.Source = source
+	s.options.Migrations = files
+	s.options.Clock = opts.clock
+	s.options.Runtime = string(t.cfg.Migrations.Language)
+	s.options.Scope = scope
+
+	return s, nil
 }
 
 // close gives the connection back, on a context that outlives whatever canceled the run.
@@ -90,6 +143,26 @@ func (s *session) run(ctx context.Context, dir ir.Direction) (engine.Result, err
 	}
 
 	return engine.Apply(ctx, s.conn, s.options)
+}
+
+// log reads this database's history through its read half alone, which is all a report may be given.
+func (s *session) log(ctx context.Context) (history.Log, error) {
+	return history.Read(ctx, reader(s.conn))
+}
+
+// reconcile folds this database's history against the migrations on disk, taking no lock at all.
+func (s *session) reconcile(ctx context.Context, files []history.File) (history.Report, error) {
+	log, err := s.log(ctx)
+	if err != nil {
+		return history.Report{}, err
+	}
+
+	return history.Reconcile(files, log), nil
+}
+
+// reader narrows a session's store to the half a report may use, so no report can write or Ensure.
+func reader(conn driver.Conn) history.Reader {
+	return conn.History()
 }
 
 // discover reads the migrations directory, orders it, and hashes what each file currently holds.
@@ -134,21 +207,20 @@ func sourceFor(lang config.Language, fsys fs.FS, driverName string) (engine.Sour
 		lang, joinLanguages(config.Languages()))
 }
 
-// connect builds the driver migr.yaml names and opens the one pinned session everything runs through.
-func connect(ctx context.Context, opts *options, cfg *config.Config, name string,
-	db config.Database) (driver.Driver, driver.Conn, error) {
+// dial builds the driver migr.yaml names and opens a connection to the database it points at.
+func dial(ctx context.Context, opts *options, t *target) (driver.Driver, driver.Conn, error) {
 	if opts.drivers == nil {
 		return nil, nil, errNoDrivers
 	}
 
-	d, err := opts.drivers.New(db.Driver, cfg.DriverOptions(db))
+	d, err := opts.drivers.New(t.db.Driver, t.cfg.DriverOptions(t.db))
 	if err != nil {
-		return nil, nil, NewExitError(ExitValidation, fmt.Errorf("databases.%s: %w", name, err))
+		return nil, nil, NewExitError(ExitValidation, fmt.Errorf("databases.%s: %w", t.name, err))
 	}
 
-	conn, err := d.Open(ctx, db.DSN.Reveal())
+	conn, err := d.Open(ctx, t.db.DSN.Reveal())
 	if err != nil {
-		return nil, nil, fmt.Errorf("connecting to database %q: %w", name, err)
+		return nil, nil, fmt.Errorf("connecting to database %q: %w", t.name, err)
 	}
 
 	return d, conn, nil

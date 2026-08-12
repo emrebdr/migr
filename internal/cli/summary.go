@@ -9,7 +9,11 @@ import (
 
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
 )
+
+// stamp renders a recorded instant in a table, in UTC because a history row is read anywhere.
+const stamp = "2006-01-02 15:04:05 UTC"
 
 // elapsed is a run's duration, rendered as milliseconds for a script and as itself for a person.
 type elapsed time.Duration
@@ -153,7 +157,7 @@ func leftBehind(skipped []engine.Skipped) []left {
 	for _, s := range skipped {
 		out = append(out, left{
 			Version: s.Version,
-			File:    describeFile(s),
+			File:    describeFile(s.Migration),
 			State:   string(s.State),
 		})
 	}
@@ -161,13 +165,13 @@ func leftBehind(skipped []engine.Skipped) []left {
 	return out
 }
 
-// describeFile names the file a skipped migration was found in, which a missing one has none of.
-func describeFile(s engine.Skipped) string {
-	if s.Migration.Version == "" {
+// describeFile names the file a migration was found in, which one only the database names has none of.
+func describeFile(m migration.Migration) string {
+	if m.Version == "" {
 		return ""
 	}
 
-	return s.Migration.Filename()
+	return m.Filename()
 }
 
 // String renders what ran, one migration per line, then what the whole invocation cost.
@@ -185,7 +189,7 @@ func (s runSummary) String() string {
 	b.WriteString("\n")
 
 	for _, run := range s.Runs {
-		fmt.Fprintf(&b, "  %d  %-*s  %s  %s\n", run.Ordinal, widthOf(s.Runs), run.File,
+		fmt.Fprintf(&b, "  %d  %-*s  %s  %s\n", run.Ordinal, widest(s.Runs, fileOfRun), run.File,
 			describeStatements(int(run.Statements)), run.Duration)
 	}
 
@@ -215,7 +219,7 @@ func (s planSummary) String() string {
 	b.WriteString("\n")
 
 	for _, step := range s.Steps {
-		fmt.Fprintf(&b, "  %d  %-*s  %s\n", step.Ordinal, plannedWidth(s.Steps), step.File,
+		fmt.Fprintf(&b, "  %d  %-*s  %s\n", step.Ordinal, widest(s.Steps, fileOfStep), step.File,
 			describeStatements(step.Statements))
 	}
 
@@ -291,23 +295,18 @@ func describeSkipped(skipped []left) string {
 	return " (" + fmt.Sprintf("%d skipped: ", len(skipped)) + strings.Join(states, ", ") + ")"
 }
 
-// widthOf returns the column width the longest filename in a run summary needs.
-func widthOf(runs []ran) int {
+// fileOfRun names the file one performed migration was found in.
+func fileOfRun(r ran) string { return r.File }
+
+// fileOfStep names the file one previewed migration was found in.
+func fileOfStep(p planned) string { return p.File }
+
+// widest returns the column width the longest rendering of these rows needs.
+func widest[T any](rows []T, of func(T) string) int {
 	width := 0
 
-	for _, run := range runs {
-		width = max(width, len(run.File))
-	}
-
-	return width
-}
-
-// plannedWidth returns the column width the longest filename in a plan summary needs.
-func plannedWidth(steps []planned) int {
-	width := 0
-
-	for _, step := range steps {
-		width = max(width, len(step.File))
+	for _, row := range rows {
+		width = max(width, len(of(row)))
 	}
 
 	return width

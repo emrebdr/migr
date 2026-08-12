@@ -5,8 +5,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/emrebdr/migr/internal/cli"
@@ -98,6 +101,71 @@ func migr(t *testing.T, config string, args ...string) error {
 	return cli.Execute(ctx, registry, append([]string{"--config", config}, args...))
 }
 
+// migrOut runs the CLI and returns what it printed, for the commands whose whole product is output.
+func migrOut(t *testing.T, config string, args ...string) string {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("opening a pipe: %v", err)
+	}
+
+	stdout := os.Stdout
+	os.Stdout = w
+	runErr := migr(t, config, args...)
+	os.Stdout = stdout
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing the pipe: %v", err)
+	}
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("reading what migr %s printed: %v", args[0], err)
+	}
+
+	if runErr != nil {
+		t.Fatalf("migr %s: %v\n%s", args[0], runErr, out)
+	}
+
+	return string(out)
+}
+
+// stateOf returns the state migr status printed for one migration, so a test asserts a row.
+func stateOf(t *testing.T, out, name string) string {
+	t.Helper()
+
+	for line := range strings.Lines(out) {
+		if strings.Contains(line, name) {
+			return strings.Fields(line)[0]
+		}
+	}
+
+	t.Fatalf("migr status printed no row for %s:\n%s", name, out)
+
+	return ""
+}
+
+// countRuns counts the lines migr history printed, keyed by the migration and direction each names.
+func countRuns(out string) map[string]int {
+	counts := make(map[string]int)
+
+	for line := range strings.Lines(out) {
+		fields := strings.Fields(line)
+		if len(fields) > migrationField+1 && slices.Contains(directions, fields[migrationField+1]) {
+			counts[fields[migrationField]+" "+fields[migrationField+1]]++
+		}
+	}
+
+	return counts
+}
+
+// migrationField is where a printed run names its migration: after the batch and the ordinal.
+const migrationField = 2
+
+// directions are what a run's direction column may hold, which is what marks a line as a run.
+var directions = []string{"up", "down"}
+
 // recorded returns every run this suite's history table holds, through the store contract alone.
 func recorded(t *testing.T) []history.Record {
 	t.Helper()
@@ -184,6 +252,64 @@ func TestTheWholeStackAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {
 		t.Errorf("the second up: %v", err)
 		t.Log("A rollback that reported success without dropping the tables would fail here, and")
 		t.Log("nowhere else: the history says they are gone either way.")
+	}
+}
+
+func TestStatusAndHistoryReportTheRoundTripAgainstPostgreSQL(t *testing.T) {
+	config := project(t)
+
+	if err := migr(t, config, "down"); err != nil {
+		t.Logf("clearing what an earlier run left behind: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := migr(t, config, "down"); err != nil {
+			t.Errorf("leaving the server as this suite found it: %v", err)
+		}
+	})
+
+	base := countRuns(migrOut(t, config, "history"))
+
+	if err := migr(t, config, "up"); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+
+	applied := migrOut(t, config, "status")
+	for _, m := range migrations {
+		if got := stateOf(t, applied, m.name); got != "applied" {
+			t.Errorf("%s reads %q after up, want applied:\n%s", m.name, got, applied)
+		}
+	}
+
+	log := countRuns(migrOut(t, config, "history"))
+	for _, m := range migrations {
+		name := strings.TrimSuffix(m.name, ".sql")
+
+		if got := log[name+" up"] - base[name+" up"]; got != 1 {
+			t.Errorf("up appended %d runs for %s to the log", got, m.name)
+		}
+	}
+
+	if err := migr(t, config, "down"); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+
+	pending := migrOut(t, config, "status")
+	for _, m := range migrations {
+		if got := stateOf(t, pending, m.name); got != "pending" {
+			t.Errorf("%s reads %q after down, want pending:\n%s", m.name, got, pending)
+		}
+	}
+
+	undone := countRuns(migrOut(t, config, "history"))
+	for _, m := range migrations {
+		name := strings.TrimSuffix(m.name, ".sql")
+
+		if up, down := undone[name+" up"]-base[name+" up"], undone[name+" down"]-base[name+" down"]; up != 1 || down != 1 {
+			t.Errorf("the log holds %d new up and %d new down runs for %s, want one of each", up, down, m.name)
+			t.Log("A rollback appends a row rather than deleting one, so the log still shows the")
+			t.Log("run it undid. That is what migr status folds and what this command prints.")
+		}
 	}
 }
 

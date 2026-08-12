@@ -191,7 +191,8 @@ suite is what holds that true as both SDKs evolve.
 | `migr init` | scaffold `migr.yaml` and a migrations directory | **works today** |
 | `migr create` | new migration from a template | **works today** |
 | `migr up` / `migr down` | apply / roll back, by step or to a version | **works today** |
-| `migr status` | applied, pending, missing, drifted, dirty | planned |
+| `migr status` | applied, pending, missing, drifted, dirty | **works today** |
+| `migr history` | the execution log, rollbacks and failures included | **works today** |
 | `migr plan` | dry run: compiled statements, annotated with lock impact | planned |
 | `migr validate` | run validators without touching the database | planned |
 | `migr diff` | introspect, diff against the desired schema, emit a migration | planned |
@@ -307,6 +308,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0024](docs/adr/0024-dirty-runs.md) | A run is dirty when its statements outlived the failure |
 | [0025](docs/adr/0025-sql-source-language.md) | SQL is a source language, and `migr create` writes what `Parse` reads |
 | [0026](docs/adr/0026-dry-run-and-sql-sources.md) | A dry run reads what an apply ensures |
+| [0027](docs/adr/0027-read-only-reports.md) | A read-only report takes no lock |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -313,6 +313,37 @@ func TestStatusAndHistoryReportTheRoundTripAgainstPostgreSQL(t *testing.T) {
 	}
 }
 
+func TestValidatePassesWhatTheWholeStackThenRuns(t *testing.T) {
+	config := project(t)
+
+	if err := migr(t, config, "down"); err != nil {
+		t.Logf("clearing what an earlier run left behind: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := migr(t, config, "down"); err != nil {
+			t.Errorf("leaving the server as this suite found it: %v", err)
+		}
+	})
+
+	rows := len(recorded(t))
+
+	out := migrOut(t, config, "validate")
+	if !strings.Contains(out, "no problems found") {
+		t.Fatalf("validate found something in this suite's own migrations:\n%s", out)
+	}
+
+	if got := len(recorded(t)); got != rows {
+		t.Errorf("validate wrote %d history rows", got-rows)
+	}
+
+	if err := migr(t, config, "up"); err != nil {
+		t.Errorf("what validate passed, up refused: %v", err)
+		t.Log("Validation compiles every migration through the same planner the executor uses,")
+		t.Log("so a project it passes cannot fail for a reason a compile could have found.")
+	}
+}
+
 func TestPlanPrintsTheStatementsARealServerWouldRun(t *testing.T) {
 	config := project(t)
 

@@ -87,6 +87,10 @@ func (e *executor) undo(ctx context.Context, item queued) (ir.Operations, error)
 		return ops, nil
 	}
 
+	if errors.Is(err, ErrDeclaredIrreversible) {
+		return nil, err
+	}
+
 	if !errors.Is(err, ErrNoDownAuthored) {
 		return nil, fmt.Errorf("asking what this migration undoes: %w", err)
 	}

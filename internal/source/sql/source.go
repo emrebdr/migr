@@ -65,6 +65,8 @@ type sections struct {
 	down []string
 	// authored reports whether the file carries a down marker at all.
 	authored bool
+	// declared is the reason the file gives for having no undo at all, empty when it gives none.
+	declared string
 }
 
 // of returns one direction's statements, reporting a down the file authored none of.
@@ -79,8 +81,12 @@ func (s sections) of(file string, dir ir.Direction) ([]string, error) {
 	return nil, unknownDirection(file, dir)
 }
 
-// undo returns the down statements, or the sentinel that has the engine derive an inverse instead.
+// undo returns the down statements, the author's refusal, or the sentinel that has one derived.
 func (s sections) undo() ([]string, error) {
+	if s.declared != "" {
+		return nil, engine.DeclaredIrreversible(s.declared)
+	}
+
 	if !s.authored || len(s.down) == 0 {
 		return nil, engine.ErrNoDownAuthored
 	}
@@ -110,6 +116,20 @@ func split(file, src string) (sections, error) {
 		return sections{}, err
 	}
 
+	declared, reason, err := declarationAt(file, lines)
+	if err != nil {
+		return sections{}, err
+	}
+
+	if declared >= 0 {
+		return declaredSections(file, lines, up, down, declared, reason)
+	}
+
+	return authoredSections(file, lines, up, down)
+}
+
+// authoredSections divides a file that answers the down question by writing one, or by omitting it.
+func authoredSections(file string, lines []string, up, down int) (sections, error) {
 	if down < 0 {
 		return sections{up: Statements(join(lines[up+1:]))}, nil
 	}
@@ -123,6 +143,48 @@ func split(file, src string) (sections, error) {
 		down:     Statements(join(lines[down+1:])),
 		authored: true,
 	}, nil
+}
+
+// declaredSections divides a file that answers the down question by stating there is no answer.
+func declaredSections(file string, lines []string, up, down, declared int,
+	reason string) (sections, error) {
+	if down >= 0 {
+		return sections{}, declaredBesideDown(file, down+1, declared+1)
+	}
+
+	if declared < up {
+		return sections{}, declaredAboveUp(file, declared+1)
+	}
+
+	if reason == "" {
+		return sections{}, declaredWithoutReason(file, declared+1)
+	}
+
+	if line := firstStatement(lines[declared+1:], declared+2); line > 0 {
+		return sections{}, statementBelowDeclaration(file, line)
+	}
+
+	return sections{up: Statements(join(lines[up+1 : declared])), declared: reason}, nil
+}
+
+// declarationAt returns the line declaring the migration has no undo, and the reason it gives.
+func declarationAt(file string, lines []string) (int, string, error) {
+	found, reason := -1, ""
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, MarkerIrreversible) {
+			continue
+		}
+
+		if found >= 0 {
+			return 0, "", repeatedMarker(file, MarkerIrreversible, found+1, i+1)
+		}
+
+		found, reason = i, strings.TrimSpace(strings.TrimPrefix(trimmed, MarkerIrreversible))
+	}
+
+	return found, reason, nil
 }
 
 // markerAt returns the line a marker sits alone on, refusing a file that carries it more than once.
@@ -146,16 +208,25 @@ func markerAt(file string, lines []string, marker string) (int, error) {
 
 // checkPreamble refuses SQL above the first marker, which belongs to no direction and would be dropped.
 func checkPreamble(file string, lines []string) error {
+	if line := firstStatement(lines, 1); line > 0 {
+		return strayStatement(file, line)
+	}
+
+	return nil
+}
+
+// firstStatement returns the line of the first SQL in a run, counting from offset, or zero for none.
+func firstStatement(lines []string, offset int) int {
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, lineComment) {
 			continue
 		}
 
-		return strayStatement(file, i+1)
+		return offset + i
 	}
 
-	return nil
+	return 0
 }
 
 // join puts a run of lines back together as the text they were read from.

@@ -48,7 +48,7 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction, ops ir.Operati
 	for _, op := range ops {
 		index++
 
-		step, err := p.step(m, index, op)
+		step, err := p.Step(m, index, op)
 		if err != nil {
 			return Plan{}, err
 		}
@@ -59,8 +59,8 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction, ops ir.Operati
 	return Plan{Migration: m, Direction: dir, Steps: steps}, nil
 }
 
-// step compiles one operation, holding the driver to statements that would actually run.
-func (p Planner) step(m migration.Migration, index int32, op ir.Operation) (Step, error) {
+// Step compiles one operation, holding the driver to statements that would actually run.
+func (p Planner) Step(m migration.Migration, index int32, op ir.Operation) (Step, error) {
 	if op == nil {
 		return Step{}, &CompileError{Migration: m, Index: index, Err: ErrNoOperation}
 	}

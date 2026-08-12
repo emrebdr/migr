@@ -43,6 +43,30 @@ var ErrUnknownState = errors.New("this build does not know that migration state"
 // ErrNoDownAuthored marks a migration whose source carries no down of its own, for the engine to derive one.
 var ErrNoDownAuthored = errors.New("this migration authors no down of its own")
 
+// ErrDeclaredIrreversible marks a migration whose author stated it cannot be undone, for errors.Is.
+var ErrDeclaredIrreversible = errors.New("this migration declares that it cannot be undone")
+
+// DeclaredIrreversibleError reports a migration its author stated cannot be undone, and why.
+type DeclaredIrreversibleError struct {
+	// Reason is what its author gave for it having no undo, which invariant #10 requires.
+	Reason string
+}
+
+// Error states the declaration and the reason, leaving the migration to whoever names it.
+func (e *DeclaredIrreversibleError) Error() string {
+	return ErrDeclaredIrreversible.Error() + ": " + e.Reason
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrDeclaredIrreversible) succeeds.
+func (e *DeclaredIrreversibleError) Unwrap() error {
+	return ErrDeclaredIrreversible
+}
+
+// DeclaredIrreversible builds the refusal a source reports for a migration declaring it has no undo.
+func DeclaredIrreversible(reason string) error {
+	return &DeclaredIrreversibleError{Reason: reason}
+}
+
 // ErrMissing marks a version the database carries that no migration file describes, for errors.Is.
 var ErrMissing = errors.New("the database carries a version no migration file describes")
 

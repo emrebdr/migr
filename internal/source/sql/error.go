@@ -59,6 +59,34 @@ func strayStatement(file string, line int) error {
 		line, MarkerUp, lineComment))
 }
 
+// declaredBesideDown refuses a file that both writes an undo and declares it has none.
+func declaredBesideDown(file string, down, declared int) error {
+	return malformed(file, fmt.Sprintf("it carries %q on line %d and %q on line %d, and a "+
+		"migration either has an undo or has none: nothing here can say which one it meant",
+		MarkerDown, down, MarkerIrreversible, declared))
+}
+
+// declaredAboveUp refuses a declaration above the up marker, where a comment is ignored in silence.
+func declaredAboveUp(file string, line int) error {
+	return malformed(file, fmt.Sprintf("line %d declares %q above the %q line, where every "+
+		"comment belongs to no section and is passed over: move it below the statements it "+
+		"describes", line, MarkerIrreversible, MarkerUp))
+}
+
+// declaredWithoutReason refuses a declaration that states no reason, which invariant #10 requires.
+func declaredWithoutReason(file string, line int) error {
+	return malformed(file, fmt.Sprintf("line %d declares %q and gives no reason, and the reason "+
+		"is the whole content of that claim: write what makes this migration one-way",
+		line, MarkerIrreversible))
+}
+
+// statementBelowDeclaration refuses SQL under a declaration, which belongs to no direction.
+func statementBelowDeclaration(file string, line int) error {
+	return malformed(file, fmt.Sprintf("line %d holds SQL below the %q line, which belongs to "+
+		"neither direction and would never run: a migration that declares it cannot be undone "+
+		"has no undo to write", line, MarkerIrreversible))
+}
+
 // unreadable reports a migration whose file could not be read at all.
 func unreadable(file string, err error) error {
 	return fmt.Errorf("reading %s: %w", file, err)

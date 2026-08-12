@@ -28,6 +28,9 @@ const (
 	ExitLockImpact = 5
 )
 
+// errValidationFailed marks a validation run that found something, which is a failure of the project.
+var errValidationFailed = errors.New("this project has migrations that will not do what they say")
+
 // ExitError carries the process exit code a failure should produce.
 type ExitError struct {
 	Code int

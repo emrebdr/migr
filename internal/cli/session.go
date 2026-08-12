@@ -63,14 +63,29 @@ func resolve(opts *options) (*target, error) {
 	return &target{cfg: cfg, name: name, db: db, fsys: os.DirFS(cfg.Migrations.Dir)}, nil
 }
 
-// files discovers the migrations directory, orders it, and hashes what each file currently holds.
-func (t *target) files(opts *options) ([]history.File, error) {
-	files, err := discover(t.fsys)
+// discovered reads the migrations directory and orders it, without reading a file's contents.
+func (t *target) discovered(opts *options) ([]migration.Migration, error) {
+	found, err := discover(t.fsys)
 	if err != nil {
 		return nil, NewExitError(ExitValidation, err)
 	}
 
-	opts.log.Debug("discovered migrations", "dir", t.cfg.Migrations.Dir, "migrations", len(files))
+	opts.log.Debug("discovered migrations", "dir", t.cfg.Migrations.Dir, "migrations", len(found))
+
+	return found, nil
+}
+
+// files discovers the migrations directory, orders it, and hashes what each file currently holds.
+func (t *target) files(opts *options) ([]history.File, error) {
+	found, err := t.discovered(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := hashed(t.fsys, found)
+	if err != nil {
+		return nil, NewExitError(ExitValidation, err)
+	}
 
 	return files, nil
 }
@@ -165,21 +180,21 @@ func reader(conn driver.Conn) history.Reader {
 	return conn.History()
 }
 
-// discover reads the migrations directory, orders it, and hashes what each file currently holds.
-func discover(fsys fs.FS) ([]history.File, error) {
+// discover reads the migrations directory and puts it in the order a run would perform it.
+func discover(fsys fs.FS) ([]migration.Migration, error) {
 	found, err := migration.Discover(fsys)
 	if err != nil {
 		return nil, err
 	}
 
-	ordered, err := migration.Order(found, nil)
-	if err != nil {
-		return nil, err
-	}
+	return migration.Order(found, nil)
+}
 
-	files := make([]history.File, 0, len(ordered))
+// hashed pairs each discovered migration with the digest of the bytes its file currently holds.
+func hashed(fsys fs.FS, found []migration.Migration) ([]history.File, error) {
+	files := make([]history.File, 0, len(found))
 
-	for _, m := range ordered {
+	for _, m := range found {
 		src, err := fs.ReadFile(fsys, m.Filename())
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", m.Filename(), err)
@@ -207,15 +222,25 @@ func sourceFor(lang config.Language, fsys fs.FS, driverName string) (engine.Sour
 		lang, joinLanguages(config.Languages()))
 }
 
-// dial builds the driver migr.yaml names and opens a connection to the database it points at.
-func dial(ctx context.Context, opts *options, t *target) (driver.Driver, driver.Conn, error) {
+// compiler builds the driver migr.yaml names, which needs no DSN and reaches no database.
+func (t *target) compiler(opts *options) (driver.Driver, error) {
 	if opts.drivers == nil {
-		return nil, nil, errNoDrivers
+		return nil, errNoDrivers
 	}
 
 	d, err := opts.drivers.New(t.db.Driver, t.cfg.DriverOptions(t.db))
 	if err != nil {
-		return nil, nil, NewExitError(ExitValidation, fmt.Errorf("databases.%s: %w", t.name, err))
+		return nil, NewExitError(ExitValidation, fmt.Errorf("databases.%s: %w", t.name, err))
+	}
+
+	return d, nil
+}
+
+// dial builds the driver migr.yaml names and opens a connection to the database it points at.
+func dial(ctx context.Context, opts *options, t *target) (driver.Driver, driver.Conn, error) {
+	d, err := t.compiler(opts)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn, err := d.Open(ctx, t.db.DSN.Reveal())

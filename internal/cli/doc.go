@@ -151,6 +151,27 @@
 // plan that compiled nothing prints nothing, which is the same rule, not an
 // exception to it. Reporting every refusal rather than the first is M5-T5's.
 //
-// Status: init, create, up, down, status, history, plan, version, and config.
-// The rest land across M5 (see TASKS.md).
+// # What validate checks, and what it opens
+//
+// migr validate is the only command that reaches no database at all: a driver
+// is built from migr.yaml and asked to compile, and nothing calls Open. It
+// reads every migration, compiles both directions for the configured engine,
+// and checks that something can undo each one -- reporting every problem rather
+// than the first (ADR 0028).
+//
+// Opening no database is not the same as needing no configuration. Which engine
+// to compile for comes from migr.yaml, so a config it cannot read is still a
+// failure. And it cannot validate a Go or TypeScript project, since sourceFor
+// refuses a language whose runtime does not exist yet.
+//
+// The remedy line is this package's, not the check's. ir.Raw's reason says to
+// write the undo "in Down" -- source-neutral, correct, and language an author of
+// a .sql file cannot act on. The command knows migrations.language and prints
+// how that format answers it; internal/validate cannot and should not.
+//
+// It exits 2 where migr status exits 0 over the same project. They answer
+// different questions: one reports state, the other judges the repository.
+//
+// Status: init, create, up, down, status, history, plan, validate, version, and
+// config. The rest land across M5 (see TASKS.md).
 package cli

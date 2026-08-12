@@ -23,10 +23,16 @@ type stagedMigration struct {
 	up string
 	// down is what it undoes, as SQL, empty for a migration that authors none.
 	down string
+	// declared is the reason it gives for having no undo at all, empty when it gives none.
+	declared string
 }
 
 // body renders the file this migration is stored as.
 func (m stagedMigration) body() string {
+	if m.declared != "" {
+		return sql.MarkerUp + "\n" + m.up + "\n\n" + sql.MarkerIrreversible + " " + m.declared + "\n"
+	}
+
 	return sql.MarkerUp + "\n" + m.up + "\n\n" + sql.MarkerDown + "\n" + m.down + "\n"
 }
 

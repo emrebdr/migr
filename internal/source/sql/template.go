@@ -9,6 +9,9 @@ const MarkerUp = "-- migr:up"
 // MarkerDown opens the statements that run when it is rolled back.
 const MarkerDown = "-- migr:down"
 
+// MarkerIrreversible declares that nothing can undo this migration, and is followed by the reason.
+const MarkerIrreversible = "-- migr:irreversible:"
+
 // Template is the file migr create writes, and it carries no SQL of its own by design.
 const Template = MarkerUp + `
 -- Statements here run when this migration is applied, in the order they appear.
@@ -17,4 +20,7 @@ const Template = MarkerUp + `
 ` + MarkerDown + `
 -- ... and these when it is rolled back. Write them: SQL reaches the database as a raw
 -- operation, whose effect migr cannot read, so there is no inverse for it to derive.
+--
+-- If this migration truly cannot be undone, say so instead: replace the line above
+-- with ` + MarkerIrreversible + ` and the reason it cannot.
 `

@@ -195,7 +195,7 @@ suite is what holds that true as both SDKs evolve.
 | `migr history` | the execution log, rollbacks and failures included | **works today** |
 | `migr plan` | compiled statements per migration, either direction | **works today** |
 | `migr plan --safety` | the same, annotated with lock impact | planned |
-| `migr validate` | run validators without touching the database | planned |
+| `migr validate` | read, compile, and reverse every migration, connecting to nothing | **works today** |
 | `migr diff` | introspect, diff against the desired schema, emit a migration | planned |
 | `migr seed` | data seeds, kept separate from schema migrations | planned |
 
@@ -310,6 +310,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0025](docs/adr/0025-sql-source-language.md) | SQL is a source language, and `migr create` writes what `Parse` reads |
 | [0026](docs/adr/0026-dry-run-and-sql-sources.md) | A dry run reads what an apply ensures |
 | [0027](docs/adr/0027-read-only-reports.md) | A read-only report takes no lock |
+| [0028](docs/adr/0028-validation-report.md) | A validator reports in phases |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

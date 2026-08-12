@@ -1,6 +1,8 @@
 package config
 
 import (
+	"slices"
+
 	"github.com/emrebdr/migr/internal/capability"
 )
 
@@ -60,8 +62,9 @@ type Validation struct {
 // Language identifies the runtime that executes migrations.
 type Language string
 
-// Supported migration languages. More arrive with their SDKs in M6 and M7.
+// Supported migration languages. The SDK-backed ones arrive with their runtimes in M6 and M7.
 const (
+	LanguageSQL        Language = "sql"
 	LanguageGo         Language = "go"
 	LanguageTypeScript Language = "typescript"
 )
@@ -77,7 +80,12 @@ const (
 )
 
 // languages lists every accepted Language, for validation and error text.
-var languages = []Language{LanguageGo, LanguageTypeScript}
+var languages = []Language{LanguageSQL, LanguageGo, LanguageTypeScript}
+
+// Languages returns every accepted Language, so a caller listing them cannot list a different set.
+func Languages() []Language {
+	return slices.Clone(languages)
+}
 
 // lockStrategies lists every accepted LockStrategy.
 var lockStrategies = []LockStrategy{LockAdvisory, LockTable, LockFile}

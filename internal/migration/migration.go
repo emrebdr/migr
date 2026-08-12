@@ -43,6 +43,11 @@ func (m Migration) Filename() string {
 	return m.Version + separator + m.Name + m.Ext
 }
 
+// New builds the migration a file created at that instant would be, refusing a name the grammar does not accept.
+func New(at time.Time, name, ext string) (Migration, error) {
+	return Parse(Migration{Version: at.UTC().Format(versionLayout), Name: name, Ext: ext}.Filename())
+}
+
 // Parse reads a migration filename, or reports what about it is not one.
 func Parse(filename string) (Migration, error) {
 	ext := path.Ext(filename)

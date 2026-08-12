@@ -188,8 +188,8 @@ suite is what holds that true as both SDKs evolve.
 |---|---|---|
 | `migr version` | version, commit, and platform | **works today** |
 | `migr config` | resolved config, defaults applied, secrets redacted | **works today** |
-| `migr init` | scaffold `migr.yaml` and a migrations directory | planned |
-| `migr create` | new migration from a template | planned |
+| `migr init` | scaffold `migr.yaml` and a migrations directory | **works today** |
+| `migr create` | new migration from a template | **works today** |
 | `migr up` / `migr down` | apply / roll back, by step or to a version | planned |
 | `migr status` | applied, pending, missing, drifted, dirty | planned |
 | `migr plan` | dry run: compiled statements, annotated with lock impact | planned |
@@ -244,8 +244,10 @@ internal/
   plan/ engine/        IR -> ordered plan; apply, rollback, transactions, locking
   history/ checksum/   migration history store and drift detection
   validate/ diff/      destructive-op and capability validation; snapshot diffing
+  migration/           the migration filename grammar, discovery, and dependency order
   driver/              Driver contract + registry; drivertest/ postgres/ mysql/ sqlite/
   runtime/             Runtime contract + registry; protocol/ golang/ node/
+  source/sql/          the SQL migration file format: extension, markers, template
   cli/ config/ version/
 sdk/
   go/                  separate module: github.com/emrebdr/migr/sdk/go
@@ -303,6 +305,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0022](docs/adr/0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it |
 | [0023](docs/adr/0023-batch-narrowing.md) | `--to` names the state to end in, and narrowing is a prefix of the run order |
 | [0024](docs/adr/0024-dirty-runs.md) | A run is dirty when its statements outlived the failure |
+| [0025](docs/adr/0025-sql-source-language.md) | SQL is a source language, and `migr create` writes what `Parse` reads |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

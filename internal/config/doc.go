@@ -33,6 +33,21 @@
 // comment and all, so "30s  # wait for the lock" would reach time.ParseDuration
 // intact.
 //
+// # SQL is a language, not a special case
+//
+// migrations.language admits sql alongside go and typescript, and M5-T1 added it
+// rather than teaching the CLI to write a value this loader refuses. M5's own
+// goal is SQL-file migrations as the interim source format until M6 lands the
+// SDKs, and engine.Options.Runtime is documented as the language "spelled as
+// migr.yaml spells it" -- so a format with no spelling here is one nothing can
+// be asked to run.
+//
+// It is a real value and not a placeholder: a .sql file reaches the database as
+// ir.Raw, which carries a driver name, so such a migration is engine-specific
+// and has no inverse the framework can derive. That is a property of the format
+// worth stating where it is selected, not a reason to hide the selection. See
+// docs/adr/0025-sql-source-language.md.
+//
 // # Lock impact
 //
 // internal/capability owns the LockImpact verdicts from M2-T2 onward; the four

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // valid is every filename this package accepts, with what each one parses to.
@@ -246,5 +247,96 @@ func TestTheGrammarAndItsExampleAgree(t *testing.T) {
 func TestAnEmptyNameIsNotAMigration(t *testing.T) {
 	if got, err := Parse(""); err == nil {
 		t.Fatalf("Parse(\"\") = %+v, want a refusal", got)
+	}
+}
+
+// berlin is a zone two hours ahead of UTC, so a wall clock there disagrees with the version.
+var berlin = time.FixedZone("CEST", 2*60*60)
+
+func TestNewRendersTheVersionInUTC(t *testing.T) {
+	local := time.Date(2026, 7, 27, 17, 30, 0, 0, berlin)
+
+	m, err := New(local, "add_users", ".sql")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if m.Version != "20260727T153000" {
+		t.Errorf("New at %s produced version %q, want the same instant in UTC", local, m.Version)
+		t.Log("A version is a UTC timestamp, and every caller holds a local time.Now. Converting")
+		t.Log("in the caller means every SDK's create has to remember; converting here means one")
+		t.Log("of them forgetting writes wall-clock digits into the field that orders migrations.")
+	}
+}
+
+func TestNewTruncatesToTheSecondItsGrammarHolds(t *testing.T) {
+	m, err := New(time.Date(2026, 7, 27, 15, 30, 0, 999999999, time.UTC), "add_users", ".sql")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if m.Version != "20260727T153000" {
+		t.Errorf("New produced version %q, want the second it falls in", m.Version)
+	}
+}
+
+func TestNewProducesWhatParseAccepts(t *testing.T) {
+	for _, tc := range valid {
+		t.Run(tc.filename, func(t *testing.T) {
+			at, err := time.Parse(versionLayout, tc.want.Version)
+			if err != nil {
+				t.Fatalf("the fixture's own version does not parse: %v", err)
+			}
+
+			m, err := New(at, tc.want.Name, tc.want.Ext)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			if m != tc.want {
+				t.Errorf("New = %+v, want %+v", m, tc.want)
+			}
+
+			if m.Filename() != tc.filename {
+				t.Errorf("New(...).Filename() = %q, want %q", m.Filename(), tc.filename)
+			}
+		})
+	}
+
+	t.Log("New validates by parsing the filename it just rendered, so `migr create` cannot")
+	t.Log("write a file Discover would refuse to read -- the two agree by construction rather")
+	t.Log("than by both being maintained.")
+}
+
+func TestNewRefusesANameTheGrammarRefuses(t *testing.T) {
+	at := time.Date(2026, 7, 27, 15, 30, 0, 0, time.UTC)
+
+	for _, name := range []string{"add-users", "AddUsers", "add users", "", "add__users", "_add"} {
+		t.Run(name, func(t *testing.T) {
+			got, err := New(at, name, ".sql")
+			if err == nil {
+				t.Fatalf("New(%q) = %+v, want a refusal", name, got)
+			}
+
+			if !errors.Is(err, ErrMalformed) {
+				t.Errorf("New(%q) refused with %v, want ErrMalformed", name, err)
+			}
+
+			checkNamesTheFile(t, err, "20260727T153000_"+name+".sql")
+		})
+	}
+
+	t.Log("`migr create add-users` gets this package's own refusal, naming the grammar and the")
+	t.Log("example. Normalizing the name instead would be a second opinion about what a name")
+	t.Log("may be, and the file on disk would not be the one the operator asked for.")
+}
+
+func TestNewRefusesAnExtensionThatNamesNoFileType(t *testing.T) {
+	at := time.Date(2026, 7, 27, 15, 30, 0, 0, time.UTC)
+
+	for _, ext := range []string{"", ".", "sql"} {
+		if got, err := New(at, "add_users", ext); err == nil {
+			t.Errorf("New with extension %q = %+v, want a refusal", ext, got)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -185,18 +186,42 @@ var repairing = []string{
 	"no-verify-checksum",
 }
 
-func TestNoFlagRepairsARecordedChecksum(t *testing.T) {
+// clobbering names the flags that would let a command replace a file it did not write.
+var clobbering = []string{"force", "overwrite", "replace"}
+
+// visitFlags calls fn for every flag every command registers, persistent and local alike.
+func visitFlags(fn func(cmd *cobra.Command, f *pflag.Flag)) {
 	for _, cmd := range append(newRootCmd().Commands(), newRootCmd()) {
 		for _, flags := range []*pflag.FlagSet{cmd.PersistentFlags(), cmd.Flags()} {
-			flags.VisitAll(func(f *pflag.Flag) {
-				if slices.Contains(repairing, f.Name) {
-					t.Errorf("migr %s registers --%s", cmd.Name(), f.Name)
-					t.Log("Invariant #6: applied migrations are immutable, a checksum mismatch is a")
-					t.Log("hard error, and any repair path must be an explicit, separately-named")
-					t.Log("command that says exactly what it is changing -- never a flag on up or")
-					t.Log("down, where it silently rewrites what the next run compares against.")
-				}
-			})
+			flags.VisitAll(func(f *pflag.Flag) { fn(cmd, f) })
 		}
 	}
+}
+
+func TestNoFlagOverwritesAFileMigrDidNotWrite(t *testing.T) {
+	visitFlags(func(cmd *cobra.Command, f *pflag.Flag) {
+		if !slices.Contains(clobbering, f.Name) {
+			return
+		}
+
+		t.Errorf("migr %s registers --%s", cmd.Name(), f.Name)
+		t.Log("Every file migr writes is created with O_EXCL, and init refuses a config that is")
+		t.Log("already there. A flag that turns that off replaces a file naming somebody's")
+		t.Log("databases, or a migration whose checksum is already recorded, and neither is")
+		t.Log("recoverable from the tool that did it.")
+	})
+}
+
+func TestNoFlagRepairsARecordedChecksum(t *testing.T) {
+	visitFlags(func(cmd *cobra.Command, f *pflag.Flag) {
+		if !slices.Contains(repairing, f.Name) {
+			return
+		}
+
+		t.Errorf("migr %s registers --%s", cmd.Name(), f.Name)
+		t.Log("Invariant #6: applied migrations are immutable, a checksum mismatch is a")
+		t.Log("hard error, and any repair path must be an explicit, separately-named")
+		t.Log("command that says exactly what it is changing -- never a flag on up or")
+		t.Log("down, where it silently rewrites what the next run compares against.")
+	})
 }

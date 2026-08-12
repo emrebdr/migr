@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -37,14 +36,7 @@ func newConfigCmd(opts *options) *cobra.Command {
 // writeConfig renders the resolved config as JSON or YAML.
 func writeConfig(w io.Writer, cfg *config.Config, opts *options) error {
 	if opts.jsonOut {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-
-		if err := enc.Encode(cfg); err != nil {
-			return fmt.Errorf("encoding config: %w", err)
-		}
-
-		return nil
+		return writeJSON(w, cfg)
 	}
 
 	out, err := yaml.Marshal(cfg)

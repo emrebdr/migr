@@ -31,11 +31,33 @@
 // manual repair, the second needs a newer migr, and neither is someone editing an
 // applied migration.
 //
+// A command classifies its own failures by one rule, so that M5-T6 inherits a
+// rule rather than a habit: the argument is wrong -> ExitValidation, and the
+// world is not ready -> ExitRuntime. `migr create add-users` is the first;
+// a config already there, a migrations directory that is not, and a version
+// another file already claims are the second. Both are knowable with no
+// database, so "needs no connection" is not what separates them -- what
+// separates them is whether the operator retypes something or changes something.
+//
+// # Nothing migr writes replaces anything
+//
+// Every file this package creates goes through writeNew, which opens with
+// O_EXCL, and init refuses an existing migr.yaml before it writes or creates
+// anything at all. There is no --force: the config names somebody's databases
+// and a migration's checksum may already be recorded, so neither is recoverable
+// from the tool that replaced it. TestNoFlagOverwritesAFileMigrDidNotWrite
+// holds that against every command's flags rather than against a convention.
+//
 // # Command construction
 //
 // newRootCmd returns a fresh command on every call rather than sharing a
 // package-level variable. cobra commands carry parsed flag state, so a shared
 // one would leak values between invocations and make tests order-dependent.
 //
-// Status: skeleton. Commands land across M5 (see TASKS.md).
+// rootCmd takes the options rather than making them, which is the seam a test
+// uses to fix the clock. A migration's version is the instant it was created,
+// so without one there is no way to assert the filename create wrote, and no way
+// to reach the two-creates-in-one-second case at all except by racing.
+//
+// Status: init, create, version, and config. The rest land across M5 (see TASKS.md).
 package cli

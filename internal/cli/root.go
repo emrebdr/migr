@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,7 @@ type options struct {
 	jsonOut    bool
 	verbosity  int
 	log        *slog.Logger
+	clock      func() time.Time
 }
 
 // Execute builds the root command and runs it against the given arguments.
@@ -26,7 +28,14 @@ func Execute(ctx context.Context, args []string) error {
 
 // newRootCmd constructs a fresh root command with all subcommands attached.
 func newRootCmd() *cobra.Command {
-	opts := &options{}
+	return rootCmd(&options{})
+}
+
+// rootCmd builds the tree around options already made, which is how a test fixes the clock.
+func rootCmd(opts *options) *cobra.Command {
+	if opts.clock == nil {
+		opts.clock = time.Now
+	}
 
 	cmd := &cobra.Command{
 		Use:   "migr",
@@ -49,7 +58,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	registerGlobalFlags(cmd, opts)
-	cmd.AddCommand(newVersionCmd(opts), newConfigCmd(opts))
+	cmd.AddCommand(newVersionCmd(opts), newConfigCmd(opts), newInitCmd(opts), newCreateCmd(opts))
 
 	return cmd
 }

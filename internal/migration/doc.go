@@ -117,4 +117,11 @@
 // package rather than in the CLI that will format one. M5-T1's `migr create` has to produce
 // exactly what Parse accepts, and a layout string written down in two places is a file format
 // with two definitions. Build a Migration and call Filename; do not restate the layout.
+//
+// New is how, and it is the only way to reach the layout from outside: it renders the version,
+// then validates by parsing the filename it just rendered, so a caller cannot write a file
+// Discover would refuse and the error an author sees is this package's own NameError rather
+// than a second opinion about what a name may be. It converts to UTC itself, since a caller
+// holding a local instant would otherwise write local wall-clock digits into the field that
+// defines the order migrations run in.
 package migration

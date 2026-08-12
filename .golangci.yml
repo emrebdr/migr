@@ -118,6 +118,25 @@ linters:
                 only cmd/migr may import a concrete language runtime; core reaches
                 runtimes through the registry (CLAUDE.md invariant #1)
 
+        # Invariant #1 again, for a shape it did not anticipate. internal/source/sql
+        # is a concrete implementation of engine.Source, so core must not name it --
+        # but unlike a driver, it is not registry-wired: internal/cli builds it and
+        # hands it to the engine (M5-T1 writes the template, M5-T2 the parser). The
+        # carve-out is therefore cli as well as cmd/migr, and it is a separate rule
+        # set precisely so that widening it here does not widen the driver deny
+        # above, which cli is still held to.
+        sources:
+          list-mode: lax
+          files:
+            - "**/*.go"
+            - "!**/cmd/migr/**"
+            - "!**/internal/cli/**"
+          deny:
+            - pkg: github.com/emrebdr/migr/internal/source/
+              desc: >-
+                only cmd/migr and internal/cli may name a concrete migration source;
+                the engine reaches one through engine.Source (CLAUDE.md invariant #1)
+
     # Listing rules REPLACES revive's defaults rather than extending them, so this
     # set is complete rather than incremental.
     #

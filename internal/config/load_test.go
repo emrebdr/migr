@@ -347,3 +347,65 @@ func TestAConfigNamesItsOwnMigrationsFromAnywhere(t *testing.T) {
 	t.Log("the other project's database. Nothing had read migrations.dir before M4-T1, so")
 	t.Log("nothing had noticed.")
 }
+
+// loadWithLanguage parses a minimal valid document carrying one migrations.language setting.
+func loadWithLanguage(t *testing.T, language string) (*Config, error) {
+	t.Helper()
+
+	src := []byte(`
+version: 1
+migrations:
+  language: ` + language + `
+databases:
+  default:
+    driver: postgres
+    dsn: postgres://localhost/db
+`)
+
+	return parse(src, "inline.yaml", env(nil))
+}
+
+func TestEveryLanguageLanguagesListsIsAccepted(t *testing.T) {
+	for _, language := range Languages() {
+		cfg, err := loadWithLanguage(t, string(language))
+		if err != nil {
+			t.Fatalf("migrations.language: %s is refused by the loader that lists it: %v",
+				language, err)
+		}
+
+		if cfg.Migrations.Language != language {
+			t.Errorf("migrations.language decoded to %q, want %q", cfg.Migrations.Language, language)
+		}
+	}
+
+	t.Log("Languages is what the CLI offers in `migr create --lang`'s refusal. Two lists is how")
+	t.Log("a value migr suggests becomes one migr.yaml then refuses.")
+}
+
+func TestSQLIsALanguageAMigrYAMLMayName(t *testing.T) {
+	cfg, err := loadWithLanguage(t, "sql")
+	if err != nil {
+		t.Fatalf("migrations.language: sql is refused: %v", err)
+	}
+
+	if cfg.Migrations.Language != LanguageSQL {
+		t.Errorf("migrations.language = %q, want %q", cfg.Migrations.Language, LanguageSQL)
+	}
+
+	t.Log("M5's goal is SQL-file migrations as the interim source format until M6 lands the SDKs,")
+	t.Log("and engine.Options.Runtime is the language spelled as migr.yaml spells it. A format")
+	t.Log("with no spelling here is one nothing can be asked to run.")
+}
+
+func TestAnUnknownLanguageIsRefusedAndTheAcceptedOnesListed(t *testing.T) {
+	_, err := loadWithLanguage(t, "cobol")
+	if err == nil {
+		t.Fatal("migrations.language: cobol was accepted")
+	}
+
+	for _, language := range Languages() {
+		if !strings.Contains(err.Error(), string(language)) {
+			t.Errorf("the refusal does not offer %q: %v", language, err)
+		}
+	}
+}

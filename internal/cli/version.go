@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -27,14 +26,7 @@ func writeVersion(w io.Writer, info version.Info, opts *options) error {
 	opts.log.Info("resolved build information", "version", info.Version, "commit", info.Commit)
 
 	if opts.jsonOut {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-
-		if err := enc.Encode(info); err != nil {
-			return fmt.Errorf("encoding version: %w", err)
-		}
-
-		return nil
+		return writeJSON(w, info)
 	}
 
 	if _, err := fmt.Fprintln(w, info.String()); err != nil {

@@ -44,6 +44,43 @@
 // That is a smaller difference than ADR 0002 implied and a better one: plan and
 // apply diverge in one stated place rather than several.
 //
-// Status: the specification and its names (M6-T1). The codec is M6-T2, the host
-// callback server M6-T3, and plan-mode recording M6-T4.
+// # The codec, and what ends a session
+//
+// M6-T2 added the wire itself: Message with its three-state ID, Encode and
+// Decode, and a Reader and Writer over pipes. Two rules in it are load-bearing
+// and neither is obvious from the types.
+//
+// A line that cannot be framed ends the session. Not that line -- the session.
+// The reader is spent afterwards and every later Read returns the same failure,
+// because the id was exactly the part that could not be read, so skipping the
+// line and carrying on would leave whoever was waiting on that request waiting
+// forever. Refuse builds the one message §2.6 permits before that happens: an
+// error carrying "id": null, best-effort, and then nothing (ADR 0031, A).
+//
+// The envelope is closed and a payload is open. Unknown members on the envelope
+// are refused; params, result, and data are json.RawMessage and are never
+// decoded here. That is §10.2's compatibility rule expressed as a type rather
+// than as a rule to remember, and it is also what keeps the operations array
+// inside host.schema.apply byte-identical to the array that is hashed.
+//
+// Validate is the shape check both sides run. Error.Validate is §7.1's slug
+// requirement, which only the writer runs: a peer's error with no slug still
+// reaches the operator carrying its message, where refusing it would replace
+// "your migration failed: boom" with "the runtime sent a malformed message"
+// (ADR 0031, E).
+//
+// # What this package does not do
+//
+// It frames and it validates shapes. It correlates nothing. §2.5's rules -- each
+// side numbers its own requests, and a pending table is per direction rather
+// than shared -- belong to whoever owns a read loop: M6-T3 for the host side,
+// M6-T5 for the engine's. An implementation that keeps one table for both
+// directions will mismatch responses, and nothing here can stop it.
+//
+// It also answers no method: an unknown method on a request decodes cleanly, so
+// that a dispatcher can return -32601 and the session can continue. That is what
+// makes adding a method a compatible change.
+//
+// Status: the specification and its names (M6-T1); the codec and framing
+// (M6-T2). The host callback server is M6-T3 and plan-mode recording M6-T4.
 package protocol

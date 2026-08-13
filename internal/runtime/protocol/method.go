@@ -1,6 +1,9 @@
 package protocol
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // Version is the protocol version this build speaks, which docs/protocol.md specifies.
 const Version = 1
@@ -44,6 +47,24 @@ var hostMethods = []string{
 	HostCapabilityGet,
 	HostInfo,
 	HostLog,
+}
+
+// notifications are the only two methods that may arrive without an id, per §2.4.
+var notifications = []string{Cancel, HostLog}
+
+// Notifications returns every method that may be sent without an id, as a copy.
+func Notifications() []string {
+	return slices.Clone(notifications)
+}
+
+// Notifies reports whether a method may be sent as a notification rather than as a request.
+func Notifies(method string) bool {
+	return slices.Contains(notifications, method)
+}
+
+// describeNotifications names the notification set for a message a human reads.
+func describeNotifications() string {
+	return strings.Join(notifications, " and ")
 }
 
 // EngineMethods returns every method the engine calls on a runtime, as a copy.

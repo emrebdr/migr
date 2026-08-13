@@ -66,7 +66,7 @@ func TestEveryDocumentedMethodExists(t *testing.T) {
 func TestSpecDocumentsEveryErrorCode(t *testing.T) {
 	stated := readSpec(t).codes
 
-	for _, code := range Codes() {
+	for _, code := range assigned() {
 		slug, documented := stated[code]
 		if !documented {
 			t.Errorf("%s tabulates no row for code %d (%s)", specPath, code, code)
@@ -85,7 +85,7 @@ func TestSpecDocumentsEveryErrorCode(t *testing.T) {
 
 func TestEveryTabulatedCodeExists(t *testing.T) {
 	for code, slug := range readSpec(t).codes {
-		if !code.Valid() {
+		if !code.Valid() && !code.Reserved() {
 			t.Errorf("%s tabulates code %d (%q), which this protocol version does not assign",
 				specPath, code, slug)
 		}
@@ -104,26 +104,41 @@ func TestEveryApplicationCodeIsInTheBandJSONRPCLeavesToUs(t *testing.T) {
 }
 
 func TestEveryDeclaredCodeIsInTheOrderedList(t *testing.T) {
-	listed := Codes()
+	listed := assigned()
 
 	for code := range slugs {
 		if !slices.Contains(listed, code) {
-			t.Errorf("code %d (%s) has a slug and is not in Codes()", code, code)
-			t.Log("Codes() is what every other check walks, so a code left out of it is one the")
-			t.Log("specification is never held to -- the same hole a driver would have if it")
+			t.Errorf("code %d (%s) has a slug and is in neither Codes() nor Reserved()", code, code)
+			t.Log("Those two are what every other check walks, so a code left out of both is one")
+			t.Log("the specification is never held to -- the same hole a driver would have if it")
 			t.Log("handed a conformance suite the operations it chose to be asked about.")
 		}
 	}
 
 	if len(listed) != len(slugs) {
-		t.Errorf("Codes() lists %d codes and %d have slugs", len(listed), len(slugs))
+		t.Errorf("Codes() and Reserved() list %d codes and %d have slugs", len(listed), len(slugs))
+	}
+}
+
+func TestNoReservedCodeIsAlsoAnApplicationCode(t *testing.T) {
+	for _, code := range Reserved() {
+		if code.Valid() {
+			t.Errorf("code %d (%s) is listed as both JSON-RPC's own and migr's", code, code)
+		}
+
+		if code >= ApplicationMin && code <= ApplicationMax {
+			t.Errorf("reserved code %d (%s) sits inside %d..%d, the band left to an implementation",
+				code, code, ApplicationMin, ApplicationMax)
+			t.Log("Valid() means 'one of the twelve migr assigns' and Reserved() means 'one of the")
+			t.Log("five JSON-RPC defines'. A code in both bands makes each of those answers a lie.")
+		}
 	}
 }
 
 func TestEveryCodeHasADistinctSlug(t *testing.T) {
-	seen := make(map[string]Code, len(Codes()))
+	seen := make(map[string]Code, len(slugs))
 
-	for _, code := range Codes() {
+	for _, code := range assigned() {
 		if code.String() == "" {
 			t.Errorf("code %d names itself with nothing", code)
 
@@ -159,6 +174,56 @@ func TestEveryCheckedBlockIsAJSONRPCMessage(t *testing.T) {
 			t.Log("Every block tagged json is a whole message. A payload on its own is tagged")
 			t.Log("jsonc, which §1.3 states and this enforces.")
 		}
+	}
+}
+
+func TestEveryCheckedBlockRoundTripsThroughTheCodec(t *testing.T) {
+	for _, m := range readSpec(t).messages {
+		decoded, err := Decode([]byte(m.body))
+		if err != nil {
+			t.Errorf("%s:%d: the example does not decode: %v", specPath, m.line, err)
+
+			continue
+		}
+
+		encoded, err := Encode(decoded)
+		if err != nil {
+			t.Errorf("%s:%d: the example does not re-encode: %v", specPath, m.line, err)
+
+			continue
+		}
+
+		if string(encoded) != m.body {
+			t.Errorf("%s:%d: the example does not round-trip byte for byte\n  document: %s\n  codec:    %s",
+				specPath, m.line, m.body, encoded)
+			t.Log("§1.3 says these are conformance vectors, so member order, spelling, and the")
+			t.Log("absence of whitespace are part of what they specify. Either the document is")
+			t.Log("wrong or the encoder is; a third-party SDK cannot tell which.")
+		}
+	}
+}
+
+func TestTheOnlyNullIDInTheDocumentIsAFramingError(t *testing.T) {
+	shown := 0
+
+	for _, m := range readSpec(t).messages {
+		decoded, err := Decode([]byte(m.body))
+		if err != nil || !decoded.ID.Null() {
+			continue
+		}
+
+		shown++
+
+		if decoded.Error == nil {
+			t.Errorf("%s:%d: a null id answers no request, so it may only carry an error",
+				specPath, m.line)
+		}
+	}
+
+	if shown == 0 {
+		t.Errorf("%s shows no message carrying the null id §2.6 permits", specPath)
+		t.Log("§2.4 says an id is an integer and §2.6 carves out exactly one exception. An")
+		t.Log("exception nothing illustrates is one an SDK author implements from prose alone.")
 	}
 }
 
@@ -256,6 +321,11 @@ func TestTheWorkedConversationsShowBothDirections(t *testing.T) {
 	}
 }
 
+// assigned returns every code this protocol version names, JSON-RPC's own and migr's alike.
+func assigned() []Code {
+	return slices.Concat(Codes(), Reserved())
+}
+
 // directionOf names which side sends a method, since an id is unique only within its own sequence.
 func directionOf(method string) string {
 	if slices.Contains(HostMethods(), method) {
@@ -266,7 +336,7 @@ func directionOf(method string) string {
 }
 
 // readSpec parses the specification, failing the test if it cannot.
-func readSpec(t *testing.T) spec {
+func readSpec(t testing.TB) spec {
 	t.Helper()
 
 	parsed, err := parseSpec(readSpecLines(t))
@@ -278,7 +348,7 @@ func readSpec(t *testing.T) spec {
 }
 
 // readSpecLines reads the specification, refusing to skip when it is missing.
-func readSpecLines(t *testing.T) []string {
+func readSpecLines(t testing.TB) []string {
 	t.Helper()
 
 	raw, err := os.ReadFile(specPath)
@@ -429,7 +499,7 @@ func codeRow(line string) (Code, string, bool) {
 	}
 
 	parsed, err := strconv.Atoi(number)
-	if err != nil || Code(parsed) < ApplicationMin || Code(parsed) > ApplicationMax {
+	if err != nil || Code(parsed) < ReservedMin || Code(parsed) > ApplicationMax {
 		return 0, "", false
 	}
 

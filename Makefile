@@ -25,7 +25,9 @@ GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test test-integration lint golden-update tools fmt vet tidy check clean
+FUZZTIME         ?= 30s
+
+.PHONY: help build test test-integration fuzz lint golden-update tools fmt vet tidy check clean
 
 # Run a command in every Go module. The subshell cd means any tool path passed in
 # must be absolute -- a relative ./bin/tool resolves at the root and vanishes in sdk/go.
@@ -71,6 +73,7 @@ help:
 	@echo "  build             compile both modules and emit $(BIN)"
 	@echo "  test              unit + golden tests, no Docker required"
 	@echo "  test-integration  Docker-backed tests (build tag: integration)"
+	@echo "  fuzz              run each fuzz target for $(FUZZTIME) (make test runs the seeds)"
 	@echo "  lint              comment rules + golangci-lint across both modules"
 	@echo "  golden-update     regenerate golden files -- read the diff before committing"
 	@echo ""
@@ -93,6 +96,23 @@ build:
 test:
 	$(call go_each,go test ./...)
 	$(call ts_run,npm test)
+
+# `go test -fuzz` drives exactly ONE target per run -- a pattern matching two is an
+# error, not a sweep -- so this discovers them and loops. `make test` already runs
+# every seed corpus for free; this is the deliberate campaign on top of that, and it
+# is not part of `check` because a timed search is not a gate.
+#
+# A crasher is written to the package's testdata/fuzz/<Target>/ and must be committed:
+# that is what turns a one-off finding into a permanent regression case.
+fuzz:
+	@for m in $(MODULES); do \
+	  ( cd $$m && for p in $$(go list ./...); do \
+	      for t in $$(go test -list='^Fuzz' $$p 2>/dev/null | grep '^Fuzz'); do \
+	        echo "==> $$t  ($$p, $(FUZZTIME))"; \
+	        go test $$p -run='^$$' -fuzz="^$$t\$$" -fuzztime=$(FUZZTIME) || exit 1; \
+	      done; \
+	    done ) || exit 1; \
+	done
 
 test-integration:
 	@echo "==> docker compose up  ($(COMPOSE))"

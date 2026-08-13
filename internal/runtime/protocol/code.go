@@ -38,8 +38,27 @@ const (
 // CodeCanceled marks a request abandoned because the other side asked for it, and either may send it.
 const CodeCanceled Code = -32030
 
+// The codes JSON-RPC 2.0 defines for itself, used exactly as it defines them.
+const (
+	// CodeParse marks a line that is not JSON, which includes one that is not framed.
+	CodeParse Code = -32700
+	// CodeInvalidRequest marks a line that is JSON and is not a message this protocol defines.
+	CodeInvalidRequest Code = -32600
+	// CodeMethodNotFound marks a method this protocol version does not define.
+	CodeMethodNotFound Code = -32601
+	// CodeInvalidParams marks parameters of the wrong shape, or a required one missing.
+	CodeInvalidParams Code = -32602
+	// CodeInternal marks a failure with no better description.
+	CodeInternal Code = -32603
+)
+
 // slugs name each code in a form an SDK can branch on without writing the number down.
 var slugs = map[Code]string{
+	CodeParse:                 "parse_error",
+	CodeInvalidRequest:        "invalid_request",
+	CodeMethodNotFound:        "method_not_found",
+	CodeInvalidParams:         "invalid_params",
+	CodeInternal:              "internal_error",
 	CodeUnsupportedProtocol:   "unsupported_protocol",
 	CodeUnsupportedIR:         "unsupported_ir",
 	CodeSessionState:          "session_state",
@@ -70,9 +89,23 @@ var codes = []Code{
 	CodeCanceled,
 }
 
+// reserved lists every code JSON-RPC 2.0 defines, in the order the specification tabulates them.
+var reserved = []Code{
+	CodeParse,
+	CodeInvalidRequest,
+	CodeMethodNotFound,
+	CodeInvalidParams,
+	CodeInternal,
+}
+
 // Codes returns every application error code this protocol version assigns, as a copy.
 func Codes() []Code {
 	return slices.Clone(codes)
+}
+
+// Reserved returns every code JSON-RPC 2.0 defines for itself, as a copy.
+func Reserved() []Code {
+	return slices.Clone(reserved)
 }
 
 // String returns the code's slug, which is what an SDK branches on instead of the number.
@@ -82,7 +115,12 @@ func (c Code) String() string {
 
 // Valid reports whether a number is one of the application codes this version assigns.
 func (c Code) Valid() bool {
-	return slugs[c] != ""
+	return slices.Contains(codes, c)
+}
+
+// Reserved reports whether a number is one JSON-RPC 2.0 defines rather than one migr assigns.
+func (c Code) Reserved() bool {
+	return slices.Contains(reserved, c)
 }
 
 // Application is the band JSON-RPC 2.0 leaves to the implementation, which every Code sits inside.
@@ -91,4 +129,6 @@ const (
 	ApplicationMin Code = -32099
 	// ApplicationMax is the highest.
 	ApplicationMax Code = -32000
+	// ReservedMin is the lowest code JSON-RPC 2.0 keeps for itself, where §7.2's five sit.
+	ReservedMin Code = -32768
 )

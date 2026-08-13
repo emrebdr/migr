@@ -39,8 +39,9 @@ it would be a second specification that can drift from this one.
 ### 1.3 How to read it
 
 Every fenced block tagged `json` is a complete, valid JSON-RPC message and is **checked by the test
-suite**: it must parse and it must carry `"jsonrpc": "2.0"`. Blocks tagged `jsonc` are fragments —
-a `params` payload on its own, a shape sketch — and are not checked.
+suite**: it must parse, it must carry `"jsonrpc": "2.0"`, and it must survive a round trip through
+the reference codec **byte for byte**. Blocks tagged `jsonc` are fragments — a `params` payload on
+its own, a shape sketch — and are not checked.
 
 Level-3 headings carry three shapes and the checker tells them apart by which:
 
@@ -55,8 +56,10 @@ Level-3 headings carry three shapes and the checker tells them apart by which:
 The error-code tables in [§7.3](#73-the-application-band) are checked against `protocol.Codes()`
 the same way, on both the number and the slug.
 
-Examples are illustrative of *shape*. Unlike `ir.md`, they are not round-trip conformance vectors —
-there is no codec to decode them with until M6-T2. What is checked is stated above and nothing more.
+Because the round trip is byte-exact, member order, spelling, and the absence of whitespace are part
+of what these examples specify, exactly as they are in [`ir.md`](ir.md). An encoder that renders
+`id` after `method`, or that pretty-prints, fails the suite here rather than failing an SDK author
+later.
 
 Two spellings run through this document and they do not mix:
 
@@ -121,7 +124,9 @@ it should send several `host.schema.apply` calls — the operations accumulate i
   method is a request and carries an `id`. A notification for anything else is a protocol error,
   because a caller that does not wait cannot know whether the work happened.
 - **`id` is an integer.** JSON-RPC permits strings and null; this protocol does not. Both sides
-  number from 1 and increment.
+  number from 1 and increment. There is exactly one exception, and it is not a request: the single
+  error response [§2.6](#26-a-line-that-cannot-be-framed) permits for a line that could not be
+  attributed to any request carries `"id": null`, because there is nothing else it could carry.
 
 ### 2.5 Ordering and concurrency
 
@@ -143,6 +148,48 @@ is also correct. The host answers each by `id`.
 
 While an engine request is in flight, the only message the engine sends is `$/cancel`. It does not
 send another request until the current one is answered.
+
+### 2.6 A line that cannot be framed
+
+A line a receiver cannot turn into a message has no readable `id`, so there is no request to answer
+and nobody waiting on a response. Three rules cover it, and together they are why a malformed stream
+**ends rather than hangs**.
+
+**The session ends** — not that line, the session. A receiver that met a line it could not frame
+stops reading, and every later read reports the same failure.
+
+**There is no recovery.** Skipping the line and carrying on is what JSON-RPC suggests for a parse
+error, and over a pipe it is wrong: the `id` is exactly the part that could not be read, so whoever
+was waiting on that request waits forever. A wedged migration holds the migration lock.
+
+**One error is written first, and it carries `"id": null`.**
+
+```json
+{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"line 4 is not JSON","data":{"slug":"parse_error"}}}
+```
+
+That is the only place `null` is an `id` ([§2.4](#24-what-of-json-rpc-20-is-not-used)), and the only
+message either side sends without having been asked anything. Writing it is best-effort — the peer
+may already be gone, and the session ends either way. It exists so that a peer which sent something
+malformed learns *what*, rather than finding a closed pipe and an exit code.
+
+These are the failures that reach it:
+
+| Condition | Code |
+|---|---|
+| the line is not JSON, opens with a byte-order mark, or is not valid UTF-8 | `-32700` |
+| the line is longer than [§2.3](#23-line-length) allows | `-32700` |
+| the stream ends part way through a line, with no terminating newline | `-32700` |
+| the line is JSON and is not a message: a top-level array, a missing or wrong `jsonrpc`, an `id` that is not an integer, a notification for a method that is not one, a response carrying both a result and an error or neither | `-32600` |
+
+A line's length is refused **at the budget**, never after a delimiter that may never arrive. A reader
+that accumulates until it finds a newline has a bound on neither memory nor time, and a peer that
+opens a line and stops writing is indistinguishable from one that is merely slow.
+
+Two things are deliberately *not* framing failures. An **empty line** is skipped
+([§2.2](#22-one-message-per-line)). And a request naming a **method this version does not define**
+decodes perfectly well: it is answered `-32601` and the session continues, which is what makes
+adding a method a compatible change ([§10.2](#102-what-is-a-breaking-change)).
 
 ---
 
@@ -549,15 +596,17 @@ The slug is what an SDK branches on. Branching on the number works and reads bad
 
 ### 7.2 The reserved codes
 
-JSON-RPC 2.0's own, used exactly as it defines them:
+JSON-RPC 2.0's own, used exactly as it defines them. They carry a slug like every other error, since
+[§7.1](#71-the-shape) admits no exemption and an SDK that has to branch on `-32700` by number is one
+that will write the number down wrong:
 
-| Code | When |
-|---|---|
-| `-32700` | the line is not JSON |
-| `-32600` | the line is JSON but not a valid request — a batch array, a missing `jsonrpc`, a notification for a method that is not one |
-| `-32601` | the method is not one this protocol version defines |
-| `-32602` | the parameters are the wrong shape, or a required one is missing |
-| `-32603` | an internal failure with no better description |
+| Code | Slug | When |
+|---|---|---|
+| `-32700` | `parse_error` | the line is not JSON, or could not be framed ([§2.6](#26-a-line-that-cannot-be-framed)) |
+| `-32600` | `invalid_request` | the line is JSON but not a valid request — a batch array, a missing `jsonrpc`, a notification for a method that is not one |
+| `-32601` | `method_not_found` | the method is not one this protocol version defines |
+| `-32602` | `invalid_params` | the parameters are the wrong shape, or a required one is missing |
+| `-32603` | `internal_error` | an internal failure with no better description |
 
 `-32601` is what a runtime returns for a method from a **later** protocol version. That is what
 makes adding a method a compatible change: an engine that speaks version 2 and negotiates down to 1
@@ -756,8 +805,11 @@ implementer has to re-read to know whether they are finished.
 - [ ] Nothing but protocol reaches stdout. The language's default print target is redirected to
       stderr before the first message.
 - [ ] One message per line, UTF-8, no pretty-printing, no BOM.
-- [ ] Lines up to 16 MiB are read without blocking or truncating.
+- [ ] Lines up to 16 MiB are read without blocking or truncating, and a longer one is refused at
+      the budget rather than after a newline that may never arrive.
 - [ ] A top-level array is a protocol error, not a batch.
+- [ ] A line that cannot be framed ends the session, after one best-effort `"id": null` error and
+      with no attempt to recover and read the next one ([§2.6](#26-a-line-that-cannot-be-framed)).
 - [ ] Requests are numbered from 1 in this direction's own sequence, and a response is matched
       against the requests traveling the other way.
 
@@ -786,7 +838,7 @@ implementer has to re-read to know whether they are finished.
 - [ ] `mode` is honoured only where [§6](#6-plan-mode) says it differs — which is
       `host.db.exec` and nothing else.
 - [ ] `$/cancel` abandons the named request and answers it with `canceled`.
-- [ ] Every error carries `data.slug`.
+- [ ] Every error carries `data.slug`, the five reserved codes included.
 
 **Proof**
 
@@ -910,3 +962,4 @@ The reasoning behind this protocol, including the options that were rejected:
 | [0022](adr/0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it |
 | [0028](adr/0028-validation-report.md) | A validator reports in phases |
 | [0030](adr/0030-runtime-protocol-specification.md) | The runtime protocol, specified |
+| [0031](adr/0031-protocol-codec-and-framing.md) | The codec, and what ends a session |

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -126,6 +127,36 @@ func migrOut(t *testing.T, config string, args ...string) string {
 
 	if runErr != nil {
 		t.Fatalf("migr %s: %v\n%s", args[0], runErr, out)
+	}
+
+	return string(out)
+}
+
+// migrFailure runs the CLI expecting it to fail, and returns what it wrote to stderr.
+func migrFailure(t *testing.T, config string, args ...string) string {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("opening a pipe: %v", err)
+	}
+
+	stderr := os.Stderr
+	os.Stderr = w
+	runErr := migr(t, config, args...)
+	os.Stderr = stderr
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing the pipe: %v", err)
+	}
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("reading what migr %s reported: %v", args[0], err)
+	}
+
+	if runErr == nil {
+		t.Fatalf("migr %s succeeded, and this case is about how it fails", args[0])
 	}
 
 	return string(out)
@@ -418,5 +449,64 @@ func TestNarrowingWorksAgainstARealServer(t *testing.T) {
 
 	if got := applied(recorded(t), "up"); got != before+2 {
 		t.Errorf("--to left %d migrations applied, want the database at that version", got-before)
+	}
+}
+
+func TestARealServersRefusalIsOneJSONObjectNamingTheMigration(t *testing.T) {
+	config := project(t)
+
+	if err := migr(t, config, "down"); err != nil {
+		t.Logf("clearing what an earlier run left behind: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := migr(t, config, "down"); err != nil {
+			t.Errorf("leaving the server as this suite found it: %v", err)
+		}
+	})
+
+	if err := migr(t, config, "up"); err != nil {
+		t.Fatalf("staging the tables a second create collides with: %v", err)
+	}
+
+	broken := filepath.Join(filepath.Dir(config), "migrations", "20260727T153200_add_e2e_again.sql")
+	if err := os.WriteFile(broken,
+		[]byte("-- migr:up\nCREATE TABLE e2e_users (id bigint);\n\n-- migr:down\nSELECT 1;\n"),
+		0o600); err != nil {
+		t.Fatalf("staging a migration this server refuses: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Remove(broken); err != nil {
+			t.Errorf("removing the refused migration: %v", err)
+		}
+	})
+
+	reported := strings.TrimSpace(migrFailure(t, config, "--json", "up"))
+
+	var got struct {
+		Code      int    `json:"code"`
+		Error     string `json:"error"`
+		Migration string `json:"migration"`
+		Operation string `json:"operation"`
+		Statement int32  `json:"statement"`
+	}
+
+	if err := json.Unmarshal([]byte(reported), &got); err != nil {
+		t.Fatalf("stderr is not one JSON object: %v\n%s", err, reported)
+	}
+
+	if got.Migration != "20260727T153200_add_e2e_again.sql" || got.Operation != "raw" {
+		t.Errorf("the failure reads %+v, want the migration and operation the server refused", got)
+		t.Log("Invariant #9 asks every user-facing error to name both, and a --json consumer")
+		t.Log("cannot grep a paragraph for them.")
+	}
+
+	if got.Code != 1 || got.Statement != 1 {
+		t.Errorf("the failure reads code %d at statement %d, want 1 and 1", got.Code, got.Statement)
+	}
+
+	if !strings.Contains(got.Error, "already exists") {
+		t.Errorf("the failure does not carry what the server said: %q", got.Error)
 	}
 }

@@ -14,7 +14,7 @@ func newVersionCmd(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print version, commit, and platform",
-		Args:  cobra.NoArgs,
+		Args:  argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return writeVersion(cmd.OutOrStdout(), version.Get(), opts)
 		},

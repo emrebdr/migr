@@ -452,6 +452,13 @@ func TestARowThisBuildCannotDecodeIsReportedAsCorruptRatherThanAsDrift(t *testin
 				t.Log("the failure can name the row an operator has to go and repair.")
 			}
 
+			if corrupt.Version != "20260728T230000" {
+				t.Errorf("the corrupt row names migration %q, want the one it recorded a run of",
+					corrupt.Version)
+				t.Log("Invariant #9: every user-facing error names the migration ID. A batch and an")
+				t.Log("ordinal locate the row and say nothing about which migration it is about.")
+			}
+
 			if errors.Is(err, checksum.ErrMalformed) != (c.field == "checksum") {
 				t.Errorf("the cause under the corrupt row is wrong: %v", err)
 			}

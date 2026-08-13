@@ -32,7 +32,7 @@ func newHistoryCmd(opts *options) *cobra.Command {
 		Long: "Prints every run this database has recorded, rollbacks and failures included, in\n" +
 			"the order the runs happened. It reads no migration files: the log is the database's,\n" +
 			"and a run may outlive the file it ran from.",
-		Args: cobra.NoArgs,
+		Args: argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runHistory(cmd, opts)
 		},

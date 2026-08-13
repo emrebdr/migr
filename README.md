@@ -201,10 +201,15 @@ suite is what holds that true as both SDKs evolve.
 
 Global flags `--config`, `--database`, `--json`, and `-v/--verbose` are registered now.
 `--json` switches **both** streams — JSON results on stdout, JSON logs on stderr — so
-`migr status --json | jq` never finds a log line inside the document it is parsing.
+`migr status --json | jq` never finds a log line inside the document it is parsing. A failure
+goes to stderr too, as one object on one line, so a run that committed some migrations and then
+failed leaves exactly one document on each stream.
 
 Exit codes are stable and meant for scripting: `0` success, `1` runtime error, `2` validation
-failure, `3` lock contention, `4` checksum drift, `5` lock-impact threshold exceeded.
+failure, `3` lock contention, `4` checksum drift, `5` lock-impact threshold exceeded. **A report
+exits 0 having found a problem** — `migr status` over a drifted database exits 0 while `migr up`
+against that same one exits 4, and `migr validate` exits 2. They answer different questions:
+`status` reports state, `validate` judges the repository, and `up` is the gate.
 
 ---
 
@@ -311,6 +316,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0026](docs/adr/0026-dry-run-and-sql-sources.md) | A dry run reads what an apply ensures |
 | [0027](docs/adr/0027-read-only-reports.md) | A read-only report takes no lock |
 | [0028](docs/adr/0028-validation-report.md) | A validator reports in phases |
+| [0029](docs/adr/0029-failure-presentation.md) | A failure is a document too |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

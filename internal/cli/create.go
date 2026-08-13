@@ -46,7 +46,7 @@ func newCreateCmd(opts *options) *cobra.Command {
 		Short: "Write a new migration from a template",
 		Long: "Writes a timestamped file into the migrations directory, named as discovery\n" +
 			"requires: <YYYYMMDDThhmmss>_<snake_case name>.<ext>, in UTC.",
-		Args: cobra.ExactArgs(1),
+		Args: argsOf(cobra.ExactArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load(config.Resolve(opts.configPath))
 			if err != nil {

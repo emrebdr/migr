@@ -47,6 +47,8 @@ func describeVersion(version string) string {
 type CorruptError struct {
 	// Table is the history table the row was read from.
 	Table string
+	// Version is the migration the row records a run of, which is what names it to an operator.
+	Version string
 	// Batch is the run the row belongs to.
 	Batch int64
 	// Ordinal is the row's position within that run.
@@ -57,10 +59,10 @@ type CorruptError struct {
 	Err error
 }
 
-// Error names the row, the column, and why its recorded value could not be read.
+// Error names the migration, the row, the column, and why its recorded value could not be read.
 func (e *CorruptError) Error() string {
-	return fmt.Sprintf("%s row (batch %d, ordinal %d): %s is unreadable: %v",
-		describeTable(e.Table), e.Batch, e.Ordinal, e.Field, e.Err)
+	return fmt.Sprintf("%s row for %s (batch %d, ordinal %d): %s is unreadable: %v",
+		describeTable(e.Table), describeVersion(e.Version), e.Batch, e.Ordinal, e.Field, e.Err)
 }
 
 // Unwrap reports the sentinel and the underlying cause, so errors.Is finds either.

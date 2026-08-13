@@ -24,7 +24,7 @@ func newStatusCmd(opts *options) *cobra.Command {
 		Long: "Folds this database's migration history against the migrations on disk and prints\n" +
 			"one state per migration. It takes no migration lock, creates nothing, and writes\n" +
 			"nothing, so it can be run while a migration is running.",
-		Args: cobra.NoArgs,
+		Args: argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runStatus(cmd, opts)
 		},

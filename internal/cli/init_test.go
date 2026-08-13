@@ -38,12 +38,14 @@ func runWith(t *testing.T, dir string, at time.Time, drivers *driver.Registry,
 
 	var out, errOut bytes.Buffer
 
-	cmd := rootCmd(&options{clock: ticking(at), drivers: drivers})
+	opts := &options{clock: ticking(at), drivers: drivers}
+
+	cmd := rootCmd(opts)
 	cmd.SetArgs(args)
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
 
-	err = cmd.ExecuteContext(context.Background())
+	err = execute(context.Background(), cmd, opts)
 
 	return out.String(), errOut.String(), err
 }

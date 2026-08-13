@@ -17,7 +17,7 @@ func newConfigCmd(opts *options) *cobra.Command {
 		Short: "Print the resolved configuration, with secrets redacted",
 		Long: "Loads migr.yaml, expands ${VAR} references, applies defaults, and prints the\n" +
 			"result. Credentials in connection strings are redacted.",
-		Args: cobra.NoArgs,
+		Args: argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path := config.Resolve(opts.configPath)
 

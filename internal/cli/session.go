@@ -67,12 +67,21 @@ func resolve(opts *options) (*target, error) {
 func (t *target) discovered(opts *options) ([]migration.Migration, error) {
 	found, err := discover(t.fsys)
 	if err != nil {
-		return nil, NewExitError(ExitValidation, err)
+		return nil, unreadable(err)
 	}
 
 	opts.log.Debug("discovered migrations", "dir", t.cfg.Migrations.Dir, "migrations", len(found))
 
 	return found, nil
+}
+
+// unreadable separates a directory migr went looking for from the files it found and refused.
+func unreadable(err error) error {
+	if errors.Is(err, migration.ErrNoDirectory) {
+		return err
+	}
+
+	return NewExitError(ExitValidation, err)
 }
 
 // files discovers the migrations directory, orders it, and hashes what each file currently holds.
@@ -82,12 +91,7 @@ func (t *target) files(opts *options) ([]history.File, error) {
 		return nil, err
 	}
 
-	files, err := hashed(t.fsys, found)
-	if err != nil {
-		return nil, NewExitError(ExitValidation, err)
-	}
-
-	return files, nil
+	return hashed(t.fsys, found)
 }
 
 // source returns what reads this project's migrations, or why nothing can run them yet.
@@ -153,11 +157,25 @@ func (s *session) close(ctx context.Context) error {
 
 // run performs one direction against this database, returning what it did alongside what stopped it.
 func (s *session) run(ctx context.Context, dir ir.Direction) (engine.Result, error) {
+	result, err := s.perform(ctx, dir)
+
+	return result, selected(err)
+}
+
+// perform routes a direction to the entry point that runs it.
+func (s *session) perform(ctx context.Context, dir ir.Direction) (engine.Result, error) {
 	if dir == ir.Down {
 		return engine.Rollback(ctx, s.conn, s.options)
 	}
 
 	return engine.Apply(ctx, s.conn, s.options)
+}
+
+// preview reports what one direction would run against this database, having executed none of it.
+func (s *session) preview(ctx context.Context, dir ir.Direction) (engine.Previewed, error) {
+	previewed, err := engine.Preview(ctx, s.conn, s.options, dir)
+
+	return previewed, selected(err)
 }
 
 // log reads this database's history through its read half alone, which is all a report may be given.

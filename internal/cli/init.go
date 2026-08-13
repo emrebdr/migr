@@ -45,7 +45,7 @@ func newInitCmd(opts *options) *cobra.Command {
 		Short: "Scaffold migr.yaml and a migrations directory",
 		Long: "Writes a migr.yaml holding the settings that have no default, and creates the\n" +
 			"migrations directory beside it. An existing config is never overwritten.",
-		Args: cobra.NoArgs,
+		Args: argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path := config.Resolve(opts.configPath)
 

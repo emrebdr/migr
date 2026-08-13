@@ -24,7 +24,7 @@ func newValidateCmd(opts *options) *cobra.Command {
 		Long: "Reads every migration, compiles it for the configured engine, and checks that\n" +
 			"something can undo it — reporting every problem it finds rather than stopping at\n" +
 			"the first. It opens no database, so it runs anywhere the migrations do.",
-		Args: cobra.NoArgs,
+		Args: argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runValidate(cmd, opts)
 		},

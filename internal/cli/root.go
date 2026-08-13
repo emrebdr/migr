@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -23,10 +24,25 @@ type options struct {
 
 // Execute builds the root command and runs it against the given arguments.
 func Execute(ctx context.Context, drivers *driver.Registry, args []string) error {
-	cmd := rootCmd(&options{drivers: drivers})
+	opts := &options{drivers: drivers}
+	cmd := rootCmd(opts)
 	cmd.SetArgs(args)
 
-	return cmd.ExecuteContext(ctx)
+	return execute(ctx, cmd, opts)
+}
+
+// execute runs the command tree and reports whatever failed it, in the form --json promises.
+func execute(ctx context.Context, cmd *cobra.Command, opts *options) error {
+	err := cmd.ExecuteContext(ctx)
+	if err == nil {
+		return nil
+	}
+
+	if written := reportFailure(cmd.ErrOrStderr(), opts, err); written != nil {
+		return errors.Join(err, written)
+	}
+
+	return err
 }
 
 // newRootCmd constructs a fresh root command with no drivers, for the commands that reach no database.
@@ -45,6 +61,7 @@ func rootCmd(opts *options) *cobra.Command {
 		Short: "Polyglot, database-agnostic migration framework",
 		Long: "migr runs database migrations written as code in your own language against\n" +
 			"PostgreSQL, MySQL, SQLite, and more, through one migration workflow.",
+		Args:          argsOf(cobra.NoArgs),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
@@ -58,8 +75,12 @@ func rootCmd(opts *options) *cobra.Command {
 
 			return nil
 		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
 	}
 
+	cmd.SetFlagErrorFunc(flagRefused)
 	registerGlobalFlags(cmd, opts)
 	cmd.AddCommand(newVersionCmd(opts), newConfigCmd(opts), newInitCmd(opts), newCreateCmd(opts),
 		newUpCmd(opts), newDownCmd(opts), newStatusCmd(opts), newHistoryCmd(opts),

@@ -254,6 +254,7 @@ func (h pgHistory) decode(rec history.Record, direction, outcome, sum string) (h
 func (h pgHistory) corrupt(rec history.Record, field string, err error) error {
 	return &history.CorruptError{
 		Table:   h.table,
+		Version: rec.Version,
 		Batch:   rec.Batch,
 		Ordinal: rec.Ordinal,
 		Field:   field,

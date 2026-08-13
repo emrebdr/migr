@@ -10,6 +10,11 @@
 //
 // main delegates to run so that deferred cleanup still executes: os.Exit does
 // not unwind the stack, so any defer registered above it would be skipped.
+//
+// The one print left here is for the one failure that precedes the CLI. A
+// registry that will not build happens before a flag is parsed, so nothing yet
+// knows whether --json was asked for; everything after it is reported by
+// internal/cli, which is the only place that does (ADR 0029).
 package main
 
 import (
@@ -26,20 +31,12 @@ func main() {
 
 // run executes the CLI and returns the process exit code.
 func run() int {
-	err := execute()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "migr: %v\n", err)
-	}
-
-	return cli.ExitCode(err)
-}
-
-// execute builds the driver registry this binary carries and runs the command line against it.
-func execute() error {
 	registry, err := drivers()
 	if err != nil {
-		return err
+		fmt.Fprintf(os.Stderr, "migr: %v\n", err)
+
+		return cli.ExitCode(err)
 	}
 
-	return cli.Execute(context.Background(), registry, os.Args[1:])
+	return cli.ExitCode(cli.Execute(context.Background(), registry, os.Args[1:]))
 }

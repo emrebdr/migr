@@ -13,6 +13,25 @@ import (
 // errBothSelectors marks a run given two ways of narrowing itself, which name different sets.
 var errBothSelectors = errors.New("--step and --to select differently, so a run takes one of them")
 
+// mistyped names the refusals that are about this run's own flags rather than about the database.
+//
+// Each is decided before the run acts on anything and each is fixed by retyping a flag, which is
+// what CLAUDE.md §5 gives exit 2 to. engine.ErrNotApplied is deliberately absent: the same command
+// line succeeds against a database that does carry the version, so the argument is not wrong --
+// the database is not where the operator thought it was, which is exit 1 (ADR 0029, D).
+var mistyped = []error{engine.ErrNoSteps, engine.ErrUnknownVersion, engine.ErrNoBatch}
+
+// selected tags a refusal about the flags this run was given, leaving every other failure alone.
+func selected(err error) error {
+	for _, sentinel := range mistyped {
+		if errors.Is(err, sentinel) {
+			return NewExitError(ExitValidation, err)
+		}
+	}
+
+	return err
+}
+
 // newUpCmd builds the `migr up` subcommand.
 func newUpCmd(opts *options) *cobra.Command {
 	return directionCmd(opts, ir.Up, &cobra.Command{
@@ -20,7 +39,7 @@ func newUpCmd(opts *options) *cobra.Command {
 		Short: "Apply pending migrations",
 		Long: "Applies every pending migration in order, under the migration lock, recording\n" +
 			"each one before the transaction that ran it commits.",
-		Args: cobra.NoArgs,
+		Args: argsOf(cobra.NoArgs),
 	})
 }
 
@@ -31,7 +50,7 @@ func newDownCmd(opts *options) *cobra.Command {
 		Short: "Roll back applied migrations, newest first",
 		Long: "Rolls back the last batch, or what --step and --to name, newest first. A\n" +
 			"migration that cannot be reversed stops the whole run before its first statement.",
-		Args: cobra.NoArgs,
+		Args: argsOf(cobra.NoArgs),
 	})
 }
 
@@ -149,7 +168,7 @@ func performDirection(cmd *cobra.Command, opts *options, s *session, dir ir.Dire
 
 // previewDirection reports what the direction would run, having taken the lock and executed nothing.
 func previewDirection(cmd *cobra.Command, opts *options, s *session, dir ir.Direction) error {
-	previewed, err := engine.Preview(cmd.Context(), s.conn, s.options, dir)
+	previewed, err := s.preview(cmd.Context(), dir)
 	if err != nil {
 		return err
 	}

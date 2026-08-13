@@ -3,6 +3,8 @@ package cli
 import (
 	"errors"
 
+	"github.com/spf13/cobra"
+
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 )
@@ -19,6 +21,13 @@ import (
 // cannot read reports history.ErrCorrupt and a row written under a future checksum scheme reports
 // checksum.SchemeError; the first needs manual repair and the second needs a newer migr, so
 // neither is drift. Reporting either as exit code 4 is how operators learn to ignore exit code 4.
+//
+// The selector refusals a run's own flags produce are tagged by the command that owns those flags
+// rather than added here, for the same reason: a sentinel resolved in this function is one every
+// command inherits, and engine.ErrNoSteps belongs to the two that register --step (ADR 0029, E).
+//
+// ExitLockImpact has no producer yet. --require-safe and safety.max_lock_impact are M13-T6's, and
+// every .sql migration compiles to ir.Raw, which every driver declares LockUnknown.
 const (
 	ExitOK         = 0
 	ExitRuntime    = 1
@@ -30,6 +39,22 @@ const (
 
 // errValidationFailed marks a validation run that found something, which is a failure of the project.
 var errValidationFailed = errors.New("this project has migrations that will not do what they say")
+
+// argsOf tags what a command refuses about its own positional arguments, which is a typo.
+func argsOf(check cobra.PositionalArgs) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := check(cmd, args); err != nil {
+			return NewExitError(ExitValidation, err)
+		}
+
+		return nil
+	}
+}
+
+// flagRefused tags what the flag parser would not accept, which the operator fixes by retyping it.
+func flagRefused(_ *cobra.Command, err error) error {
+	return NewExitError(ExitValidation, err)
+}
 
 // ExitError carries the process exit code a failure should produce.
 type ExitError struct {

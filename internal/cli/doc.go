@@ -31,13 +31,45 @@
 // manual repair, the second needs a newer migr, and neither is someone editing an
 // applied migration.
 //
-// A command classifies its own failures by one rule, so that M5-T6 inherits a
-// rule rather than a habit: the argument is wrong -> ExitValidation, and the
-// world is not ready -> ExitRuntime. `migr create add-users` is the first;
-// a config already there, a migrations directory that is not, and a version
-// another file already claims are the second. Both are knowable with no
-// database, so "needs no connection" is not what separates them -- what
-// separates them is whether the operator retypes something or changes something.
+// A command classifies its own failures by one rule: the argument is wrong ->
+// ExitValidation, and the world is not ready -> ExitRuntime. `migr create
+// add-users` is the first; a config already there, a migrations directory that
+// is not, and a version another file already claims are the second. Both are
+// knowable with no database, so "needs no connection" is not what separates them
+// -- what separates them is whether the operator retypes something or changes
+// something.
+//
+// M5-T6 held every command against that rule and moved four failures. A flag,
+// command name or argument count cobra refuses is now 2 rather than 1: nothing
+// is more literally "the argument is wrong", and cobra reports all of it, so
+// argsOf wraps every Args check and SetFlagErrorFunc catches the rest. --step
+// and --to values that name no migration are 2 rather than 1, tagged by the
+// commands that register those flags. And a migrations directory that is not
+// there, or a migration file that will not open, are 1 rather than 2 -- migr
+// create already exited 1 for the first of those, and neither is fixed by
+// retyping anything. engine.ErrNotApplied stayed at 1 on purpose: the same
+// command line succeeds against a database that does carry the version.
+//
+// The root command carries both an Args check and a RunE that prints help, and
+// each is load-bearing. Cobra applies its own unknown-command check only to a
+// command whose Args is nil, and returns flag.ErrHelp before validating the
+// arguments of one that has nothing to run -- so without both, `migr nonsense`
+// is answered with the help text instead of refused.
+//
+// # A failure is a document too
+//
+// The failure is written by this package rather than by cmd/migr, because
+// cmd/migr never sees --json and this is the only place opts.jsonOut exists.
+// Without it, `migr up --json` against a drifted database put fourteen lines of
+// English on the stream that promises JSON.
+//
+// It goes to stderr, as one object on one line, so stdout keeps holding exactly
+// one result document -- a run that committed two migrations and then failed
+// owes both answers, and putting them in one stream makes neither parseable
+// (ADR 0029, A). The two errors that render paragraphs, engine.DriftError and
+// engine.DirtyError, are carried as the fields they are built from rather than
+// as their prose; the prose is what --json exists to replace, so it is not
+// repeated beside them.
 //
 // # Nothing migr writes replaces anything
 //
@@ -173,5 +205,7 @@
 // different questions: one reports state, the other judges the repository.
 //
 // Status: init, create, up, down, status, history, plan, validate, version, and
-// config. The rest land across M5 (see TASKS.md).
+// config -- which is M5 complete. diff is M11-T4, seed is M12-T1, and cutover is
+// M13-T10. TestEveryCommandIsInTheExitCodeMatrix is what makes each of them say
+// which of the five endings it can reach before it ships.
 package cli

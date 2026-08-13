@@ -11,6 +11,7 @@ import (
 func TestACorruptRowIsNotDrift(t *testing.T) {
 	err := error(&CorruptError{
 		Table:   "migr_migrations",
+		Version: "20260727T153000",
 		Batch:   7,
 		Ordinal: 2,
 		Field:   "checksum",
@@ -34,10 +35,13 @@ func TestACorruptRowIsNotDrift(t *testing.T) {
 		t.Log("and reporting either as exit code 4 is how operators learn to ignore exit code 4.")
 	}
 
-	for _, want := range []string{"migr_migrations", "batch 7", "ordinal 2", "checksum"} {
+	for _, want := range []string{"migr_migrations", "20260727T153000", "batch 7", "ordinal 2",
+		"checksum"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message %q does not name %q", err, want)
-			t.Log("An operator has to be able to find the row, since the only repair is manual.")
+			t.Log("An operator has to be able to find the row, since the only repair is manual --")
+			t.Log("and invariant #9 asks it to name the migration, which a batch and an ordinal")
+			t.Log("locate without identifying.")
 		}
 	}
 }

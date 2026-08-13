@@ -27,7 +27,7 @@ func newPlanCmd(opts *options) *cobra.Command {
 		Long: "Compiles every migration a run would perform and prints the statements it would\n" +
 			"send, grouped by migration and by operation. It takes the migration lock and reads\n" +
 			"the history, but writes nothing at all — not even the history table.",
-		Args: cobra.NoArgs,
+		Args: argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runPlan(cmd, opts, *narrow)
 		},
@@ -62,7 +62,7 @@ func runPlan(cmd *cobra.Command, opts *options, narrow narrowing) (err error) {
 
 // report compiles the direction and prints what it got, which a refusal partway leaves worth printing.
 func report(cmd *cobra.Command, opts *options, s *session, dir ir.Direction) error {
-	previewed, planErr := engine.Preview(cmd.Context(), s.conn, s.options, dir)
+	previewed, planErr := s.preview(cmd.Context(), dir)
 
 	if planErr != nil && len(previewed.Steps) == 0 {
 		return planErr

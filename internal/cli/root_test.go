@@ -19,12 +19,14 @@ func runCLI(t *testing.T, args ...string) (stdout, stderr string, err error) {
 
 	var out, errOut bytes.Buffer
 
-	cmd := newRootCmd()
+	opts := &options{}
+
+	cmd := rootCmd(opts)
 	cmd.SetArgs(args)
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
 
-	err = cmd.ExecuteContext(context.Background())
+	err = execute(context.Background(), cmd, opts)
 
 	return out.String(), errOut.String(), err
 }
@@ -159,20 +161,26 @@ func TestLevelFor(t *testing.T) {
 	}
 }
 
-func TestUnknownFlagFails(t *testing.T) {
-	_, _, err := runCLI(t, "--nonexistent")
-	if err == nil {
-		t.Fatal("expected an error for an unknown flag")
-	}
+func TestACommandLineNobodyCanTypeIsAValidationFailure(t *testing.T) {
+	for _, args := range [][]string{
+		{"--nonexistent"},
+		{"status", "--nonexistent"},
+		{"nonsense"},
+		{"version", "extra"},
+		{"create"},
+	} {
+		_, _, err := runCLI(t, args...)
+		if err == nil {
+			t.Fatalf("migr %v succeeded", args)
+		}
 
-	if got := ExitCode(err); got != ExitRuntime {
-		t.Errorf("ExitCode = %d, want %d", got, ExitRuntime)
-	}
-}
-
-func TestVersionRejectsPositionalArgs(t *testing.T) {
-	if _, _, err := runCLI(t, "version", "extra"); err == nil {
-		t.Fatal("expected an error for unexpected positional argument")
+		if got := ExitCode(err); got != ExitValidation {
+			t.Errorf("migr %v exited %d, want %d", args, got, ExitValidation)
+			t.Log("A flag that does not exist, a command that does not exist, and the wrong number")
+			t.Log("of arguments are the plainest cases of the rule in doc.go: the argument is wrong,")
+			t.Log("and the operator retypes it. Cobra reports all three, and an untagged error")
+			t.Log("resolves to 1, which is the code for a world that is not ready.")
+		}
 	}
 }
 

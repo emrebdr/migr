@@ -265,6 +265,7 @@ test/
   integration/         Docker-backed end-to-end tests
 docs/
   ir.md                the operation IR wire format, specified
+  protocol.md          the runtime protocol between the engine and an SDK, specified
   adr/                 architecture decision records
 ```
 
@@ -279,9 +280,9 @@ Three contracts carry the whole design: the **operation IR** between SDKs and dr
 **driver contract** with its two capability axes, and the **runtime protocol** between the
 engine and a language SDK.
 
-The IR's wire format is written down in [`docs/ir.md`](docs/ir.md) — the document a third-party
-SDK implements against. Every JSON example in it is checked by the test suite, so the
-specification cannot drift from the code.
+The IR's wire format is written down in [`docs/ir.md`](docs/ir.md) and the runtime protocol in
+[`docs/protocol.md`](docs/protocol.md) — the two documents a third-party SDK implements against.
+Both are checked by the test suite against the code they specify, so neither can drift from it.
 
 The reasoning behind each contract — including the options that were rejected and why — lives in
 [`docs/adr/`](docs/adr/README.md):
@@ -317,6 +318,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0027](docs/adr/0027-read-only-reports.md) | A read-only report takes no lock |
 | [0028](docs/adr/0028-validation-report.md) | A validator reports in phases |
 | [0029](docs/adr/0029-failure-presentation.md) | A failure is a document too |
+| [0030](docs/adr/0030-runtime-protocol-specification.md) | The runtime protocol, specified |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

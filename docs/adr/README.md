@@ -39,6 +39,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0027](0027-read-only-reports.md) | A read-only report takes no lock | Accepted | Why `status` and `history` do not lock where a preview does, what a database with no history table prints, where the fold lives, and why a report that finds drift still exits 0 |
 | [0028](0028-validation-report.md) | A validator reports in phases | Accepted | What "every problem rather than the first" covers, why validation opens no database, why compiling belongs to it, and how a `.sql` migration declares that nothing can undo it |
 | [0029](0029-failure-presentation.md) | A failure is a document too | Accepted | Where a `--json` failure is written and what shape it takes, why the two paragraph errors become fields, and the four exit codes that moved to match the rule the CLI already stated |
+| [0030](0030-runtime-protocol-specification.md) | The runtime protocol, specified | Accepted | How the engine and a language runtime agree on a version, cancel work, and tell a refusal from a failure — and the one place plan mode differs |
 
 ## When to write one
 

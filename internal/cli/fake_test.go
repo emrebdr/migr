@@ -19,6 +19,9 @@ const fakeName = "fake"
 // errRefused is what a fake database reports for the statement a test told it to refuse.
 var errRefused = errors.New("the server refused this statement")
 
+// errNoMigrationSQL marks a callback no command reaches: a .sql migration is ir.Raw, and compiled.
+var errNoMigrationSQL = errors.New("this fake serves no migration's own SQL")
+
 // fake is a database with no server, keeping what a run asked of it for a test to read afterwards.
 type fake struct {
 	// statements is every statement executed, in the order they were executed.
@@ -199,6 +202,16 @@ func (c *fakeConn) Exec(_ context.Context, stmt driver.Statement) error {
 	}
 
 	return nil
+}
+
+// Query refuses: no command drives a migration's own SQL, since every .sql migration is ir.Raw.
+func (c *fakeConn) Query(context.Context, driver.Query) (driver.Rows, error) {
+	return driver.Rows{}, errNoMigrationSQL
+}
+
+// Perform refuses, for the reason Query does.
+func (c *fakeConn) Perform(context.Context, driver.Query) (int64, error) {
+	return 0, errNoMigrationSQL
 }
 
 // Lock records the acquire and hands back a release that records itself.

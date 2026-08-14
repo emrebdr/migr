@@ -19,6 +19,8 @@ var specPath = filepath.Join("..", "..", "..", "docs", "protocol.md")
 type message struct {
 	line int
 	body string
+	// method is the method section the block sits under, and empty outside one.
+	method string
 }
 
 // example is one worked conversation: a level-three prose heading and the messages under it.
@@ -369,6 +371,7 @@ func parseSpec(lines []string) (spec, error) {
 		block   []string
 		start   int
 		current *example
+		section string
 	)
 
 	for i, line := range lines {
@@ -382,7 +385,8 @@ func parseSpec(lines []string) (spec, error) {
 			}
 
 			if fence == "json" {
-				found.collect(current, message{line: start, body: strings.Join(block, "\n")})
+				found.collect(current,
+					message{line: start, body: strings.Join(block, "\n"), method: section})
 			}
 
 			fence = ""
@@ -398,14 +402,20 @@ func parseSpec(lines []string) (spec, error) {
 
 		if method, ok := methodHeading(line); ok {
 			found.methods = append(found.methods, method)
-			current = nil
+			current, section = nil, method
 
 			continue
 		}
 
 		if title, ok := exampleHeading(line); ok {
 			found.examples = append(found.examples, example{title: title, line: number})
-			current = &found.examples[len(found.examples)-1]
+			current, section = &found.examples[len(found.examples)-1], ""
+
+			continue
+		}
+
+		if numberedHeading(line) {
+			section = ""
 
 			continue
 		}
@@ -469,6 +479,16 @@ func exampleHeading(line string) (string, bool) {
 // numbered reports whether a heading opens with a section number, which a worked conversation does not.
 func numbered(title string) bool {
 	return title != "" && unicode.IsDigit(rune(title[0]))
+}
+
+// numberedHeading reports a heading of any level that opens with a number, which ends a method section.
+func numberedHeading(line string) bool {
+	rest, ok := strings.CutPrefix(strings.TrimLeft(line, "#"), " ")
+	if !ok || !strings.HasPrefix(line, "#") {
+		return false
+	}
+
+	return numbered(strings.TrimSpace(rest))
 }
 
 // backticked reports the content of a wholly backquoted string.

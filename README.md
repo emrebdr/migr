@@ -320,6 +320,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0029](docs/adr/0029-failure-presentation.md) | A failure is a document too |
 | [0030](docs/adr/0030-runtime-protocol-specification.md) | The runtime protocol, specified |
 | [0031](docs/adr/0031-protocol-codec-and-framing.md) | The codec, and what ends a session |
+| [0032](docs/adr/0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

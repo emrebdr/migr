@@ -41,6 +41,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0029](0029-failure-presentation.md) | A failure is a document too | Accepted | Where a `--json` failure is written and what shape it takes, why the two paragraph errors become fields, and the four exit codes that moved to match the rule the CLI already stated |
 | [0030](0030-runtime-protocol-specification.md) | The runtime protocol, specified | Accepted | How the engine and a language runtime agree on a version, cancel work, and tell a refusal from a failure — and the one place plan mode differs |
 | [0031](0031-protocol-codec-and-framing.md) | The codec, and what ends a session | Accepted | A line that cannot be framed ends the session after one `"id": null` error, with no recovery — because the unreadable part is the id somebody is waiting on |
+| [0032](0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote | Accepted | `Conn` grows `Query` and `Perform`, so read-only is which method you call; the server refuses the write, because a data-modifying CTE defeats any check on the leading keyword |
 
 ## When to write one
 

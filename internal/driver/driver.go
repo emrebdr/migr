@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/emrebdr/migr/internal/capability"
@@ -20,6 +21,34 @@ type Statement struct {
 // String returns the statement text, so a plan can print a statement directly.
 func (s Statement) String() string {
 	return s.SQL
+}
+
+// Query is a statement a migration wrote itself, which the compiler never saw.
+type Query struct {
+	// SQL is the statement text, in the target engine's own dialect.
+	SQL string
+	// Args are the bound parameters, positional and textual, in the engine's placeholder style.
+	Args []string
+}
+
+// Rows is what a read returned: every value text, and absent where the column was null.
+type Rows struct {
+	// Columns names each column, in the order the statement selected them.
+	Columns []string
+	// Values holds one slice per row, each as wide as Columns.
+	Values [][]*string
+}
+
+// Validate reports a result whose rows are not the shape its own columns describe.
+func (r Rows) Validate() error {
+	for i, row := range r.Values {
+		if len(row) != len(r.Columns) {
+			return fmt.Errorf("row %d is %d values wide and the result has %d columns",
+				i, len(row), len(r.Columns))
+		}
+	}
+
+	return nil
 }
 
 // Compiler turns neutral operations into engine statements, without a database.
@@ -57,6 +86,10 @@ const DefaultStatementLockWait = 3 * time.Second
 type Conn interface {
 	// Exec runs one compiled statement.
 	Exec(ctx context.Context, stmt Statement) error
+	// Query runs a migration's own read, which the server enforces read-only, and returns text.
+	Query(ctx context.Context, q Query) (Rows, error)
+	// Perform runs a migration's own statement and reports how many rows it changed.
+	Perform(ctx context.Context, q Query) (int64, error)
 	// Lock acquires the migration lock, returning the release that must always run.
 	Lock(ctx context.Context) (Unlock, error)
 	// Transact runs work inside one transaction, committing it only if work returns nil.

@@ -82,6 +82,16 @@ func (c *fakeConn) Exec(context.Context, driver.Statement) error {
 	return errors.New("the fake connection has no database")
 }
 
+// Query reports that this fake has no database to read from.
+func (c *fakeConn) Query(context.Context, driver.Query) (driver.Rows, error) {
+	return driver.Rows{}, errors.New("the fake connection has no database")
+}
+
+// Perform reports that this fake has no database to run a migration's own statement against.
+func (c *fakeConn) Perform(context.Context, driver.Query) (int64, error) {
+	return 0, errors.New("the fake connection has no database")
+}
+
 // Lock hands back a release that succeeds, so a caller's deferred unlock has something to call.
 func (c *fakeConn) Lock(context.Context) (driver.Unlock, error) {
 	return func(context.Context) error { return nil }, nil

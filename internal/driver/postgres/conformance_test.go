@@ -22,6 +22,14 @@ type declaredConn struct {
 // Exec refuses: there is no server behind this session.
 func (declaredConn) Exec(context.Context, driver.Statement) error { return errNoServer }
 
+// Query refuses: there is no server behind this session.
+func (declaredConn) Query(context.Context, driver.Query) (driver.Rows, error) {
+	return driver.Rows{}, errNoServer
+}
+
+// Perform refuses: there is no server behind this session.
+func (declaredConn) Perform(context.Context, driver.Query) (int64, error) { return 0, errNoServer }
+
 // Lock refuses: there is no server behind this session.
 func (declaredConn) Lock(context.Context) (driver.Unlock, error) { return nil, errNoServer }
 

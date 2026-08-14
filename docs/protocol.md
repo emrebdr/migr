@@ -67,7 +67,8 @@ Two spellings run through this document and they do not mix:
   members — `jsonrpc`, `id`, `method`, `params`, `result`, `error`, `code`, `message`, `data` — are
   its own and are never renamed.
 - **A payload keeps its own specification's spelling.** The operations inside `host.schema.apply`
-  are snake_case because [`ir.md`](ir.md) says so, and because those exact bytes are hashed.
+  are snake_case because [`ir.md`](ir.md) says so, and re-spelling a payload the engine is about to
+  hash is not a liberty this document takes.
 
 ---
 
@@ -420,9 +421,14 @@ Records the operations a migration performs. This is how a migration says what i
 ```
 
 The `operations` array is an Operation IR operations array — **the array alone, without the
-envelope**. `irVersion` was agreed at `initialize` and is not repeated per call, and those exact
-bytes are what a migration's checksum covers ([`ir.md` §4](ir.md#4-the-checksum-boundary)), so the
-array that crosses the wire is the array that is hashed.
+envelope**. `irVersion` was agreed at `initialize` and is not repeated per call.
+
+**The array is decoded and re-encoded canonically before it is hashed**, and it is that canonical
+form the checksum covers ([`ir.md` §4](ir.md#4-the-checksum-boundary)). So an SDK's whitespace, its
+member order, or its choice to send ten operations in one call rather than one in each cannot change
+a migration's identity — which is what lets two SDKs be *semantically* identical without being
+byte-identical here. Byte-identical IR is still what `test/conformance/runtime` requires of them,
+and it is required for a different reason: it is the proof that they mean the same thing.
 
 Several calls accumulate, in the order made. A migration that emits ten operations in one call and
 a migration that makes ten calls of one produce the same list.
@@ -487,7 +493,14 @@ The escape hatch: run a statement the Operation IR cannot express.
 the result says so with `"executed": false` — so a migration that branches on `rowsAffected` can
 tell it is being previewed rather than being told a lie.
 
-Using it costs what `raw` costs in the IR: the engine cannot read the statement, so it cannot
+**It runs outside the transaction the migration's operations will run in**, and that is the second
+thing it costs. Every callback fires while the migration is deciding what it does, which is before
+the engine has compiled anything or opened a transaction — so an escape-hatch write is committed on
+its own, under the migration lock, and a migration that fails afterwards **does not undo it**. A
+statement whose undo matters belongs in `host.schema.apply`, where the engine can invert it, or in
+an authored `down`.
+
+Using it also costs what `raw` costs in the IR: the engine cannot read the statement, so it cannot
 invert it, cannot classify its lock impact, and cannot tell another engine what it means. Reach for
 it last.
 
@@ -535,7 +548,7 @@ A structured log line, addressed to the engine's own logger. **A notification** 
 response.
 
 ```json
-{"jsonrpc":"2.0","method":"host.log","params":{"level":"info","message":"backfilling in chunks","fields":{"table":"users","chunk":"5000"}}}
+{"jsonrpc":"2.0","method":"host.log","params":{"level":"info","message":"backfilling in chunks","fields":{"chunk":"5000","table":"users"}}}
 ```
 
 `level` is `debug`, `info`, `warn`, or `error`, and the engine applies its own `-v` threshold. Every
@@ -963,3 +976,4 @@ The reasoning behind this protocol, including the options that were rejected:
 | [0028](adr/0028-validation-report.md) | A validator reports in phases |
 | [0030](adr/0030-runtime-protocol-specification.md) | The runtime protocol, specified |
 | [0031](adr/0031-protocol-codec-and-framing.md) | The codec, and what ends a session |
+| [0032](adr/0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote |

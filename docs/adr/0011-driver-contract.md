@@ -321,6 +321,12 @@ What that commits to:
 
 ## Notes
 
+**The contract has since grown, as this record anticipated.** M6-T3 added `Query` and `Perform` to
+`Conn` for the SQL a migration writes itself, which the compiler never sees — see
+[ADR 0032](0032-host-callback-server.md). The interface's fourth "no": *"a statement carries no
+parameters … its presence would invite routing ordinary queries through it"* survives intact. That
+is exactly why the read path took its own argument type rather than reusing `Statement`.
+
 Revisit the statement representation if a non-SQL engine is taken seriously. The change is
 mechanical but touches every driver, so it is worth doing deliberately rather than discovering it
 while writing the first one.

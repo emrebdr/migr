@@ -10,6 +10,9 @@ import (
 // ErrUnsupported marks an operation a driver refuses to compile, for errors.Is.
 var ErrUnsupported = errors.New("unsupported operation")
 
+// ErrNotReadOnly marks a Query the server refused because it would write, which is not a bug.
+var ErrNotReadOnly = errors.New("this statement writes, and a migration reads through host.db.query")
+
 // UnsupportedError reports an operation a driver cannot perform, and why.
 type UnsupportedError struct {
 	// Driver is the driver that refused.

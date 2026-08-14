@@ -111,6 +111,12 @@ var ErrCommitDiscarded = errors.New("the server answered the commit by rolling b
 var ErrStatementNeedsNoTransaction = errors.New("this statement declares it cannot run inside a " +
 	"transaction, and one is open")
 
+// ErrQuery marks a migration's own read this driver could not run, for errors.Is.
+var ErrQuery = errors.New("reading on behalf of a migration")
+
+// ErrPerform marks a migration's own statement this driver could not run, for errors.Is.
+var ErrPerform = errors.New("running a statement on behalf of a migration")
+
 // ErrHistory marks a migration history operation this driver could not perform, for errors.Is.
 var ErrHistory = errors.New("migration history")
 

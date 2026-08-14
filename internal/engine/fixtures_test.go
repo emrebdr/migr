@@ -100,6 +100,20 @@ func (r *recorder) Exec(_ context.Context, stmt driver.Statement) error {
 	return nil
 }
 
+// Query records a migration's own read, which nothing in this package drives yet.
+func (r *recorder) Query(_ context.Context, q driver.Query) (driver.Rows, error) {
+	r.note("query " + q.SQL)
+
+	return driver.Rows{}, nil
+}
+
+// Perform records a migration's own statement, which nothing in this package drives yet.
+func (r *recorder) Perform(_ context.Context, q driver.Query) (int64, error) {
+	r.note("perform " + q.SQL)
+
+	return 0, nil
+}
+
 // describeExec records whether the statement ran inside the transaction or outside it.
 func (r *recorder) describeExec(stmt driver.Statement) string {
 	if r.inTx {

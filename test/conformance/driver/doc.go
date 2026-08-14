@@ -52,6 +52,21 @@
 // load-bearing rather than merely available: raw resolves to native or to unsupported by payload,
 // which a table keyed by kind cannot express.
 //
+// # What the read path owes, and why it is not here
+//
+// M6-T3 grew the contract by two methods -- Query, for a migration's own read,
+// and Perform, for its own statement -- and neither is checked here. They
+// cannot be: this suite is untagged so that every linter sees it (M2-T4), and a
+// read needs a live server. A Conn that has none can only refuse, which proves
+// nothing about what a real one returns.
+//
+// Two things hold them instead. driver.Rows.Validate refuses a result whose
+// rows are not the shape its own columns describe, and internal/runtime/host
+// calls it on every read, reporting -32603 and naming the driver -- so a driver
+// with that bug is found at the first callback rather than never. And the
+// read-only guarantee is each driver's own integration test, because the case
+// that decides it is a data-modifying CTE against a real server (ADR 0032, B).
+//
 // # No exemptions, structurally
 //
 // Suite has two fields. There is no case list, no options, and no skip hook, so "no per-driver

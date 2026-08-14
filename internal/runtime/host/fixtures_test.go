@@ -100,21 +100,32 @@ func (s *session) Close(context.Context) error { return nil }
 // compile-time proof that the fake is held to the same contract a driver is.
 var _ driver.Conn = (*session)(nil)
 
-// newServer builds a host server over a fake session, in the mode a test asked for.
-func newServer(t *testing.T, conn driver.Conn, mode protocol.Mode) *Server {
+// newServer builds a host server over a fake session, in whatever mode each call states.
+func newServer(t *testing.T, conn driver.Conn) *Server {
 	t.Helper()
 
 	server, err := New(Options{
 		Conn:     conn,
 		Database: "default",
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Mode:     mode,
 	})
 	if err != nil {
 		t.Fatalf("building the server: %v", err)
 	}
 
 	return server
+}
+
+// execute opens an up call for the fixture migration, in the mode a test asked for.
+func execute(t *testing.T, server *Server, mode protocol.Mode) *Call {
+	t.Helper()
+
+	call, err := server.Execute("20260727T153000", ir.Up, mode)
+	if err != nil {
+		t.Fatalf("opening a %s call: %v", mode, err)
+	}
+
+	return call
 }
 
 // logged is a handler that keeps every record, so a test can read what host.log filed.

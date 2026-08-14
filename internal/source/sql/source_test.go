@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func sourceOf(t *testing.T, body string) *Source {
 func emit(t *testing.T, s *Source, dir ir.Direction) ir.Operations {
 	t.Helper()
 
-	ops, err := s.Emit(t.Context(), file, dir)
+	ops, err := s.Emit(t.Context(), file, dir, engine.ModeApply)
 	if err != nil {
 		t.Fatalf("Emit(%s): %v", dir, err)
 	}
@@ -82,6 +83,33 @@ func TestEachStatementBecomesOneRawOperationForTheDriverItIsWrittenAgainst(t *te
 	}
 }
 
+func TestAFileEmitsTheSameOperationsInEitherMode(t *testing.T) {
+	for _, dir := range []ir.Direction{ir.Up, ir.Down} {
+		s := sourceOf(t, bothSections)
+
+		asked := make(map[engine.Mode][]byte, len(engine.Modes()))
+
+		for _, mode := range engine.Modes() {
+			ops, err := s.Emit(t.Context(), file, dir, mode)
+			if err != nil {
+				t.Fatalf("Emit(%s, %s): %v", dir, mode, err)
+			}
+
+			if asked[mode], err = ir.Marshal(ops); err != nil {
+				t.Fatalf("marshaling what %s emitted in %s: %v", dir, mode, err)
+			}
+		}
+
+		if !bytes.Equal(asked[engine.ModeApply], asked[engine.ModePlan]) {
+			t.Errorf("the %s half emitted %s when applying and %s when planning",
+				dir, asked[engine.ModeApply], asked[engine.ModePlan])
+			t.Log("A .sql migration is a text file: it makes no callbacks, reads nothing, and cannot")
+			t.Log("branch, so the mode is a parameter it is right to ignore. This is the floor the")
+			t.Log("host's identical-IR proof holds a language runtime to (M6-T4).")
+		}
+	}
+}
+
 func TestTheDownSectionIsTheOneRolledBack(t *testing.T) {
 	if got := rawSQL(t, emit(t, sourceOf(t, bothSections), ir.Down)); len(got) != 1 ||
 		!strings.Contains(got[0], "DROP TABLE") {
@@ -97,7 +125,7 @@ func TestAFileWithNoDownSectionAuthorsNoDown(t *testing.T) {
 		"-- migr:up\nCREATE TABLE users (id bigint);\n\n-- migr:down\n",
 		"-- migr:up\nCREATE TABLE users (id bigint);\n\n-- migr:down\n-- write this\n",
 	} {
-		_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Down)
+		_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Down, engine.ModeApply)
 		if !errors.Is(err, engine.ErrNoDownAuthored) {
 			t.Errorf("Emit(down) returned %v, want ErrNoDownAuthored", err)
 			t.Log("A marker with nothing under it is not a down someone wrote. The engine derives")
@@ -108,7 +136,7 @@ func TestAFileWithNoDownSectionAuthorsNoDown(t *testing.T) {
 }
 
 func TestAFileWithNoUpMarkerIsRefusedRatherThanReadWhole(t *testing.T) {
-	_, err := sourceOf(t, "CREATE TABLE users (id bigint);\n").Emit(t.Context(), file, ir.Up)
+	_, err := sourceOf(t, "CREATE TABLE users (id bigint);\n").Emit(t.Context(), file, ir.Up, engine.ModeApply)
 	if !errors.Is(err, ErrMalformed) {
 		t.Fatalf("Emit(up) returned %v, want a refusal", err)
 	}
@@ -125,7 +153,7 @@ func TestAFileWithNoUpMarkerIsRefusedRatherThanReadWhole(t *testing.T) {
 
 func TestSQLAboveTheFirstMarkerIsRefusedRatherThanDropped(t *testing.T) {
 	_, err := sourceOf(t, "CREATE TABLE early (id bigint);\n-- migr:up\nSELECT 1;\n").
-		Emit(t.Context(), file, ir.Up)
+		Emit(t.Context(), file, ir.Up, engine.ModeApply)
 
 	if !errors.Is(err, ErrMalformed) {
 		t.Fatalf("Emit(up) returned %v, want a refusal", err)
@@ -146,7 +174,7 @@ func TestACommentAboveTheFirstMarkerIsFine(t *testing.T) {
 
 func TestAMarkerCarriedTwiceIsRefusedNamingBothLines(t *testing.T) {
 	_, err := sourceOf(t, "-- migr:up\nSELECT 1;\n-- migr:up\nSELECT 2;\n").
-		Emit(t.Context(), file, ir.Up)
+		Emit(t.Context(), file, ir.Up, engine.ModeApply)
 
 	if !errors.Is(err, ErrMalformed) {
 		t.Fatalf("Emit(up) returned %v, want a refusal", err)
@@ -166,7 +194,7 @@ func TestASectionMarkerIsAWholeLine(t *testing.T) {
 		t.Errorf("the up section emitted %q, want the marker inside a string left alone", got)
 	}
 
-	if _, err := sourceOf(t, "-- migr:up\nSELECT 'x';\n").Emit(t.Context(), file, ir.Down); !errors.Is(
+	if _, err := sourceOf(t, "-- migr:up\nSELECT 'x';\n").Emit(t.Context(), file, ir.Down, engine.ModeApply); !errors.Is(
 		err, engine.ErrNoDownAuthored) {
 		t.Errorf("a marker inside a string opened a down section: %v", err)
 	}
@@ -174,7 +202,7 @@ func TestASectionMarkerIsAWholeLine(t *testing.T) {
 
 func TestADownMarkerAboveTheUpMarkerIsRefused(t *testing.T) {
 	_, err := sourceOf(t, "-- migr:down\nDROP TABLE users;\n-- migr:up\nCREATE TABLE users ();\n").
-		Emit(t.Context(), file, ir.Up)
+		Emit(t.Context(), file, ir.Up, engine.ModeApply)
 
 	if !errors.Is(err, ErrMalformed) {
 		t.Fatalf("Emit(up) returned %v, want a refusal", err)
@@ -188,7 +216,7 @@ func TestTheTemplateThisPackageWritesEmitsNothingAndAuthorsNoDown(t *testing.T) 
 		t.Errorf("the template emits %q, want nothing until somebody writes it", rawSQL(t, ops))
 	}
 
-	if _, err := s.Emit(t.Context(), file, ir.Down); !errors.Is(err, engine.ErrNoDownAuthored) {
+	if _, err := s.Emit(t.Context(), file, ir.Down, engine.ModeApply); !errors.Is(err, engine.ErrNoDownAuthored) {
 		t.Errorf("the template's empty down returned %v, want ErrNoDownAuthored", err)
 	}
 
@@ -198,7 +226,7 @@ func TestTheTemplateThisPackageWritesEmitsNothingAndAuthorsNoDown(t *testing.T) 
 }
 
 func TestAMigrationWithNoFileIsReportedByName(t *testing.T) {
-	_, err := New(fstest.MapFS{}, "postgres").Emit(t.Context(), file, ir.Up)
+	_, err := New(fstest.MapFS{}, "postgres").Emit(t.Context(), file, ir.Up, engine.ModeApply)
 	if err == nil {
 		t.Fatal("Emit reported success for a file that is not there")
 	}

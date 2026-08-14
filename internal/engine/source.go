@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/emrebdr/migr/internal/history"
@@ -10,10 +11,32 @@ import (
 	"github.com/emrebdr/migr/internal/plan"
 )
 
+// Mode is whether the engine is running a migration or asking it a question.
+type Mode string
+
+// The two modes a migration is asked in, spelled as docs/protocol.md §6 spells them.
+const (
+	ModeApply Mode = "apply"
+	ModePlan  Mode = "plan"
+)
+
+// modes lists every mode the engine asks in.
+var modes = []Mode{ModeApply, ModePlan}
+
+// Modes returns every mode the engine asks a migration in, as a copy.
+func Modes() []Mode {
+	return slices.Clone(modes)
+}
+
+// Valid reports whether a mode is one of the two the engine asks in.
+func (m Mode) Valid() bool {
+	return slices.Contains(modes, m)
+}
+
 // Source yields the operations one migration emits, and is asked only about migrations that run.
 type Source interface {
 	// Emit returns the operations one migration performs, or ErrNoDownAuthored for a down it has none of.
-	Emit(ctx context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error)
+	Emit(ctx context.Context, m migration.Migration, dir ir.Direction, mode Mode) (ir.Operations, error)
 }
 
 // Clock reports the current instant, since forbidigo leaves this package no clock of its own.

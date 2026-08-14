@@ -20,8 +20,6 @@ type Options struct {
 	Database string
 	// Log is where host.log's lines are filed.
 	Log *slog.Logger
-	// Mode is whether this run applies or previews, which changes host.db.exec and nothing else.
-	Mode protocol.Mode
 }
 
 // check reports what a server was not given, before a runtime asks it anything.
@@ -33,8 +31,6 @@ func (o Options) check() error {
 		return ErrNoDatabase
 	case o.Log == nil:
 		return ErrNoLog
-	case !o.Mode.Valid():
-		return fmt.Errorf("%w: %q is not one of %v", ErrNoMode, o.Mode, protocol.Modes())
 	}
 
 	return nil
@@ -54,11 +50,6 @@ func New(opts Options) (*Server, error) {
 	}
 
 	return &Server{opts: opts}, nil
-}
-
-// Mode reports whether this run applies or previews.
-func (s *Server) Mode() protocol.Mode {
-	return s.opts.Mode
 }
 
 // Serve answers one callback, and returns nothing for a notification, which is never answered.
@@ -108,7 +99,7 @@ func (s *Server) answer(ctx context.Context, method string, params json.RawMessa
 	case protocol.HostCapabilityGet:
 		return s.capability(params)
 	case protocol.HostInfo:
-		return s.info()
+		return s.info(call)
 	case protocol.HostLog:
 		return nil, protocol.NewError(protocol.CodeInvalidRequest,
 			"host.log is a notification, and this one carries an id to answer")

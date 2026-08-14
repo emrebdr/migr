@@ -33,7 +33,7 @@ type Planned struct {
 
 // Preview reports what a direction would run against this database, and executes none of it.
 func Preview(ctx context.Context, conn driver.Conn, opts Options, dir ir.Direction) (Previewed, error) {
-	e, err := newExecutor(conn, opts)
+	e, err := newExecutor(conn, opts, ModePlan)
 	if err != nil {
 		return Previewed{}, err
 	}

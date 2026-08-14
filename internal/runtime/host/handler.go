@@ -61,7 +61,7 @@ func (s *Server) exec(ctx context.Context, call *Call, params json.RawMessage,
 
 	statement := driver.Query{SQL: p.SQL, Args: p.Args}
 
-	if s.opts.Mode == protocol.ModePlan {
+	if call.mode == protocol.ModePlan {
 		call.hold(statement)
 
 		return answer(protocol.DBExecResult{RowsAffected: "0", Executed: false})
@@ -100,8 +100,8 @@ func (s *Server) capability(params json.RawMessage) (json.RawMessage, *protocol.
 	})
 }
 
-// info reports the facts about this run a migration may branch on.
-func (s *Server) info() (json.RawMessage, *protocol.Error) {
+// info reports the facts about this run a migration may branch on, the mode among them.
+func (s *Server) info(call *Call) (json.RawMessage, *protocol.Error) {
 	caps := s.opts.Conn.Capabilities()
 
 	return answer(protocol.InfoResult{
@@ -109,7 +109,7 @@ func (s *Server) info() (json.RawMessage, *protocol.Error) {
 		Driver:           caps.Driver(),
 		Server:           s.opts.Conn.ServerVersion(),
 		TransactionalDDL: caps.TransactionalDDL(),
-		Mode:             s.opts.Mode,
+		Mode:             call.mode,
 	})
 }
 

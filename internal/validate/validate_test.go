@@ -5,9 +5,36 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
 )
+
+func TestEveryMigrationIsReadAsAQuestion(t *testing.T) {
+	users := migrationAt(0, "add_users")
+
+	src := &asked{source: source{
+		users.Version: {up: ir.Operations{raw("CREATE TABLE users (id bigint);")},
+			down: ir.Operations{raw("DROP TABLE users;")}},
+	}}
+
+	if _, err := Run(t.Context(), Options{
+		Migrations: []migration.Migration{users},
+		Source:     src,
+		Planner:    plan.Planner{Compiler: compiler{}},
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	want := []engine.Mode{engine.ModePlan, engine.ModePlan}
+	if !slices.Equal(src.modes, want) {
+		t.Errorf("validation read the migration in %v, want %v", src.modes, want)
+		t.Log("migr validate opens no database at all (ADR 0028), and a check that ran the")
+		t.Log("escape hatch would not be one. Both halves are questions, and a source reached")
+		t.Log("through a language runtime is the one that can tell the difference.")
+	}
+}
 
 func TestACleanProjectReportsNothing(t *testing.T) {
 	users, teams := migrationAt(0, "add_users"), migrationAt(1, "add_teams")

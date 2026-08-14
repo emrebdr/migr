@@ -51,7 +51,8 @@ type queueSource struct {
 }
 
 // Emit returns the staged operations, running the staged probe first where there is one.
-func (s *queueSource) Emit(_ context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+func (s *queueSource) Emit(_ context.Context, m migration.Migration, dir ir.Direction, _ engine.Mode,
+) (ir.Operations, error) {
 	s.asked = append(s.asked, m.Version)
 
 	for _, item := range s.staged {

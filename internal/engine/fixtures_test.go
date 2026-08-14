@@ -318,12 +318,15 @@ type source struct {
 	failUp     map[string]error
 	asked      []string
 	directions []ir.Direction
+	modes      []Mode
 }
 
 // Emit returns what a test staged for this migration, or the failure it staged instead.
-func (s *source) Emit(_ context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+func (s *source) Emit(_ context.Context, m migration.Migration, dir ir.Direction, mode Mode,
+) (ir.Operations, error) {
 	s.asked = append(s.asked, m.Version)
 	s.directions = append(s.directions, dir)
+	s.modes = append(s.modes, mode)
 
 	if s.session != nil {
 		s.session.note("emit " + m.Version + " " + string(dir))

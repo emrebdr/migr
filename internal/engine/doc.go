@@ -125,6 +125,25 @@
 // history records only a digest, so nothing can catch it after the fact; verifying an inverse
 // against the live schema needs introspection and is M11-T2's. Authoring a down avoids it entirely.
 //
+// That re-emission is asked for as a question, and it is the reason Mode exists.
+//
+// # A run and a question are asked for differently
+//
+// Emit carries a Mode. Apply and Rollback ask in ModeApply; Preview and internal/validate ask in
+// ModePlan; and derive asks in ModePlan whatever the invocation is, so one rollback issues both —
+// the down as the run it is, then the up as the question its inverse comes from. A migration
+// reached through a language runtime can write directly, through host.db.exec, and plan mode is
+// what holds that statement rather than running it (docs/protocol.md §6, ADR 0033).
+//
+// Nothing observes the difference yet: internal/source/sql reads a text file and cannot branch,
+// which is why it ignores the parameter and a test asserts it emits the same operations either
+// way. The day a Go migration is previewed, asking it as a run is how migr plan performs the side
+// effects it was invoked to avoid.
+//
+// The engine owns the distinction rather than borrowing internal/runtime/protocol's spelling of it,
+// because it exists with no runtime in sight: migr plan over .sql migrations is plan mode, and migr
+// validate opens no database at all. The two spellings are held level by a test in that package.
+//
 // # The order a rollback undoes in is the order the runs happened
 //
 // Not version order: a declared dependency may point backwards in time, which ADR 0018 makes the use

@@ -29,7 +29,7 @@ func TestADeclaredIrreversibleMigrationStillSaysWhatItDoes(t *testing.T) {
 }
 
 func TestADeclaredIrreversibleMigrationRefusesItsDownWithTheAuthorsReason(t *testing.T) {
-	_, err := sourceOf(t, declaredIrreversible).Emit(t.Context(), file, ir.Down)
+	_, err := sourceOf(t, declaredIrreversible).Emit(t.Context(), file, ir.Down, engine.ModeApply)
 
 	if !errors.Is(err, engine.ErrDeclaredIrreversible) {
 		t.Fatalf("Emit(down) returned %v, want the declaration", err)
@@ -51,7 +51,7 @@ func TestADeclarationIsRefusedWithoutAReason(t *testing.T) {
 		"-- migr:up\nDROP TABLE t;\n\n-- migr:irreversible:\n",
 		"-- migr:up\nDROP TABLE t;\n\n-- migr:irreversible:   \n",
 	} {
-		_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up)
+		_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up, engine.ModeApply)
 
 		if !errors.Is(err, ErrMalformed) {
 			t.Errorf("a declaration with no reason was accepted: %v", err)
@@ -65,7 +65,7 @@ func TestADeclarationIsRefusedBesideADownSection(t *testing.T) {
 	body := "-- migr:up\nDROP TABLE t;\n\n-- migr:down\nCREATE TABLE t (id bigint);\n\n" +
 		"-- migr:irreversible: " + declaredReason + "\n"
 
-	_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up)
+	_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up, engine.ModeApply)
 
 	if !errors.Is(err, ErrMalformed) {
 		t.Errorf("a file both wrote an undo and declared it has none: %v", err)
@@ -79,7 +79,7 @@ func TestADeclarationIsRefusedBesideADownSection(t *testing.T) {
 func TestADeclarationIsRefusedAboveTheUpMarker(t *testing.T) {
 	body := "-- migr:irreversible: " + declaredReason + "\n-- migr:up\nDROP TABLE t;\n"
 
-	_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up)
+	_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up, engine.ModeApply)
 
 	if !errors.Is(err, ErrMalformed) {
 		t.Fatalf("a declaration above the up marker was accepted: %v", err)
@@ -97,7 +97,7 @@ func TestADeclarationIsRefusedAboveTheUpMarker(t *testing.T) {
 func TestADeclarationIsRefusedCarriedTwice(t *testing.T) {
 	body := "-- migr:up\nDROP TABLE t;\n\n-- migr:irreversible: one\n-- migr:irreversible: two\n"
 
-	_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up)
+	_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up, engine.ModeApply)
 
 	if !errors.Is(err, ErrMalformed) {
 		t.Errorf("a doubled declaration was accepted: %v", err)
@@ -108,7 +108,7 @@ func TestSQLBelowADeclarationIsRefusedRatherThanDropped(t *testing.T) {
 	body := "-- migr:up\nDROP TABLE t;\n\n-- migr:irreversible: " + declaredReason +
 		"\nCREATE TABLE t (id bigint);\n"
 
-	_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up)
+	_, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up, engine.ModeApply)
 
 	if !errors.Is(err, ErrMalformed) {
 		t.Errorf("SQL below a declaration was accepted: %v", err)
@@ -121,7 +121,7 @@ func TestACommentBelowADeclarationIsFine(t *testing.T) {
 	body := "-- migr:up\nDROP TABLE t;\n\n-- migr:irreversible: " + declaredReason +
 		"\n-- the backup lives in the nightly bucket\n"
 
-	if _, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up); err != nil {
+	if _, err := sourceOf(t, body).Emit(t.Context(), file, ir.Up, engine.ModeApply); err != nil {
 		t.Errorf("a comment below a declaration was refused: %v", err)
 	}
 }

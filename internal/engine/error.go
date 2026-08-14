@@ -93,6 +93,14 @@ func unknownDirectionError(dir ir.Direction) error {
 	return fmt.Errorf("%w: %q is neither %q nor %q", ErrUnknownDirection, dir, ir.Up, ir.Down)
 }
 
+// ErrUnknownMode marks a mode that is neither of the two a migration is asked in, for errors.Is.
+var ErrUnknownMode = errors.New("this build does not know that mode")
+
+// unknownModeError reports a mode that is neither a run nor a question, naming what was asked for.
+func unknownModeError(mode Mode) error {
+	return fmt.Errorf("%w: %q is not one of %v", ErrUnknownMode, mode, Modes())
+}
+
 // stamp renders a recorded instant in a message, in UTC because a history row is read anywhere.
 const stamp = "2006-01-02 15:04:05 UTC"
 

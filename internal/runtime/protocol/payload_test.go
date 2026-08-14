@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -68,6 +69,25 @@ func TestTheWireSpellsSupportAndLockAsTheCapabilityModelDoes(t *testing.T) {
 		if !slices.Contains(documentedSet(t, "`lock` is "), string(impact)) {
 			t.Errorf("%s never names the lock impact %q", specPath, impact)
 		}
+	}
+}
+
+func TestTheWireSpellsModeAsTheEngineDoes(t *testing.T) {
+	wire := make([]string, 0, len(Modes()))
+	for _, mode := range Modes() {
+		wire = append(wire, string(mode))
+	}
+
+	asked := make([]string, 0, len(engine.Modes()))
+	for _, mode := range engine.Modes() {
+		asked = append(asked, string(mode))
+	}
+
+	if !slices.Equal(wire, asked) {
+		t.Errorf("this package spells the modes %q and the engine asks in %q", wire, asked)
+		t.Log("The engine owns the distinction -- migr plan over .sql migrations is plan mode")
+		t.Log("with no protocol in sight -- and this package owns how it crosses the wire. Two")
+		t.Log("spellings are one definition only for as long as something holds them level.")
 	}
 }
 

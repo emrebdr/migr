@@ -58,9 +58,14 @@ type runner struct {
 	report Report
 }
 
+// ask reads one half of a migration as a question, since a check that ran anything would not be one.
+func (r *runner) ask(ctx context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+	return r.opts.Source.Emit(ctx, m, dir, engine.ModePlan)
+}
+
 // migration checks what one migration does, what that compiles to, and whether anything undoes it.
 func (r *runner) migration(ctx context.Context, m migration.Migration) {
-	up, err := r.opts.Source.Emit(ctx, m, ir.Up)
+	up, err := r.ask(ctx, m, ir.Up)
 	if err != nil {
 		r.report.add(Problem{Migration: m, Check: CheckFormat, Direction: ir.Up,
 			Detail: detailOf(m, err)})
@@ -74,7 +79,7 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 
 // undo checks what undoes a migration: what its author wrote, what its author declares, or an inverse.
 func (r *runner) undo(ctx context.Context, m migration.Migration, up ir.Operations) {
-	down, err := r.opts.Source.Emit(ctx, m, ir.Down)
+	down, err := r.ask(ctx, m, ir.Down)
 
 	switch {
 	case err == nil:

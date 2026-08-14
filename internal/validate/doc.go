@@ -54,4 +54,8 @@
 //
 // A derived down is compiled, not assumed. An inverse can be refused by a driver that accepted what
 // it inverts, and stopping at "it inverted" would pass a rollback nothing can run.
+//
+// Both halves are read as questions, in engine.ModePlan. This command opens no database at all, and
+// a check that ran a migration's escape-hatch writes on the way past would not be a check (M6-T4,
+// ADR 0033).
 package validate

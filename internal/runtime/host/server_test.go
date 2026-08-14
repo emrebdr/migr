@@ -18,9 +18,9 @@ func TestEveryCallbackIsServed(t *testing.T) {
 	conn.rows = driver.Rows{Columns: []string{"n"}, Values: [][]*string{{text("4711")}}}
 	conn.affected = 7
 
-	server := newServer(t, conn, protocol.ModeApply)
+	server := newServer(t, conn)
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -68,9 +68,9 @@ func TestEveryCallbackIsServed(t *testing.T) {
 }
 
 func TestSchemaApplyRecordsInOrderAcrossCalls(t *testing.T) {
-	server := newServer(t, newSession(t, capability.Native(capability.LockFree)), protocol.ModeApply)
+	server := newServer(t, newSession(t, capability.Native(capability.LockFree)))
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -97,9 +97,9 @@ func TestSchemaApplyRecordsInOrderAcrossCalls(t *testing.T) {
 }
 
 func TestAnOperationThatIsNotOneIsRefusedAsOne(t *testing.T) {
-	server := newServer(t, newSession(t, capability.Native(capability.LockFree)), protocol.ModeApply)
+	server := newServer(t, newSession(t, capability.Native(capability.LockFree)))
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -119,9 +119,9 @@ func TestAReadReachesTheDriverAndComesBackAsText(t *testing.T) {
 		Values:  [][]*string{{text("9007199254740993"), nil}},
 	}
 
-	server := newServer(t, conn, protocol.ModeApply)
+	server := newServer(t, conn)
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -155,9 +155,9 @@ func TestAReadThatReturnedNothingIsEmptyRatherThanNull(t *testing.T) {
 	conn := newSession(t, capability.Native(capability.LockFree))
 	conn.rows = driver.Rows{}
 
-	server := newServer(t, conn, protocol.ModeApply)
+	server := newServer(t, conn)
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -183,9 +183,9 @@ func TestAResultTheHostCannotRenderIsTheHostsOwnBug(t *testing.T) {
 	conn := newSession(t, capability.Native(capability.LockFree))
 	conn.rows = driver.Rows{Columns: []string{"a", "b"}, Values: [][]*string{{text("1")}}}
 
-	server := newServer(t, conn, protocol.ModeApply)
+	server := newServer(t, conn)
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -208,9 +208,9 @@ func TestAWriteTheServerRefusedIsReportedAsARefusalAndNotAsAFailure(t *testing.T
 	conn := newSession(t, capability.Native(capability.LockFree))
 	conn.readErr = driver.ErrNotReadOnly
 
-	server := newServer(t, conn, protocol.ModeApply)
+	server := newServer(t, conn)
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -244,16 +244,10 @@ func TestTheEscapeHatchRunsWhenApplyingAndIsHeldWhenPlanning(t *testing.T) {
 			conn := newSession(t, capability.Native(capability.LockFree))
 			conn.affected = 7
 
-			server := newServer(t, conn, c.mode)
-
-			call, err := server.Execute("20260727T153000", ir.Up)
-			if err != nil {
-				t.Fatalf("opening the call: %v", err)
-			}
-
+			call := execute(t, newServer(t, conn), c.mode)
 			defer call.Close()
 
-			reply := serve(t, server, protocol.NewRequest(1, protocol.HostDBExec,
+			reply := serve(t, call.server, protocol.NewRequest(1, protocol.HostDBExec,
 				json.RawMessage(`{"sql":"ANALYZE users","args":[]}`)))
 
 			if reply.Error != nil {
@@ -277,9 +271,9 @@ func TestTheEscapeHatchRunsWhenApplyingAndIsHeldWhenPlanning(t *testing.T) {
 
 func TestCapabilityAnswersForAWholeOperationOnBothAxes(t *testing.T) {
 	conn := newSession(t, capability.Emulated("table rebuild", capability.TableRewrite))
-	server := newServer(t, conn, protocol.ModeApply)
+	server := newServer(t, conn)
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -301,13 +295,9 @@ func TestCapabilityAnswersForAWholeOperationOnBothAxes(t *testing.T) {
 
 func TestInfoReportsWhatAMigrationMayBranchOn(t *testing.T) {
 	conn := newSession(t, capability.Native(capability.LockFree))
-	server := newServer(t, conn, protocol.ModePlan)
+	server := newServer(t, conn)
 
-	call, err := server.Execute("20260727T153000", ir.Up)
-	if err != nil {
-		t.Fatalf("opening the call: %v", err)
-	}
-
+	call := execute(t, server, protocol.ModePlan)
 	defer call.Close()
 
 	reply := serve(t, server, protocol.NewRequest(1, protocol.HostInfo, json.RawMessage(`{}`)))
@@ -327,7 +317,7 @@ func TestALogLineReachesTheEnginesOwnLogger(t *testing.T) {
 	conn := newSession(t, capability.Native(capability.LockFree))
 
 	server, err := New(Options{
-		Conn: conn, Database: "default", Log: slog.New(kept), Mode: protocol.ModeApply,
+		Conn: conn, Database: "default", Log: slog.New(kept),
 	})
 	if err != nil {
 		t.Fatalf("building the server: %v", err)
@@ -357,7 +347,7 @@ func TestALogLineThisVersionDoesNotDefineIsKeptRatherThanDropped(t *testing.T) {
 	conn := newSession(t, capability.Native(capability.LockFree))
 
 	server, err := New(Options{
-		Conn: conn, Database: "default", Log: slog.New(kept), Mode: protocol.ModeApply,
+		Conn: conn, Database: "default", Log: slog.New(kept),
 	})
 	if err != nil {
 		t.Fatalf("building the server: %v", err)
@@ -376,9 +366,9 @@ func TestALogLineThisVersionDoesNotDefineIsKeptRatherThanDropped(t *testing.T) {
 }
 
 func TestAMethodThisHostDoesNotServeIsMethodNotFound(t *testing.T) {
-	server := newServer(t, newSession(t, capability.Native(capability.LockFree)), protocol.ModeApply)
+	server := newServer(t, newSession(t, capability.Native(capability.LockFree)))
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -419,9 +409,9 @@ func TestFieldsAreOrderedByKeyRatherThanByMapIteration(t *testing.T) {
 }
 
 func TestParametersOfTheWrongShapeAreInvalidParams(t *testing.T) {
-	server := newServer(t, newSession(t, capability.Native(capability.LockFree)), protocol.ModeApply)
+	server := newServer(t, newSession(t, capability.Native(capability.LockFree)))
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -447,9 +437,9 @@ func TestParametersOfTheWrongShapeAreInvalidParams(t *testing.T) {
 }
 
 func TestHostLogCarryingAnIDIsNotARequestThisVersionDefines(t *testing.T) {
-	server := newServer(t, newSession(t, capability.Native(capability.LockFree)), protocol.ModeApply)
+	server := newServer(t, newSession(t, capability.Native(capability.LockFree)))
 
-	call, err := server.Execute("20260727T153000", ir.Up)
+	call, err := server.Execute("20260727T153000", ir.Up, protocol.ModeApply)
 	if err != nil {
 		t.Fatalf("opening the call: %v", err)
 	}
@@ -463,7 +453,7 @@ func TestHostLogCarryingAnIDIsNotARequestThisVersionDefines(t *testing.T) {
 }
 
 func TestAResponseHandedToTheServerIsNotItsToAnswer(t *testing.T) {
-	server := newServer(t, newSession(t, capability.Native(capability.LockFree)), protocol.ModeApply)
+	server := newServer(t, newSession(t, capability.Native(capability.LockFree)))
 
 	if reply := server.Serve(t.Context(), protocol.NewResponse(1, json.RawMessage(`{}`))); reply != nil {
 		t.Error("a response travels the other way, and the router never hands one here")
@@ -483,13 +473,9 @@ func TestAServerRefusesWhatItCouldNotAnswerWith(t *testing.T) {
 		opts Options
 		want error
 	}{
-		{"no session", Options{Database: "d", Log: log, Mode: protocol.ModeApply}, ErrNoConn},
-		{"no database", Options{Conn: conn, Log: log, Mode: protocol.ModeApply}, ErrNoDatabase},
-		{"no logger", Options{Conn: conn, Database: "d", Mode: protocol.ModeApply}, ErrNoLog},
-		{"no mode", Options{Conn: conn, Database: "d", Log: log}, ErrNoMode},
-		{"a mode nothing defines", Options{
-			Conn: conn, Database: "d", Log: log, Mode: "dry-run",
-		}, ErrNoMode},
+		{"no session", Options{Database: "d", Log: log}, ErrNoConn},
+		{"no database", Options{Conn: conn, Log: log}, ErrNoDatabase},
+		{"no logger", Options{Conn: conn, Database: "d"}, ErrNoLog},
 	}
 
 	for _, c := range refusals {

@@ -48,7 +48,8 @@ type source map[string]staged
 var _ engine.Source = source{}
 
 // Emit answers what one migration does, the way a real source reports each of the same cases.
-func (s source) Emit(_ context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+func (s source) Emit(_ context.Context, m migration.Migration, dir ir.Direction, _ engine.Mode,
+) (ir.Operations, error) {
 	held, ok := s[m.Version]
 	if !ok {
 		return nil, fmt.Errorf("%s: no migration was staged for it", m.Filename())
@@ -63,6 +64,21 @@ func (s source) Emit(_ context.Context, m migration.Migration, dir ir.Direction)
 	}
 
 	return held.undo()
+}
+
+// asked wraps a source and remembers the mode each half was read in.
+type asked struct {
+	source
+	// modes are the modes it was asked in, in the order it was asked.
+	modes []engine.Mode
+}
+
+// Emit records the mode and answers what the wrapped source staged.
+func (a *asked) Emit(ctx context.Context, m migration.Migration, dir ir.Direction, mode engine.Mode,
+) (ir.Operations, error) {
+	a.modes = append(a.modes, mode)
+
+	return a.source.Emit(ctx, m, dir, mode)
 }
 
 // undo answers the down question the four ways a source may answer it.

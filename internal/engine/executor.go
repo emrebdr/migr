@@ -10,6 +10,7 @@ import (
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
 )
 
@@ -21,6 +22,8 @@ type executor struct {
 	store history.Store
 	// opts is what this run was given beyond the session.
 	opts Options
+	// mode is how this invocation asks a migration what it does: a run, or a question.
+	mode Mode
 	// batch is what every run in this invocation is recorded under.
 	batch int64
 	// position counts statements within one migration, continuing across its runs.
@@ -28,9 +31,13 @@ type executor struct {
 }
 
 // newExecutor checks what a run was given and binds it to the session's history, before any lock.
-func newExecutor(conn driver.Conn, opts Options) (*executor, error) {
+func newExecutor(conn driver.Conn, opts Options, mode Mode) (*executor, error) {
 	if err := opts.check(); err != nil {
 		return nil, err
+	}
+
+	if !mode.Valid() {
+		return nil, unknownModeError(mode)
 	}
 
 	store := conn.History()
@@ -38,7 +45,17 @@ func newExecutor(conn driver.Conn, opts Options) (*executor, error) {
 		return nil, ErrNoHistory
 	}
 
-	return &executor{conn: conn, store: store, opts: opts}, nil
+	return &executor{conn: conn, store: store, opts: opts, mode: mode}, nil
+}
+
+// emit asks what a migration does, in the mode this invocation runs its migrations in.
+func (e *executor) emit(ctx context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+	return e.opts.Source.Emit(ctx, m, dir, e.mode)
+}
+
+// ask asks what a migration does as a question, which no invocation turns into a run.
+func (e *executor) ask(ctx context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+	return e.opts.Source.Emit(ctx, m, dir, ModePlan)
 }
 
 // invocation is what one run does under the migration lock: an apply, a rollback, or a preview.

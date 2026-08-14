@@ -27,7 +27,8 @@ func New(fsys fs.FS, driverName string) *Source {
 }
 
 // Emit returns the operations one migration performs, or ErrNoDownAuthored for a down it has none of.
-func (s *Source) Emit(_ context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+func (s *Source) Emit(_ context.Context, m migration.Migration, dir ir.Direction, _ engine.Mode,
+) (ir.Operations, error) {
 	src, err := fs.ReadFile(s.fsys, m.Filename())
 	if err != nil {
 		return nil, unreadable(m.Filename(), err)

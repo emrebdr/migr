@@ -7,12 +7,15 @@ import (
 
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
 
 // Call is one engine request in flight, and the only window in which callbacks are valid.
 type Call struct {
 	server    *Server
 	migration string
+	// mode is whether this call runs the migration or asks it a question, per §4.
+	mode protocol.Mode
 	// recorder collects what the migration emits, and is nil in a window that emits nothing.
 	recorder *ir.Recorder
 	// held are the escape-hatch statements a preview recorded rather than ran.
@@ -20,13 +23,17 @@ type Call struct {
 }
 
 // Execute opens the window in which every callback is valid, recording what the migration emits.
-func (s *Server) Execute(migration string, dir ir.Direction) (*Call, error) {
+func (s *Server) Execute(migration string, dir ir.Direction, mode protocol.Mode) (*Call, error) {
+	if !mode.Valid() {
+		return nil, fmt.Errorf("%w: %q is not one of %v", ErrNoMode, mode, protocol.Modes())
+	}
+
 	recorder, err := ir.NewRecorder(migration, dir)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.open(&Call{server: s, migration: migration, recorder: recorder})
+	return s.open(&Call{server: s, migration: migration, mode: mode, recorder: recorder})
 }
 
 // Validate opens the narrower window, where a migration may read and may not change anything.
@@ -35,12 +42,17 @@ func (s *Server) Validate(migration string) (*Call, error) {
 		return nil, ErrNoMigration
 	}
 
-	return s.open(&Call{server: s, migration: migration})
+	return s.open(&Call{server: s, migration: migration, mode: protocol.ModePlan})
 }
 
 // Migration returns which migration this call is in flight for.
 func (c *Call) Migration() string {
 	return c.migration
+}
+
+// Mode reports whether this call runs the migration or asks it a question.
+func (c *Call) Mode() protocol.Mode {
+	return c.mode
 }
 
 // Operations seals what the migration emitted and closes the window.

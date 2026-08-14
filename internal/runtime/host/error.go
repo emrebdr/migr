@@ -11,8 +11,8 @@ var ErrNoDatabase = errors.New("a host callback server needs the name migr.yaml 
 // ErrNoLog marks a server built without somewhere to file host.log's lines.
 var ErrNoLog = errors.New("a host callback server needs a logger for host.log")
 
-// ErrNoMode marks a server built without knowing whether this run applies or previews.
-var ErrNoMode = errors.New("a host callback server needs to know whether it is applying or planning")
+// ErrNoMode marks a call opened without saying whether it runs the migration or asks it a question.
+var ErrNoMode = errors.New("a migration.execute states the mode it is asked in")
 
 // ErrNoMigration marks a call opened for no migration in particular.
 var ErrNoMigration = errors.New("a call names the migration it is in flight for")

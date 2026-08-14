@@ -12,7 +12,7 @@ import (
 
 // Rollback undoes every applied migration, newest first, under the migration lock.
 func Rollback(ctx context.Context, conn driver.Conn, opts Options) (Result, error) {
-	e, err := newExecutor(conn, opts)
+	e, err := newExecutor(conn, opts, ModeApply)
 	if err != nil {
 		return Result{}, err
 	}
@@ -82,7 +82,7 @@ func (e *executor) reverse(ctx context.Context, item queued) (prepared, error) {
 
 // undo asks the source what a migration undoes, falling back to deriving it from what it does.
 func (e *executor) undo(ctx context.Context, item queued) (ir.Operations, error) {
-	ops, err := e.opts.Source.Emit(ctx, item.migration, ir.Down)
+	ops, err := e.emit(ctx, item.migration, ir.Down)
 	if err == nil {
 		return ops, nil
 	}
@@ -98,9 +98,9 @@ func (e *executor) undo(ctx context.Context, item queued) (ir.Operations, error)
 	return e.derive(ctx, item)
 }
 
-// derive inverts what a migration does, for one whose source authored no down to run instead.
+// derive inverts what a migration does, asking as a question because nothing it answers is run.
 func (e *executor) derive(ctx context.Context, item queued) (ir.Operations, error) {
-	forward, err := e.opts.Source.Emit(ctx, item.migration, ir.Up)
+	forward, err := e.ask(ctx, item.migration, ir.Up)
 	if err != nil {
 		return nil, fmt.Errorf("asking what this migration does, to derive the undo it authored "+
 			"none of: %w", err)

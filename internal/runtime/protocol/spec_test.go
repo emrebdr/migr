@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/emrebdr/migr/internal/ir"
 )
 
 // specPath is the specification this package answers to, relative to the package directory.
@@ -321,6 +323,75 @@ func TestTheWorkedConversationsShowBothDirections(t *testing.T) {
 			t.Log("worked conversation that never shows one is not a conversation.")
 		}
 	}
+}
+
+func TestTheConversationThatDerivesADownAsksTheUpAsAQuestion(t *testing.T) {
+	asked := executesIn(t, "Rolling back a migration that authors no down")
+
+	if got := asked[ir.Up]; got != ModePlan {
+		t.Errorf("%s asks for the up in mode %q, want %q", specPath, got, ModePlan)
+		t.Log("This conversation is the reason the mode is a parameter of migration.execute at")
+		t.Log("all (§4). An example showing the derivation as an ordinary apply teaches an SDK")
+		t.Log("that the escape hatch may fire while the engine is merely asking a question.")
+	}
+
+	if got := asked[ir.Down]; got != ModeApply {
+		t.Errorf("%s asks for the down in mode %q, want %q", specPath, got, ModeApply)
+	}
+}
+
+func TestTheConversationThatAppliesAsksAsARun(t *testing.T) {
+	if got := executesIn(t, "Applying one migration")[ir.Up]; got != ModeApply {
+		t.Errorf("%s applies in mode %q, want %q", specPath, got, ModeApply)
+	}
+}
+
+// executesIn returns the mode each direction is asked in, in one named worked conversation.
+func executesIn(t *testing.T, title string) map[ir.Direction]Mode {
+	t.Helper()
+
+	for _, e := range readSpec(t).examples {
+		if e.title != title {
+			continue
+		}
+
+		return modesAsked(t, e)
+	}
+
+	t.Fatalf("%s documents no conversation titled %q", specPath, title)
+
+	return nil
+}
+
+// modesAsked reads every migration.execute in one conversation as the direction and mode it states.
+func modesAsked(t *testing.T, e example) map[ir.Direction]Mode {
+	t.Helper()
+
+	asked := make(map[ir.Direction]Mode, 2)
+
+	for _, m := range e.messages {
+		var decoded struct {
+			Method string `json:"method"`
+			Params struct {
+				Direction ir.Direction `json:"direction"`
+				Mode      Mode         `json:"mode"`
+			} `json:"params"`
+		}
+
+		if err := json.Unmarshal([]byte(m.body), &decoded); err != nil ||
+			decoded.Method != MigrationExecute {
+			continue
+		}
+
+		if !decoded.Params.Mode.Valid() {
+			t.Errorf("%s:%d: migration.execute states mode %q, and §4 defines %v",
+				specPath, m.line, decoded.Params.Mode, Modes())
+		}
+
+		asked[decoded.Params.Direction] = decoded.Params.Mode
+	}
+
+	return asked
 }
 
 // assigned returns every code this protocol version names, JSON-RPC's own and migr's alike.

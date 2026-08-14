@@ -390,7 +390,13 @@ each one, reporting every problem rather than the first — see
 
 `Validate()` must not emit operations. A `host.schema.apply` during `migration.validate` is a
 protocol error: the engine has nothing to do with them and recording them would make validation
-change what a later apply emits.
+change what a later apply emits. A `host.db.exec` is refused for the same reason stated the other
+way round — a self-check that wrote to the database would not be one.
+
+**There is no `mode` here, and [`host.info`](#hostinfo) reports `"plan"` inside this call.** A
+self-check is a question by construction: nothing it says is executed, and the two callbacks that
+could change anything are refused outright rather than recorded. A runtime that branches on the mode
+therefore sees a validation as the preview it is.
 
 ---
 
@@ -541,6 +547,11 @@ Reports the facts about this run a migration may branch on.
 
 `server` is the version string the driver detected at `Open`, verbatim. A migration that parses it
 is coupled to one engine's spelling; `host.capability.get` is the portable question.
+
+`mode` is **the mode of the call this callback arrived inside**, not a property of the session —
+which is what lets one rollback ask the same migration for its `down` as a run and then for its `up`
+as the question the inverse is derived from ([§4](#migrationexecute)). Inside a
+[`migration.validate`](#migrationvalidate) it is `"plan"`.
 
 ### `host.log`
 
@@ -850,6 +861,8 @@ implementer has to re-read to know whether they are finished.
 
 - [ ] `mode` is honoured only where [§6](#6-plan-mode) says it differs — which is
       `host.db.exec` and nothing else.
+- [ ] `mode` is read from each `migration.execute` rather than remembered from the session: one
+      rollback issues both, and an SDK that cached the first would preview the wrong half.
 - [ ] `$/cancel` abandons the named request and answers it with `canceled`.
 - [ ] Every error carries `data.slug`, the five reserved codes included.
 
@@ -977,3 +990,4 @@ The reasoning behind this protocol, including the options that were rejected:
 | [0030](adr/0030-runtime-protocol-specification.md) | The runtime protocol, specified |
 | [0031](adr/0031-protocol-codec-and-framing.md) | The codec, and what ends a session |
 | [0032](adr/0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote |
+| [0033](adr/0033-where-the-mode-lives.md) | The mode belongs to the call, and the engine owns it |

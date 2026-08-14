@@ -76,4 +76,13 @@
 // an example CREATE TABLE, however illustrative, would be the exception that
 // makes the invariant a preference. TestTheTemplateCarriesNoSQLOfItsOwn holds
 // that mechanically rather than leaving it to be remembered.
+//
+// # The mode is a parameter this source is right to ignore
+//
+// engine.Source.Emit states whether the engine is running a migration or asking
+// it a question (ADR 0033). A .sql migration is a text file: it makes no
+// callbacks, reads nothing, and cannot branch, so both modes read the same bytes
+// and emit the same operations -- which a test asserts rather than assumes,
+// because it is the floor the host's identical-IR proof holds a language runtime
+// to.
 package sql

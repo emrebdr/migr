@@ -42,6 +42,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0030](0030-runtime-protocol-specification.md) | The runtime protocol, specified | Accepted | How the engine and a language runtime agree on a version, cancel work, and tell a refusal from a failure — and the one place plan mode differs |
 | [0031](0031-protocol-codec-and-framing.md) | The codec, and what ends a session | Accepted | A line that cannot be framed ends the session after one `"id": null` error, with no recovery — because the unreadable part is the id somebody is waiting on |
 | [0032](0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote | Accepted | `Conn` grows `Query` and `Perform`, so read-only is which method you call; the server refuses the write, because a data-modifying CTE defeats any check on the leading keyword |
+| [0033](0033-where-the-mode-lives.md) | The mode belongs to the call, and the engine owns it | Accepted | One rollback issues both modes on one session, so a session-level mode cannot serve it; `Source.Emit` states the mode, and a derivation is always a question |
 
 ## When to write one
 

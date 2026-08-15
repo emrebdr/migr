@@ -15,12 +15,27 @@
 // registry that will not build happens before a flag is parsed, so nothing yet
 // knows whether --json was asked for; everything after it is reported by
 // internal/cli, which is the only place that does (ADR 0029).
+//
+// # Why this handles signals
+//
+// A language runtime is spawned into a process group of its own, so the
+// terminal's Ctrl-C reaches migr and not the child (M6-T5, ADR 0034).
+// Canceling the run is what sends $/cancel, waits the grace, and then kills
+// that group; without it, an interrupted migr up would leave a runtime holding
+// a database connection through callbacks nothing will ever answer.
+//
+// The second interrupt restores the default disposition and the kernel ends
+// the process, because an operator who asks twice is not asking for a grace
+// period. That is signal.NotifyContext's own behavior and the reason it is
+// what this uses.
 package main
 
 import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/emrebdr/migr/internal/cli"
 )
@@ -38,5 +53,13 @@ func run() int {
 		return cli.ExitCode(err)
 	}
 
-	return cli.ExitCode(cli.Execute(context.Background(), registry, os.Args[1:]))
+	ctx, restore := interruptible(context.Background())
+	defer restore()
+
+	return cli.ExitCode(cli.Execute(ctx, registry, os.Args[1:]))
+}
+
+// interruptible cancels the run on the first interrupt and leaves the second one to the kernel.
+func interruptible(ctx context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 }

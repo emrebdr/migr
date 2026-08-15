@@ -742,19 +742,22 @@ mid-migration.
 
 ### 8.2 Timeouts
 
-| What | Default | Exceeded |
-|---|---|---|
-| handshake — spawn to `initialize` result | 30s | kill; report that the runtime never started |
-| `migration.discover`, `migration.validate` | 60s | `$/cancel`, then kill |
-| `migration.execute` | **none** | bounded by the command's own context, not by a timer here |
-| cancel grace — `$/cancel` to the canceled response | 5s | kill |
-| shutdown grace — `shutdown` result to process exit | 5s | SIGTERM, then SIGKILL 5s later |
+| What | `migr.yaml` | Default | Exceeded |
+|---|---|---|---|
+| handshake — spawn to `initialize` result | `runtime.handshake_timeout` | 30s | kill; report that the runtime never started |
+| `migration.discover`, `migration.validate` | `runtime.request_timeout` | 60s | `$/cancel`, then kill |
+| `migration.execute` | none | **none** | bounded by the command's own context, not by a timer here |
+| cancel grace — `$/cancel` to the canceled response | `runtime.cancel_grace` | 5s | kill |
+| shutdown grace — `shutdown` result to process exit | `runtime.shutdown_grace` | 5s | SIGTERM, then SIGKILL 5s later |
 
 `migration.execute` has no timeout of its own on purpose. A backfill over a large table legitimately
 runs for hours, and a default that killed it would be a data-loss bug wearing a safety flag. It ends
-when the operator's `migr up` ends: `Ctrl-C` cancels the context, which sends `$/cancel`.
+when the operator's `migr up` ends: `Ctrl-C` cancels the context, which sends `$/cancel`. It has no
+`migr.yaml` key either, so there is nothing for an operator to set to the value that would break it.
 
-These defaults are the protocol's. Surfacing them in `migr.yaml` is **M6-T5**.
+These defaults are the protocol's, and the middle column is where a project overrides one. An engine
+that read a default from anywhere but this specification would let two installations disagree about
+what "the handshake timeout" is while both claiming to implement version 1.
 
 ---
 
@@ -784,7 +787,16 @@ is not specified here ([§1.2](#12-what-it-deliberately-does-not-specify)).
 
 **The engine owes the process one thing:** it does not outlive the engine. An orphaned runtime
 holding a database connection through `host.*` callbacks that nothing will answer is a leak with a
-lock behind it. Enforcing that is **M6-T5**.
+lock behind it.
+
+The engine enforces it by starting the runtime in a **process group of its own** and ending that
+group — not that process — on every path out: a clean `shutdown`, a failed handshake, a canceled
+request the runtime ignored, and the operator's `Ctrl-C`. A runtime that forked a helper therefore
+cannot leave one behind either. There is one edge the engine cannot cover, and a runtime is what
+covers it: if the engine is itself killed outright, **the child's stdin reaches end of file**,
+because the engine held the only other end of that pipe. A runtime that reads EOF on stdin has lost
+its engine and must exit — that is the last thing this section asks of it, and the only thing
+standing between a killed `migr` and a runtime that runs forever.
 
 ---
 
@@ -845,6 +857,8 @@ implementer has to re-read to know whether they are finished.
 - [ ] Any request before `initialize`, a second `initialize`, or anything after `shutdown` is
       `session_state`.
 - [ ] `shutdown` is answered, then stdout is closed and the process exits 0.
+- [ ] **End of file on stdin ends the process.** It means the engine is gone, and it is the one
+      case the engine's own process-group kill cannot reach ([§9](#9-the-process)).
 
 **The methods**
 
@@ -991,3 +1005,4 @@ The reasoning behind this protocol, including the options that were rejected:
 | [0031](adr/0031-protocol-codec-and-framing.md) | The codec, and what ends a session |
 | [0032](adr/0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote |
 | [0033](adr/0033-where-the-mode-lives.md) | The mode belongs to the call, and the engine owns it |
+| [0034](adr/0034-runtime-process-lifecycle.md) | The runtime process, and what outlives what |

@@ -56,6 +56,97 @@ func (l Level) Valid() bool {
 	return slices.Contains(levels, l)
 }
 
+// InitializeParams is the handshake: every version the engine speaks, and the project it opened.
+type InitializeParams struct {
+	ProtocolVersions []int        `json:"protocolVersions"`
+	IRVersion        int          `json:"irVersion"`
+	Client           Client       `json:"client"`
+	Migrations       MigrationsAt `json:"migrations"`
+	Database         DatabaseAt   `json:"database"`
+}
+
+// Client names the engine and its version, which a runtime reports in its own diagnostics.
+type Client struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+// MigrationsAt names where the migrations are and which language they were written in.
+type MigrationsAt struct {
+	Dir      string `json:"dir"`
+	Language string `json:"language"`
+}
+
+// DatabaseAt names the target a migration may branch on, and carries no DSN, ever.
+type DatabaseAt struct {
+	Name   string `json:"name"`
+	Driver string `json:"driver"`
+}
+
+// InitializeResult is the version the runtime picked, and what implements it.
+type InitializeResult struct {
+	ProtocolVersion int       `json:"protocolVersion"`
+	Runtime         Component `json:"runtime"`
+	SDK             Component `json:"sdk"`
+}
+
+// Component names one half of what answered the handshake: the language runtime, or the SDK.
+type Component struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+// DiscoverResult is every migration a runtime can execute, with what each one declares.
+type DiscoverResult struct {
+	Migrations []Discovered `json:"migrations"`
+}
+
+// Discovered is one migration a runtime loaded, named by the version its filename carries.
+type Discovered struct {
+	Version      string   `json:"version"`
+	File         string   `json:"file"`
+	Dependencies []string `json:"dependencies"`
+}
+
+// ExecuteParams names one migration, one direction, and whether this call runs it or asks it.
+type ExecuteParams struct {
+	ID        string       `json:"id"`
+	Direction ir.Direction `json:"direction"`
+	Mode      Mode         `json:"mode"`
+}
+
+// Validate reports a call that could not name what it is asking for.
+func (p ExecuteParams) Validate() error {
+	if p.ID == "" {
+		return errors.New("id is empty, and a migration.execute names one migration")
+	}
+
+	if !p.Direction.Valid() {
+		return fmt.Errorf("direction is %q, and a migration runs up or down", p.Direction)
+	}
+
+	if !p.Mode.Valid() {
+		return fmt.Errorf("mode is %q, and this protocol version defines %v", p.Mode, Modes())
+	}
+
+	return nil
+}
+
+// ExecuteResult reports how many operations were emitted, which the engine checks its own count against.
+type ExecuteResult struct {
+	Operations int `json:"operations"`
+}
+
+// ValidateParams names the migration whose own check is being run.
+type ValidateParams struct {
+	ID string `json:"id"`
+}
+
+// CancelParams names a request the sender made and is still waiting on.
+type CancelParams struct {
+	ID int64 `json:"id"`
+}
+
 // SchemaApplyParams carries the operations a migration performs, as the IR array alone.
 type SchemaApplyParams struct {
 	Operations ir.Operations `json:"operations"`

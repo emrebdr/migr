@@ -15,6 +15,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
 
 // DefaultFilename is the config file looked for when --config is not given.
@@ -107,6 +108,10 @@ func applyDefaults(cfg *Config) {
 	}
 
 	setDuration(&cfg.Lock.Timeout, driver.DefaultLockWait)
+	setDuration(&cfg.Runtime.HandshakeTimeout, protocol.DefaultHandshake)
+	setDuration(&cfg.Runtime.RequestTimeout, protocol.DefaultRequest)
+	setDuration(&cfg.Runtime.CancelGrace, protocol.DefaultCancelGrace)
+	setDuration(&cfg.Runtime.ShutdownGrace, protocol.DefaultShutdownGrace)
 	setDuration(&cfg.Safety.LockTimeout, driver.DefaultStatementLockWait)
 	setDuration(&cfg.Safety.StatementTimeout, 30*time.Second)
 	setDuration(&cfg.Safety.ReplicaLagThreshold, 5*time.Second)

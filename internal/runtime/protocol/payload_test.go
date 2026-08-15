@@ -58,6 +58,25 @@ func TestEveryHostCallbackHasADocumentedPayload(t *testing.T) {
 	}
 }
 
+func TestEveryDocumentedPayloadWithMembersHasAType(t *testing.T) {
+	for _, m := range readSpec(t).messages {
+		decoded, err := Decode([]byte(m.body))
+		if err != nil || m.method == "" || decoded.Error != nil {
+			continue
+		}
+
+		target, payload := payloadOf(m.method, decoded)
+		if target != nil || len(bytes.Trim(payload, "{} \t")) == 0 {
+			continue
+		}
+
+		t.Errorf("%s:%d: %s carries %s and this build has no type for it",
+			specPath, m.line, m.method, payload)
+		t.Log("An empty payload needs no type. One with members and no type is a payload")
+		t.Log("nothing holds to the document, which is where the wire and the code drift.")
+	}
+}
+
 func TestTheWireSpellsSupportAndLockAsTheCapabilityModelDoes(t *testing.T) {
 	for _, support := range capability.Supports() {
 		if !slices.Contains(documentedSet(t, "`support` is "), string(support)) {
@@ -210,6 +229,14 @@ func paramsOf(method string) any {
 		return &CapabilityGetParams{}
 	case HostLog:
 		return &LogParams{}
+	case Initialize:
+		return &InitializeParams{}
+	case MigrationExecute:
+		return &ExecuteParams{}
+	case MigrationValidate:
+		return &ValidateParams{}
+	case Cancel:
+		return &CancelParams{}
 	default:
 		return nil
 	}
@@ -228,6 +255,12 @@ func resultOf(method string) any {
 		return &CapabilityGetResult{}
 	case HostInfo:
 		return &InfoResult{}
+	case Initialize:
+		return &InitializeResult{}
+	case MigrationDiscover:
+		return &DiscoverResult{}
+	case MigrationExecute:
+		return &ExecuteResult{}
 	default:
 		return nil
 	}

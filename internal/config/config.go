@@ -16,6 +16,7 @@ type Config struct {
 	Databases  map[string]Database `yaml:"databases"  json:"databases"`
 	History    History             `yaml:"history"    json:"history"`
 	Lock       Lock                `yaml:"lock"       json:"lock"`
+	Runtime    Runtime             `yaml:"runtime"    json:"runtime"`
 	Safety     Safety              `yaml:"safety"     json:"safety"`
 	Validation Validation          `yaml:"validation" json:"validation"`
 }
@@ -42,6 +43,14 @@ type History struct {
 type Lock struct {
 	Strategy LockStrategy `yaml:"strategy" json:"strategy"`
 	Timeout  Duration     `yaml:"timeout"  json:"timeout"`
+}
+
+// Runtime bounds the conversation with a language runtime, which docs/protocol.md §8.2 tabulates.
+type Runtime struct {
+	HandshakeTimeout Duration `yaml:"handshake_timeout" json:"handshake_timeout"`
+	RequestTimeout   Duration `yaml:"request_timeout"   json:"request_timeout"`
+	CancelGrace      Duration `yaml:"cancel_grace"      json:"cancel_grace"`
+	ShutdownGrace    Duration `yaml:"shutdown_grace"    json:"shutdown_grace"`
 }
 
 // Safety holds the thresholds that gate zero-downtime checks.

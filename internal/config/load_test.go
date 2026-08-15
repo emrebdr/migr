@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
 
 // env builds a lookup function over a fixed set of variables.
@@ -215,12 +216,94 @@ databases:
 		{field: "safety.statement_timeout", got: cfg.Safety.StatementTimeout.Duration(), want: 30 * time.Second},
 		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: capability.BriefExclusive},
 		{field: "safety.replica_lag_threshold", got: cfg.Safety.ReplicaLagThreshold.Duration(), want: 5 * time.Second},
+		{field: "runtime.handshake_timeout", got: cfg.Runtime.HandshakeTimeout.Duration(),
+			want: protocol.DefaultHandshake},
+		{field: "runtime.request_timeout", got: cfg.Runtime.RequestTimeout.Duration(),
+			want: protocol.DefaultRequest},
+		{field: "runtime.cancel_grace", got: cfg.Runtime.CancelGrace.Duration(),
+			want: protocol.DefaultCancelGrace},
+		{field: "runtime.shutdown_grace", got: cfg.Runtime.ShutdownGrace.Duration(),
+			want: protocol.DefaultShutdownGrace},
 	}
 
 	for _, c := range checks {
 		if c.got != c.want {
 			t.Errorf("default %s = %v, want %v", c.field, c.got, c.want)
 		}
+	}
+
+	t.Log("§8.2: these defaults are the protocol's, so this reads them from there rather than")
+	t.Log("restating them. A second copy in migr.yaml's defaults is a second definition of a")
+	t.Log("value the specification owns.")
+}
+
+func TestARuntimeBoundIsRefusedWhenItCouldNotBeOne(t *testing.T) {
+	src := []byte(`
+version: 1
+migrations:
+  language: go
+databases:
+  default:
+    driver: sqlite
+    dsn: file:test.db
+runtime:
+  handshake_timeout: 0s
+  cancel_grace: -1s
+  shutdown_grace: -2s
+`)
+
+	cfg, err := parse(src, "test.yaml", env(nil))
+	if err == nil {
+		t.Fatal("a negative bound was accepted")
+	}
+
+	for _, want := range []string{"runtime.cancel_grace", "runtime.shutdown_grace"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the report does not name %s: %v", want, err)
+		}
+	}
+
+	if strings.Contains(err.Error(), "runtime.handshake_timeout") {
+		t.Errorf("0s was reported rather than defaulted: %v", err)
+		t.Log("Zero is how every duration in this file spells unset -- lock.timeout included --")
+		t.Log("so an explicit 0s takes the protocol's own bound rather than meaning forever. A")
+		t.Log("bound of forever is what §8.2's whole table exists to prevent.")
+	}
+
+	if cfg != nil {
+		t.Error("a config that failed validation was returned anyway")
+	}
+}
+
+func TestAStatedRuntimeBoundIsTheOneThatIsUsed(t *testing.T) {
+	src := []byte(`
+version: 1
+migrations:
+  language: go
+databases:
+  default:
+    driver: sqlite
+    dsn: file:test.db
+runtime:
+  handshake_timeout: 90s
+  request_timeout: 2m
+`)
+
+	cfg, err := parse(src, "test.yaml", env(nil))
+	if err != nil {
+		t.Fatalf("a config stating its own bounds must load: %v", err)
+	}
+
+	if got := cfg.Runtime.HandshakeTimeout.Duration(); got != 90*time.Second {
+		t.Errorf("runtime.handshake_timeout = %s, want the one the document stated", got)
+	}
+
+	if got := cfg.Runtime.RequestTimeout.Duration(); got != 2*time.Minute {
+		t.Errorf("runtime.request_timeout = %s, want the one the document stated", got)
+	}
+
+	if got := cfg.Runtime.CancelGrace.Duration(); got != protocol.DefaultCancelGrace {
+		t.Errorf("runtime.cancel_grace = %s, want the protocol's own", got)
 	}
 }
 

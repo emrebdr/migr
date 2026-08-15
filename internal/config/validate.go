@@ -92,6 +92,7 @@ func validate(cfg *Config, source string) error {
 	validateMigrations(v, cfg.Migrations)
 	validateDatabases(v, cfg.Databases)
 	validateLock(v, cfg.Lock)
+	validateRuntime(v, cfg.Runtime)
 	validateSafety(v, cfg.Safety)
 
 	if len(v.errs) == 0 {
@@ -139,6 +140,25 @@ func validateLock(v *validator, l Lock) {
 
 	if l.Timeout <= 0 {
 		v.add("lock.timeout", "must be positive, got %s", l.Timeout)
+	}
+}
+
+// validateRuntime checks §8.2's bounds, none of which may be the zero that means forever.
+func validateRuntime(v *validator, r Runtime) {
+	if r.HandshakeTimeout <= 0 {
+		v.add("runtime.handshake_timeout", "must be positive, got %s", r.HandshakeTimeout)
+	}
+
+	if r.RequestTimeout <= 0 {
+		v.add("runtime.request_timeout", "must be positive, got %s", r.RequestTimeout)
+	}
+
+	if r.CancelGrace <= 0 {
+		v.add("runtime.cancel_grace", "must be positive, got %s", r.CancelGrace)
+	}
+
+	if r.ShutdownGrace <= 0 {
+		v.add("runtime.shutdown_grace", "must be positive, got %s", r.ShutdownGrace)
 	}
 }
 

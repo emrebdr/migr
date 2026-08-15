@@ -48,6 +48,19 @@ func (e *Error) Slug() string {
 	return data.Slug
 }
 
+// Reason returns what data.reason names, which §7.4 requires of declared_irreversible alone.
+func (e *Error) Reason() string {
+	var data struct {
+		Reason string `json:"reason"`
+	}
+
+	if err := json.Unmarshal(e.Data, &data); err != nil {
+		return ""
+	}
+
+	return data.Reason
+}
+
 // Validate reports whether an error carries the slug §7.1 requires of a sender.
 func (e *Error) Validate() error {
 	if e.Slug() == "" {

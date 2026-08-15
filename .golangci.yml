@@ -91,8 +91,12 @@ linters:
     # stays importable: it is shared wire-protocol code, not a language
     # implementation. internal/driver/drivertest is the same shape: the golden-file
     # harness every driver's compiler is held to, plus the operation set M2-T4 walks.
-    # Both are allowed to everyone, so neither may ever import a concrete driver --
-    # that would reopen the transitive path this rule exists to close.
+    # internal/runtime/host is the third, added in M6-T5: it serves the six callbacks
+    # docs/protocol.md §5 specifies, is the same for every language, and names no
+    # adapter. internal/runtime -- the session that drives a child process -- is the
+    # first thing to import it, and internal/cli will be the second at M6-T10.
+    # All three are allowed to everyone, so none may ever import a concrete driver or
+    # runtime -- that would reopen the transitive path this rule exists to close.
     #
     # If a driver ever grows a subpackage (internal/driver/postgres/lock), this
     # blanket deny will block the driver from importing its own child; that driver
@@ -106,6 +110,7 @@ linters:
             - "!**/cmd/migr/**"
           allow:
             - github.com/emrebdr/migr/internal/runtime/protocol
+            - github.com/emrebdr/migr/internal/runtime/host
             - github.com/emrebdr/migr/internal/driver/drivertest
           deny:
             - pkg: github.com/emrebdr/migr/internal/driver/

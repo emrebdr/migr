@@ -3,8 +3,10 @@ package validate
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
@@ -293,5 +295,41 @@ func TestEveryCheckIsNamed(t *testing.T) {
 
 	if Check("nonsense").Valid() {
 		t.Errorf("a check nothing declares reported itself valid")
+	}
+}
+
+func TestAMigrationThatReachesTheDatabaseItselfCannotHaveItsDownDerived(t *testing.T) {
+	backfilled := migrationAt(0, "backfill_status")
+
+	report := run(t, source{backfilled.Version: {
+		up:     ir.Operations{table(t, "users")},
+		direct: []driver.Query{{SQL: "UPDATE users SET status = 'active'"}},
+	}}, compiler{}, backfilled)
+
+	problems := report.Problems()
+
+	t.Log("Every operation here inverts, so nothing else reports a problem -- and a rollback")
+	t.Log("would silently revert the schema and leave the UPDATE standing (ADR 0036).")
+
+	if len(problems) != 1 || problems[0].Check != CheckReverse {
+		t.Fatalf("the report holds %+v, want the migration nothing can undo", problems)
+	}
+
+	if !strings.Contains(problems[0].Detail, "UPDATE users SET status") {
+		t.Errorf("the problem does not name the statement it cannot invert: %q", problems[0].Detail)
+	}
+}
+
+func TestAMigrationThatReachesTheDatabaseItselfAndAuthorsADownIsFine(t *testing.T) {
+	backfilled := migrationAt(0, "backfill_status")
+
+	report := run(t, source{backfilled.Version: {
+		up:     ir.Operations{table(t, "users")},
+		down:   ir.Operations{raw("DROP TABLE users;")},
+		direct: []driver.Query{{SQL: "UPDATE users SET status = 'active'"}},
+	}}, compiler{}, backfilled)
+
+	if problems := report.Problems(); len(problems) != 0 {
+		t.Errorf("an authored down was refused for the up's own statements: %+v", problems)
 	}
 }

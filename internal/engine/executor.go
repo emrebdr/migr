@@ -49,12 +49,12 @@ func newExecutor(conn driver.Conn, opts Options, mode Mode) (*executor, error) {
 }
 
 // emit asks what a migration does, in the mode this invocation runs its migrations in.
-func (e *executor) emit(ctx context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+func (e *executor) emit(ctx context.Context, m migration.Migration, dir ir.Direction) (Emitted, error) {
 	return e.opts.Source.Emit(ctx, m, dir, e.mode)
 }
 
 // ask asks what a migration does as a question, which no invocation turns into a run.
-func (e *executor) ask(ctx context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+func (e *executor) ask(ctx context.Context, m migration.Migration, dir ir.Direction) (Emitted, error) {
 	return e.opts.Source.Emit(ctx, m, dir, ModePlan)
 }
 
@@ -104,16 +104,18 @@ type prepared struct {
 	groups []Group
 	// sum is the checksum the run is recorded under, over the source and the emitted IR.
 	sum checksum.Checksum
+	// direct are the statements the migration runs itself, which only a question ever holds.
+	direct []driver.Query
 }
 
 // prepare hashes what a migration emitted, compiles it, and refuses what cannot run atomically.
-func (e *executor) prepare(item queued, dir ir.Direction, ops ir.Operations) (prepared, error) {
-	emitted, err := checksum.OfOperations(ops)
+func (e *executor) prepare(item queued, dir ir.Direction, emitted Emitted) (prepared, error) {
+	sum, err := checksum.OfOperations(emitted.Operations)
 	if err != nil {
 		return prepared{}, fmt.Errorf("hashing the emitted operations: %w", err)
 	}
 
-	compiled, err := e.opts.Planner.Compile(item.migration, dir, ops)
+	compiled, err := e.opts.Planner.Compile(item.migration, dir, emitted.Operations)
 	if err != nil {
 		return prepared{}, err
 	}
@@ -127,7 +129,8 @@ func (e *executor) prepare(item queued, dir ir.Direction, ops ir.Operations) (pr
 		item:     item,
 		compiled: compiled,
 		groups:   groups,
-		sum:      checksum.Checksum{Source: item.source, IR: emitted},
+		sum:      checksum.Checksum{Source: item.source, IR: sum},
+		direct:   emitted.Direct,
 	}, nil
 }
 

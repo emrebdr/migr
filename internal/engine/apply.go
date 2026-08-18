@@ -75,13 +75,13 @@ func (e *executor) applyOne(ctx context.Context, item queued) (Run, error) {
 
 // forward asks what one migration does and compiles it, which is everything an apply does before it runs.
 func (e *executor) forward(ctx context.Context, item queued) (prepared, error) {
-	ops, err := e.emit(ctx, item.migration, ir.Up)
+	emitted, err := e.emit(ctx, item.migration, ir.Up)
 	if err != nil {
 		return prepared{}, e.fail(item, plan.Plan{},
 			fmt.Errorf("asking what this migration does: %w", err))
 	}
 
-	ready, err := e.prepare(item, ir.Up, ops)
+	ready, err := e.prepare(item, ir.Up, emitted)
 	if err != nil {
 		return prepared{}, e.fail(item, plan.Plan{}, err)
 	}

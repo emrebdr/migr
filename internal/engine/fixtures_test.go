@@ -314,6 +314,7 @@ type source struct {
 	session    *recorder
 	ops        map[string]ir.Operations
 	down       map[string]ir.Operations
+	direct     map[string][]driver.Query
 	fail       map[string]error
 	failUp     map[string]error
 	asked      []string
@@ -323,7 +324,7 @@ type source struct {
 
 // Emit returns what a test staged for this migration, or the failure it staged instead.
 func (s *source) Emit(_ context.Context, m migration.Migration, dir ir.Direction, mode Mode,
-) (ir.Operations, error) {
+) (Emitted, error) {
 	s.asked = append(s.asked, m.Version)
 	s.directions = append(s.directions, dir)
 	s.modes = append(s.modes, mode)
@@ -333,7 +334,7 @@ func (s *source) Emit(_ context.Context, m migration.Migration, dir ir.Direction
 	}
 
 	if err := s.fail[m.Version]; err != nil {
-		return nil, err
+		return Emitted{}, err
 	}
 
 	if dir == ir.Down {
@@ -341,20 +342,29 @@ func (s *source) Emit(_ context.Context, m migration.Migration, dir ir.Direction
 	}
 
 	if err := s.failUp[m.Version]; err != nil {
-		return nil, err
+		return Emitted{}, err
 	}
 
-	return s.ops[m.Version], nil
+	return Emitted{Operations: s.ops[m.Version], Direct: s.heldFor(m, mode)}, nil
+}
+
+// heldFor returns the staged escape-hatch statements, which only a question ever holds (ADR 0036).
+func (s *source) heldFor(m migration.Migration, mode Mode) []driver.Query {
+	if mode != ModePlan {
+		return nil
+	}
+
+	return s.direct[m.Version]
 }
 
 // emitDown returns the down a test authored, or the sentinel that asks the engine to derive one.
-func (s *source) emitDown(m migration.Migration) (ir.Operations, error) {
+func (s *source) emitDown(m migration.Migration) (Emitted, error) {
 	authored, ok := s.down[m.Version]
 	if !ok {
-		return nil, ErrNoDownAuthored
+		return Emitted{}, ErrNoDownAuthored
 	}
 
-	return authored, nil
+	return Emitted{Operations: authored}, nil
 }
 
 // stagedTable is the table every staged operation names, since only the index names carry meaning.
@@ -441,6 +451,7 @@ func staged(t *testing.T, specs ...string) (Options, *source) {
 	src := &source{
 		ops:    map[string]ir.Operations{},
 		down:   map[string]ir.Operations{},
+		direct: map[string][]driver.Query{},
 		fail:   map[string]error{},
 		failUp: map[string]error{},
 	}

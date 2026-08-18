@@ -46,7 +46,14 @@ func main() {
 
 // run executes the CLI and returns the process exit code.
 func run() int {
-	registry, err := drivers()
+	engines, err := drivers()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "migr: %v\n", err)
+
+		return cli.ExitCode(err)
+	}
+
+	languages, err := runtimes()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "migr: %v\n", err)
 
@@ -56,7 +63,7 @@ func run() int {
 	ctx, restore := interruptible(context.Background())
 	defer restore()
 
-	return cli.ExitCode(cli.Execute(ctx, registry, os.Args[1:]))
+	return cli.ExitCode(cli.Execute(ctx, engines, languages, os.Args[1:]))
 }
 
 // interruptible cancels the run on the first interrupt and leaves the second one to the kernel.

@@ -381,12 +381,38 @@ func TestALanguageWithNoRuntimeIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
 		t.Fatal("up ran migrations in a language nothing can execute")
 	}
 
-	if !strings.Contains(err.Error(), "M6-T10") {
-		t.Errorf("the refusal does not name the task that runs Go migrations: %v", err)
+	for _, named := range []string{"M6-T7", "M6-T10"} {
+		if !strings.Contains(err.Error(), named) {
+			t.Errorf("the refusal does not name %s, which Go migrations wait on: %v", named, err)
+		}
 	}
 
 	if got := ExitCode(err); got != ExitValidation {
 		t.Errorf("ExitCode = %d, want %d", got, ExitValidation)
+	}
+}
+
+func TestALanguageThisBuildRegisteredNoAdapterForSaysSo(t *testing.T) {
+	dir, _, drivers := project(t, twoTables()...)
+	write(t, filepath.Join(dir, config.DefaultFilename),
+		strings.Replace(projectConfig, "language: sql", "language: go", 1))
+
+	opts := &options{clock: ticking(noon), drivers: drivers, runtimes: runtimeRegistry(t)}
+
+	_, _, err := runOptions(t, dir, opts, "up")
+	if err == nil {
+		t.Fatal("up ran migrations in a language this build has no adapter for")
+	}
+
+	t.Log("A build with the Go adapter compiled out and one whose SDK has not landed are")
+	t.Log("different problems: the first is fixed by a different binary, the second by waiting.")
+
+	if !strings.Contains(err.Error(), "no runtimes registered") {
+		t.Errorf("the refusal does not say the registry is empty: %v", err)
+	}
+
+	if strings.Contains(err.Error(), "M6-T7") {
+		t.Errorf("the refusal names the SDK task for an adapter this build does not have: %v", err)
 	}
 }
 

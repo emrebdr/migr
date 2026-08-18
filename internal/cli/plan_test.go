@@ -8,8 +8,12 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
+	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/plan"
 )
 
 // decodePlan reads the document --json promised, failing the test rather than the command.
@@ -427,5 +431,133 @@ func TestADryRunPointsAtTheCommandThatPrintsTheStatements(t *testing.T) {
 
 	if !strings.Contains(down, "migr plan --down") {
 		t.Errorf("the rollback's dry run does not point at `migr plan --down`:\n%s", down)
+	}
+}
+
+// previewOf compiles one migration's operations the way a preview would, for the rendering tests.
+func previewOf(t *testing.T, f *fake, ops ir.Operations, held []driver.Query) engine.Previewed {
+	t.Helper()
+
+	m := migration.Migration{Version: "20260727T153000", Name: "backfill_status", Ext: ".sql"}
+
+	compiled, err := plan.Planner{Compiler: &fakeDriver{fake: f, caps: f.capabilities(t)}}.
+		Compile(m, ir.Up, ops)
+	if err != nil {
+		t.Fatalf("compiling the staged operations: %v", err)
+	}
+
+	return engine.Previewed{
+		Direction: ir.Up, Batch: 1, Recorded: true,
+		Steps: []engine.Planned{{Ordinal: 1, Plan: compiled, Direct: held}},
+	}
+}
+
+// renderedPlan runs the preview through the rendering both migr plan output forms are built from.
+func renderedPlan(t *testing.T, held []driver.Query) compiledPlan {
+	t.Helper()
+
+	f := &fake{}
+	s := &session{conn: &fakeConn{fake: f, caps: f.capabilities(t)}, database: "default"}
+
+	return compiledOf(s, previewOf(t, f, ir.Operations{
+		ir.Raw{Driver: fakeName, SQL: "ALTER TABLE users ADD COLUMN status text;"},
+	}, held))
+}
+
+func TestPlanPrintsTheStatementsAMigrationRunsItself(t *testing.T) {
+	rendered := renderedPlan(t, []driver.Query{
+		{SQL: "UPDATE users SET status = 'active'", Args: []string{"active"}},
+	})
+
+	if rendered.Direct != 1 {
+		t.Fatalf("the plan counted %d direct statements, want the one held", rendered.Direct)
+	}
+
+	if len(rendered.Migrations[0].Direct) != 1 ||
+		rendered.Migrations[0].Direct[0].SQL != "UPDATE users SET status = 'active'" {
+		t.Fatalf("the migration carries %+v", rendered.Migrations[0].Direct)
+	}
+
+	printed := rendered.String()
+
+	if !strings.Contains(printed, "UPDATE users SET status = 'active'") {
+		t.Errorf("the printed plan omits the statement migr up would run:\n%s", printed)
+	}
+
+	if !strings.Contains(printed, "outside its transaction") {
+		t.Errorf("the printed plan does not say the statement runs outside the plan:\n%s", printed)
+	}
+
+	if !strings.Contains(printed, "a later failure does not undo it") {
+		t.Errorf("the printed plan does not say it is not undone by a failure:\n%s", printed)
+	}
+}
+
+func TestPlanPrintsAHeldStatementBeforeTheOperationsItPrecedes(t *testing.T) {
+	printed := renderedPlan(t, []driver.Query{{SQL: "UPDATE users SET status = 'active'"}}).String()
+
+	held := strings.Index(printed, "UPDATE users")
+	operation := strings.Index(printed, "ALTER TABLE users")
+
+	t.Log("Every callback fires while the migration is deciding what it does, which is before")
+	t.Log("the engine has compiled anything or opened a transaction (ADR 0032).")
+
+	if held < 0 || operation < 0 || held > operation {
+		t.Errorf("the held statement is not printed above the operations:\n%s", printed)
+	}
+}
+
+func TestPlanCountsBoundArgumentsRatherThanInterpolatingThem(t *testing.T) {
+	printed := renderedPlan(t, []driver.Query{
+		{SQL: "UPDATE users SET status = $1", Args: []string{"active"}},
+	}).String()
+
+	if !strings.Contains(printed, "-- 1 argument bound") {
+		t.Errorf("the plan does not say how many arguments are bound:\n%s", printed)
+	}
+
+	t.Log("An argument is sent separately and never interpolated, so rendering it inside the")
+	t.Log("statement would print SQL that is not the SQL that runs.")
+
+	if strings.Contains(printed, "SET status = 'active'") {
+		t.Errorf("the plan interpolated a bound argument into the statement:\n%s", printed)
+	}
+}
+
+func TestAPlanWithNothingHeldSaysNothingAboutTheEscapeHatch(t *testing.T) {
+	rendered := renderedPlan(t, nil)
+	printed := rendered.String()
+
+	if rendered.Direct != 0 || rendered.Migrations[0].Direct != nil {
+		t.Errorf("a plan that held nothing carries %+v", rendered.Migrations[0].Direct)
+	}
+
+	if strings.Contains(printed, "escape hatch") || strings.Contains(printed, "!") {
+		t.Errorf("a plan that held nothing mentioned the escape hatch:\n%s", printed)
+	}
+}
+
+func TestAHeldStatementIsMarkedInTheTextRendering(t *testing.T) {
+	printed := renderedPlan(t, []driver.Query{{SQL: "UPDATE users SET status = 'active'"}}).String()
+
+	t.Log("The footer says \"marked ! above\", so the marker has to actually be above -- a")
+	t.Log("test that only looked for a ! anywhere would pass on the footer alone.")
+
+	if !strings.Contains(printed, "!  1 statement this migration runs itself") {
+		t.Errorf("nothing marks the held statement apart from the operations:\n%s", printed)
+	}
+}
+
+func TestALanguageIsRefusedWhenNoRegistryWasBuiltAtAll(t *testing.T) {
+	_, err := sourceFor(config.LanguageGo, nil, fakeName, nil)
+	if err == nil {
+		t.Fatal("sourceFor returned a source for a build with no runtime registry")
+	}
+
+	t.Log("newRootCmd builds options with neither registry, so a nil one is reachable and")
+	t.Log("must say what is missing rather than dereference its way to a panic.")
+
+	if !errors.Is(err, errNoRuntimes) {
+		t.Errorf("sourceFor returned %v, want %v", err, errNoRuntimes)
 	}
 }

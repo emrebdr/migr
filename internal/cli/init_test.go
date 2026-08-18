@@ -34,11 +34,18 @@ func runIn(t *testing.T, dir string, at time.Time, args ...string) (stdout, stde
 func runWith(t *testing.T, dir string, at time.Time, drivers *driver.Registry,
 	args ...string) (stdout, stderr string, err error) {
 	t.Helper()
+
+	return runOptions(t, dir, &options{clock: ticking(at), drivers: drivers,
+		runtimes: runtimeRegistry(t, config.LanguageGo, config.LanguageTypeScript)}, args...)
+}
+
+// runOptions runs the command tree against options a test built itself, for the ones that vary a build.
+func runOptions(t *testing.T, dir string, opts *options,
+	args ...string) (stdout, stderr string, err error) {
+	t.Helper()
 	t.Chdir(dir)
 
 	var out, errOut bytes.Buffer
-
-	opts := &options{clock: ticking(at), drivers: drivers}
 
 	cmd := rootCmd(opts)
 	cmd.SetArgs(args)

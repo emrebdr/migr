@@ -34,8 +34,8 @@ type Project struct {
 	Driver string
 }
 
-// check reports a project a runtime could not be told about.
-func (p Project) check() error {
+// Check reports a project a runtime could not be told about, which an adapter refuses too.
+func (p Project) Check() error {
 	switch {
 	case strings.TrimSpace(p.Root) == "":
 		return ErrNoRoot

@@ -92,14 +92,19 @@ history:
 func migr(t *testing.T, config string, args ...string) error {
 	t.Helper()
 
-	registry, err := drivers()
+	engines, err := drivers()
 	if err != nil {
 		t.Fatalf("building the driver registry: %v", err)
 	}
 
+	languages, err := runtimes()
+	if err != nil {
+		t.Fatalf("building the runtime registry: %v", err)
+	}
+
 	ctx := context.WithoutCancel(t.Context())
 
-	return cli.Execute(ctx, registry, append([]string{"--config", config}, args...))
+	return cli.Execute(ctx, engines, languages, append([]string{"--config", config}, args...))
 }
 
 // migrOut runs the CLI and returns what it printed, for the commands whose whole product is output.

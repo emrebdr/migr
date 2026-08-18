@@ -43,7 +43,7 @@ func (o Options) check() error {
 		return ErrNoLog
 	}
 
-	return o.Project.check()
+	return o.Project.Check()
 }
 
 // Session is one runtime process and the conversation the engine is having with it.

@@ -45,28 +45,31 @@ func (s *Session) Check(ctx context.Context, m migration.Migration) error {
 
 // Emit asks a runtime what one migration does, in the mode this call is a run or a question in.
 func (s *Session) Emit(ctx context.Context, m migration.Migration, dir ir.Direction,
-	mode engine.Mode) (ir.Operations, error) {
+	mode engine.Mode) (engine.Emitted, error) {
 	call, err := s.server.Execute(m.Version, dir, wire(mode))
 	if err != nil {
-		return nil, err
+		return engine.Emitted{}, err
 	}
 
 	defer call.Close()
 
-	var emitted protocol.ExecuteResult
+	var reported protocol.ExecuteResult
 
 	if err := s.call(ctx, protocol.MigrationExecute, protocol.ExecuteParams{
 		ID: m.Version, Direction: dir, Mode: wire(mode),
-	}, &emitted, protocol.NoTimeout); err != nil {
-		return nil, refusal(m, err)
+	}, &reported, protocol.NoTimeout); err != nil {
+		return engine.Emitted{}, refusal(m, err)
 	}
+
+	held := call.Statements()
 
 	ops, err := call.Operations()
 	if err != nil {
-		return nil, err
+		return engine.Emitted{}, err
 	}
 
-	return ops, agree(m, emitted.Operations, len(ops))
+	return engine.Emitted{Operations: ops, Direct: held},
+		agree(m, reported.Operations, len(ops))
 }
 
 // wire spells an engine mode the way the protocol spells it, which a test holds the two sets to.

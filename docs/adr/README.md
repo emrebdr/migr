@@ -44,6 +44,8 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0032](0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote | Accepted | `Conn` grows `Query` and `Perform`, so read-only is which method you call; the server refuses the write, because a data-modifying CTE defeats any check on the leading keyword |
 | [0033](0033-where-the-mode-lives.md) | The mode belongs to the call, and the engine owns it | Accepted | One rollback issues both modes on one session, so a session-level mode cannot serve it; `Source.Emit` states the mode, and a derivation is always a question |
 | [0034](0034-runtime-process-lifecycle.md) | The runtime process, and what outlives what | Accepted | The child gets a process group of its own and every path ends the group; that is also what breaks Ctrl-C, so `cmd/migr` handles signals — and an engine killed outright is covered by EOF on the child's stdin |
+| [0035](0035-generated-go-runner.md) | Running a Go migration | Accepted | A runner `main` is generated in the user's module, built, and cached by content hash in `.migr/`; there is no in-process fast path, and the stamp's one hole is stated and asserted rather than omitted |
+| [0036](0036-escape-hatch-statements-in-a-preview.md) | An escape-hatch statement in a preview | Accepted | `Emit` returns `engine.Emitted`, so what a preview held rather than ran reaches `migr plan`; and a down derived over a migration that used the escape hatch is refused |
 
 ## When to write one
 

@@ -26,12 +26,12 @@ func sourceOf(t *testing.T, body string) *Source {
 func emit(t *testing.T, s *Source, dir ir.Direction) ir.Operations {
 	t.Helper()
 
-	ops, err := s.Emit(t.Context(), file, dir, engine.ModeApply)
+	emitted, err := s.Emit(t.Context(), file, dir, engine.ModeApply)
 	if err != nil {
 		t.Fatalf("Emit(%s): %v", dir, err)
 	}
 
-	return ops
+	return emitted.Operations
 }
 
 // rawSQL renders the SQL of each operation, failing the test on anything that is not a raw one.
@@ -90,12 +90,12 @@ func TestAFileEmitsTheSameOperationsInEitherMode(t *testing.T) {
 		asked := make(map[engine.Mode][]byte, len(engine.Modes()))
 
 		for _, mode := range engine.Modes() {
-			ops, err := s.Emit(t.Context(), file, dir, mode)
+			emitted, err := s.Emit(t.Context(), file, dir, mode)
 			if err != nil {
 				t.Fatalf("Emit(%s, %s): %v", dir, mode, err)
 			}
 
-			if asked[mode], err = ir.Marshal(ops); err != nil {
+			if asked[mode], err = ir.Marshal(emitted.Operations); err != nil {
 				t.Fatalf("marshaling what %s emitted in %s: %v", dir, mode, err)
 			}
 		}

@@ -89,13 +89,13 @@ func TestARuntimeThatSupportsNoOfferedVersionIsReportedAsItself(t *testing.T) {
 func TestAMigrationsCallbacksReachTheHostAndItsOperationsComeBack(t *testing.T) {
 	s, c := start(t, actCallbacks)
 
-	ops, err := s.Emit(t.Context(), fixture, ir.Up, engine.ModeApply)
+	emitted, err := s.Emit(t.Context(), fixture, ir.Up, engine.ModeApply)
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 
-	if len(ops) != 1 || ops[0].Kind() != ir.KindDropTable {
-		t.Fatalf("the migration emitted %v", ops)
+	if len(emitted.Operations) != 1 || emitted.Operations[0].Kind() != ir.KindDropTable {
+		t.Fatalf("the migration emitted %v", emitted.Operations)
 	}
 
 	if len(c.reads) != 1 {
@@ -545,4 +545,50 @@ func reportedPid(t *testing.T, lines []string) int {
 	t.Fatal("the fake never reported a grandchild")
 
 	return 0
+}
+
+func TestAPlannedMigrationsOwnStatementsComeBackHeldRatherThanRun(t *testing.T) {
+	s, c := start(t, actBackfills)
+
+	emitted, err := s.Emit(t.Context(), fixture, ir.Up, engine.ModePlan)
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+
+	t.Log("host.Call.Statements() had no reader until M6-T6, so migr plan over a Go migration")
+	t.Log("would have omitted a statement migr up commits on its own (ADR 0032, ADR 0036).")
+
+	if len(emitted.Direct) != 1 {
+		t.Fatalf("Emit carried out %d statements, want the one the migration sent", len(emitted.Direct))
+	}
+
+	if emitted.Direct[0].SQL != "UPDATE users SET status = 'active'" {
+		t.Errorf("the held statement is %q", emitted.Direct[0].SQL)
+	}
+
+	if !slices.Equal(emitted.Direct[0].Args, []string{"active"}) {
+		t.Errorf("the held statement bound %v, want the arguments the migration sent",
+			emitted.Direct[0].Args)
+	}
+
+	if len(c.performed) != 0 {
+		t.Errorf("plan mode reached the database with %v", c.performed)
+	}
+}
+
+func TestAnAppliedMigrationsOwnStatementsRunAndAreNotHeld(t *testing.T) {
+	s, c := start(t, actBackfills)
+
+	emitted, err := s.Emit(t.Context(), fixture, ir.Up, engine.ModeApply)
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+
+	if len(emitted.Direct) != 0 {
+		t.Errorf("an applied migration held %v, having already run it", emitted.Direct)
+	}
+
+	if len(c.performed) != 1 {
+		t.Fatalf("apply mode reached the database %d times, want once", len(c.performed))
+	}
 }

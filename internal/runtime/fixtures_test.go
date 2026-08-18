@@ -24,6 +24,8 @@ type conn struct {
 	caps capability.Set
 	// reads are the statements host.db.query sent, in order.
 	reads []driver.Query
+	// performed are the statements host.db.exec sent and this session ran, which plan mode holds.
+	performed []driver.Query
 }
 
 // newConn builds a fake session that resolves every operation natively and reads one row.
@@ -55,8 +57,12 @@ func (c *conn) Query(_ context.Context, q driver.Query) (driver.Rows, error) {
 	return driver.Rows{Columns: []string{"n"}, Values: [][]*string{{&count}}}, nil
 }
 
-// Perform is never reached: no fixture here reaches for the escape hatch.
-func (c *conn) Perform(context.Context, driver.Query) (int64, error) { return 0, errNoServer }
+// Perform records the escape hatch's statement, which apply mode runs and plan mode holds.
+func (c *conn) Perform(_ context.Context, q driver.Query) (int64, error) {
+	c.performed = append(c.performed, q)
+
+	return 1, nil
+}
 
 // Lock is never reached: the migration lock is taken before any runtime starts.
 func (c *conn) Lock(context.Context) (driver.Unlock, error) { return nil, errNoServer }

@@ -67,12 +67,12 @@ func (e *executor) invert(ctx context.Context, queue []queued) ([]prepared, erro
 
 // reverse asks how to undo one migration and compiles that, which is everything before it runs.
 func (e *executor) reverse(ctx context.Context, item queued) (prepared, error) {
-	ops, err := e.undo(ctx, item)
+	emitted, err := e.undo(ctx, item)
 	if err != nil {
 		return prepared{}, e.fail(item, plan.Plan{}, err)
 	}
 
-	ready, err := e.prepare(item, ir.Down, ops)
+	ready, err := e.prepare(item, ir.Down, emitted)
 	if err != nil {
 		return prepared{}, e.fail(item, plan.Plan{}, err)
 	}
@@ -81,37 +81,41 @@ func (e *executor) reverse(ctx context.Context, item queued) (prepared, error) {
 }
 
 // undo asks the source what a migration undoes, falling back to deriving it from what it does.
-func (e *executor) undo(ctx context.Context, item queued) (ir.Operations, error) {
-	ops, err := e.emit(ctx, item.migration, ir.Down)
+func (e *executor) undo(ctx context.Context, item queued) (Emitted, error) {
+	emitted, err := e.emit(ctx, item.migration, ir.Down)
 	if err == nil {
-		return ops, nil
+		return emitted, nil
 	}
 
 	if errors.Is(err, ErrDeclaredIrreversible) {
-		return nil, err
+		return Emitted{}, err
 	}
 
 	if !errors.Is(err, ErrNoDownAuthored) {
-		return nil, fmt.Errorf("asking what this migration undoes: %w", err)
+		return Emitted{}, fmt.Errorf("asking what this migration undoes: %w", err)
 	}
 
 	return e.derive(ctx, item)
 }
 
 // derive inverts what a migration does, asking as a question because nothing it answers is run.
-func (e *executor) derive(ctx context.Context, item queued) (ir.Operations, error) {
+func (e *executor) derive(ctx context.Context, item queued) (Emitted, error) {
 	forward, err := e.ask(ctx, item.migration, ir.Up)
 	if err != nil {
-		return nil, fmt.Errorf("asking what this migration does, to derive the undo it authored "+
+		return Emitted{}, fmt.Errorf("asking what this migration does, to derive the undo it authored "+
 			"none of: %w", err)
 	}
 
-	inverse, err := ir.ReverseAll(forward)
-	if err != nil {
-		return nil, irreversibleError(err)
+	if len(forward.Direct) > 0 {
+		return Emitted{}, directIrreversibleError(forward.Direct)
 	}
 
-	return inverse, nil
+	inverse, err := ir.ReverseAll(forward.Operations)
+	if err != nil {
+		return Emitted{}, irreversibleError(err)
+	}
+
+	return Emitted{Operations: inverse}, nil
 }
 
 // rollbackQueue runs the prepared inverses in order, abandoning the rest at the first that fails.

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/runtime"
 )
 
 // options holds the values bound to the root command's persistent flags.
@@ -20,11 +21,13 @@ type options struct {
 	log        *slog.Logger
 	clock      func() time.Time
 	drivers    *driver.Registry
+	runtimes   *runtime.Registry
 }
 
 // Execute builds the root command and runs it against the given arguments.
-func Execute(ctx context.Context, drivers *driver.Registry, args []string) error {
-	opts := &options{drivers: drivers}
+func Execute(ctx context.Context, drivers *driver.Registry, runtimes *runtime.Registry,
+	args []string) error {
+	opts := &options{drivers: drivers, runtimes: runtimes}
 	cmd := rootCmd(opts)
 	cmd.SetArgs(args)
 

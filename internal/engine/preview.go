@@ -29,6 +29,8 @@ type Planned struct {
 	Ordinal int32
 	// Plan is what it compiled to: the migration, the direction, and each operation's statements.
 	Plan plan.Plan
+	// Direct are the statements it runs itself, which this preview held rather than ran (ADR 0036).
+	Direct []driver.Query
 }
 
 // Preview reports what a direction would run against this database, and executes none of it.
@@ -131,7 +133,9 @@ func (e *executor) compileAll(ctx context.Context, queue []queued, dir ir.Direct
 			return steps, err
 		}
 
-		steps = append(steps, Planned{Ordinal: item.ordinal, Plan: ready.compiled})
+		steps = append(steps, Planned{
+			Ordinal: item.ordinal, Plan: ready.compiled, Direct: ready.direct,
+		})
 	}
 
 	return steps, nil

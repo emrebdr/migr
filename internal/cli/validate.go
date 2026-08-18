@@ -43,7 +43,7 @@ func runValidate(cmd *cobra.Command, opts *options) error {
 		return err
 	}
 
-	source, err := t.source()
+	source, err := t.source(opts)
 	if err != nil {
 		return err
 	}

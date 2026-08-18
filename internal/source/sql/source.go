@@ -26,25 +26,25 @@ func New(fsys fs.FS, driverName string) *Source {
 	return &Source{fsys: fsys, driver: driverName}
 }
 
-// Emit returns the operations one migration performs, or ErrNoDownAuthored for a down it has none of.
+// Emit returns what one migration performs, or ErrNoDownAuthored for a down it has none of.
 func (s *Source) Emit(_ context.Context, m migration.Migration, dir ir.Direction, _ engine.Mode,
-) (ir.Operations, error) {
+) (engine.Emitted, error) {
 	src, err := fs.ReadFile(s.fsys, m.Filename())
 	if err != nil {
-		return nil, unreadable(m.Filename(), err)
+		return engine.Emitted{}, unreadable(m.Filename(), err)
 	}
 
 	sections, err := split(m.Filename(), string(src))
 	if err != nil {
-		return nil, err
+		return engine.Emitted{}, err
 	}
 
 	statements, err := sections.of(m.Filename(), dir)
 	if err != nil {
-		return nil, err
+		return engine.Emitted{}, err
 	}
 
-	return s.operations(statements), nil
+	return engine.Emitted{Operations: s.operations(statements)}, nil
 }
 
 // operations turns each statement into a raw operation addressed to the engine it was written for.

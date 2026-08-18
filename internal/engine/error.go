@@ -319,6 +319,46 @@ func missingError(st history.Status) error {
 		ErrMissing, describeVersion(st))
 }
 
+// DirectIrreversibleError reports a migration whose own statements no derived undo can invert.
+type DirectIrreversibleError struct {
+	// Direct are the statements the migration runs itself, which is what has no inverse.
+	Direct []driver.Query
+}
+
+// Error names how many statements the migration runs itself and what the first of them is.
+func (e *DirectIrreversibleError) Error() string {
+	return fmt.Sprintf("it runs %s of its own, which the escape hatch gives no inverse: %s",
+		describeDirect(len(e.Direct)), firstDirect(e.Direct))
+}
+
+// Unwrap reports ir's sentinel so this refusal reads as the irreversibility it is.
+func (e *DirectIrreversibleError) Unwrap() error {
+	return ir.ErrIrreversible
+}
+
+// describeDirect counts statements a migration runs itself with the right noun.
+func describeDirect(n int) string {
+	if n == 1 {
+		return "1 statement"
+	}
+
+	return fmt.Sprintf("%d statements", n)
+}
+
+// firstDirect renders the first statement a migration runs itself, on one line.
+func firstDirect(direct []driver.Query) string {
+	if len(direct) == 0 {
+		return ""
+	}
+
+	return strings.Join(strings.Fields(direct[0].SQL), " ")
+}
+
+// directIrreversibleError refuses a derived undo for a migration that reached the database itself.
+func directIrreversibleError(direct []driver.Query) error {
+	return irreversibleError(&DirectIrreversibleError{Direct: direct})
+}
+
 // irreversibleError refuses the whole rollback, naming what has no inverse and why nothing ran.
 func irreversibleError(cause error) error {
 	return fmt.Errorf("nothing here can undo it: %w -- and the whole rollback is refused before "+

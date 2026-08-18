@@ -52,7 +52,7 @@ type queueSource struct {
 
 // Emit returns the staged operations, running the staged probe first where there is one.
 func (s *queueSource) Emit(_ context.Context, m migration.Migration, dir ir.Direction, _ engine.Mode,
-) (ir.Operations, error) {
+) (engine.Emitted, error) {
 	s.asked = append(s.asked, m.Version)
 
 	for _, item := range s.staged {
@@ -67,20 +67,20 @@ func (s *queueSource) Emit(_ context.Context, m migration.Migration, dir ir.Dire
 		return staging(item, dir)
 	}
 
-	return nil, errors.New("nothing staged this migration")
+	return engine.Emitted{}, errors.New("nothing staged this migration")
 }
 
 // staging returns what a staged migration performs in one direction, or asks for a derived undo.
-func staging(item staged, dir ir.Direction) (ir.Operations, error) {
+func staging(item staged, dir ir.Direction) (engine.Emitted, error) {
 	if dir != ir.Down {
-		return item.ops, nil
+		return engine.Emitted{Operations: item.ops}, nil
 	}
 
 	if item.down == nil {
-		return nil, engine.ErrNoDownAuthored
+		return engine.Emitted{}, engine.ErrNoDownAuthored
 	}
 
-	return item.down, nil
+	return engine.Emitted{Operations: item.down}, nil
 }
 
 // queueOptions builds what an apply run is given from the migrations a test staged, in order.

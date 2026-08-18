@@ -321,6 +321,10 @@ The reasoning behind each contract — including the options that were rejected 
 | [0030](docs/adr/0030-runtime-protocol-specification.md) | The runtime protocol, specified |
 | [0031](docs/adr/0031-protocol-codec-and-framing.md) | The codec, and what ends a session |
 | [0032](docs/adr/0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote |
+| [0033](docs/adr/0033-where-the-mode-lives.md) | The mode belongs to the call, and the engine owns it |
+| [0034](docs/adr/0034-runtime-process-lifecycle.md) | The runtime process, and what outlives what |
+| [0035](docs/adr/0035-generated-go-runner.md) | Running a Go migration |
+| [0036](docs/adr/0036-escape-hatch-statements-in-a-preview.md) | An escape-hatch statement in a preview |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

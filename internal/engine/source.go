@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
@@ -33,10 +34,18 @@ func (m Mode) Valid() bool {
 	return slices.Contains(modes, m)
 }
 
+// Emitted is what one migration did when it was asked, whether that asking was a run or a question.
+type Emitted struct {
+	// Operations are the schema changes it emitted, in the order it emitted them.
+	Operations ir.Operations
+	// Direct are the statements it runs itself, which a question holds rather than runs.
+	Direct []driver.Query
+}
+
 // Source yields the operations one migration emits, and is asked only about migrations that run.
 type Source interface {
-	// Emit returns the operations one migration performs, or ErrNoDownAuthored for a down it has none of.
-	Emit(ctx context.Context, m migration.Migration, dir ir.Direction, mode Mode) (ir.Operations, error)
+	// Emit returns what one migration performs, or ErrNoDownAuthored for a down it has none of.
+	Emit(ctx context.Context, m migration.Migration, dir ir.Direction, mode Mode) (Emitted, error)
 }
 
 // Clock reports the current instant, since forbidigo leaves this package no clock of its own.

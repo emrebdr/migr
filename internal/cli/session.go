@@ -14,16 +14,26 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/runtime"
 	"github.com/emrebdr/migr/internal/source/sql"
 )
 
 // errNoDrivers marks a build that reached a database command with no drivers registered at all.
 var errNoDrivers = errors.New("this build registered no database drivers")
 
+// errNoRuntimes marks a build that reached a language command with no runtimes registered at all.
+var errNoRuntimes = errors.New("this build registered no language runtimes")
+
 // executable names the task that first runs each language end to end, for the ones nothing runs yet.
 var executable = map[config.Language]string{
 	config.LanguageGo:         "M6-T10",
 	config.LanguageTypeScript: "M7-T8",
+}
+
+// sdkTask names the task each language's SDK arrives in, which is what its adapter has nothing to run without.
+var sdkTask = map[config.Language]string{
+	config.LanguageGo:         "M6-T7",
+	config.LanguageTypeScript: "M7-T2",
 }
 
 // target is the one database a command reaches, resolved from the config and reaching nothing yet.
@@ -95,8 +105,8 @@ func (t *target) files(opts *options) ([]history.File, error) {
 }
 
 // source returns what reads this project's migrations, or why nothing can run them yet.
-func (t *target) source() (engine.Source, error) {
-	source, err := sourceFor(t.cfg.Migrations.Language, t.fsys, t.db.Driver)
+func (t *target) source(opts *options) (engine.Source, error) {
+	source, err := sourceFor(t.cfg.Migrations.Language, t.fsys, t.db.Driver, opts.runtimes)
 	if err != nil {
 		return nil, NewExitError(ExitValidation, err)
 	}
@@ -131,7 +141,7 @@ func open(ctx context.Context, opts *options, scope engine.Scope) (*session, err
 		return nil, err
 	}
 
-	source, err := t.source()
+	source, err := t.source(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -225,19 +235,33 @@ func hashed(fsys fs.FS, found []migration.Migration) ([]history.File, error) {
 }
 
 // sourceFor returns what reads the migrations of one language, or why nothing can run them yet.
-func sourceFor(lang config.Language, fsys fs.FS, driverName string) (engine.Source, error) {
+func sourceFor(lang config.Language, fsys fs.FS, driverName string,
+	runtimes *runtime.Registry) (engine.Source, error) {
 	if lang == config.LanguageSQL {
 		return sql.New(fsys, driverName), nil
 	}
 
-	if task, ok := executable[lang]; ok {
-		return nil, fmt.Errorf("migr cannot run %s migrations yet: that SDK and its runtime "+
-			"arrive in %s. migrations.language: %s is the format M5 runs",
-			lang, task, config.LanguageSQL)
+	if _, ok := executable[lang]; ok {
+		return nil, notRunnable(lang, runtimes)
 	}
 
 	return nil, fmt.Errorf("migrations.language: %q is not a language migr knows (expected: %s)",
 		lang, joinLanguages(config.Languages()))
+}
+
+// notRunnable tells a language this build has no adapter for from one whose SDK has not landed.
+func notRunnable(lang config.Language, runtimes *runtime.Registry) error {
+	if runtimes == nil {
+		return fmt.Errorf("migrations.language: %s: %w", lang, errNoRuntimes)
+	}
+
+	if _, err := runtimes.New(string(lang)); err != nil {
+		return fmt.Errorf("migrations.language: %s: %w", lang, err)
+	}
+
+	return fmt.Errorf("migr has a %s runtime adapter, but not yet the SDK it runs: that arrives "+
+		"in %s and the wiring in %s. migrations.language: %s is the format migr runs today",
+		lang, sdkTask[lang], executable[lang], config.LanguageSQL)
 }
 
 // compiler builds the driver migr.yaml names, which needs no DSN and reaches no database.

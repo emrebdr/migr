@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
@@ -87,6 +88,14 @@ type operation struct {
 	Statements []string `json:"statements"`
 }
 
+// direct is one statement a migration sends itself, which this preview held rather than ran.
+type direct struct {
+	// SQL is the statement text, as the migration wrote it.
+	SQL string `json:"sql"`
+	// Args are the parameters bound to it, which are sent separately and never interpolated.
+	Args []string `json:"args,omitempty"`
+}
+
 // compiledMigration is one migration a plan would perform, compiled for this engine and never run.
 type compiledMigration struct {
 	// Ordinal is the position within the batch it would be recorded under.
@@ -95,6 +104,8 @@ type compiledMigration struct {
 	Version string `json:"version"`
 	// File is the filename it was found in.
 	File string `json:"file"`
+	// Direct are the statements it runs itself, before any operation and outside every transaction.
+	Direct []direct `json:"direct,omitempty"`
 	// Operations are what it emitted, each beside the statements it became.
 	Operations []operation `json:"operations"`
 }
@@ -115,6 +126,8 @@ type compiledPlan struct {
 	Skipped []left `json:"skipped,omitempty"`
 	// Statements is how many statements the whole plan compiles to.
 	Statements int `json:"statements"`
+	// Direct is how many statements the migrations would run themselves, outside the plan.
+	Direct int `json:"direct_statements"`
 }
 
 // compiledOf renders what a direction would send, asking the session what it makes of each operation.
@@ -133,6 +146,7 @@ func compiledOf(s *session, previewed engine.Previewed) compiledPlan {
 	for _, step := range previewed.Steps {
 		rendered.Migrations = append(rendered.Migrations, migrationOf(caps, step))
 		rendered.Statements += int(step.Plan.Len())
+		rendered.Direct += len(step.Direct)
 	}
 
 	return rendered
@@ -149,8 +163,23 @@ func migrationOf(caps capability.Set, planned engine.Planned) compiledMigration 
 		Ordinal:    planned.Ordinal,
 		Version:    planned.Plan.Migration.Version,
 		File:       planned.Plan.Migration.Filename(),
+		Direct:     directOf(planned.Direct),
 		Operations: ops,
 	}
+}
+
+// directOf renders the statements a migration sends itself, which host.db.exec held under plan mode.
+func directOf(held []driver.Query) []direct {
+	if len(held) == 0 {
+		return nil
+	}
+
+	statements := make([]direct, 0, len(held))
+	for _, q := range held {
+		statements = append(statements, direct{SQL: q.SQL, Args: q.Args})
+	}
+
+	return statements
 }
 
 // operationOf renders one operation, its verdict, and the statements the driver compiled it to.
@@ -196,7 +225,20 @@ func (p compiledPlan) String() string {
 		describeMigrations(len(p.Migrations)), describeOperations(p.countOperations()),
 		describeStatements(p.Statements), describeSkipped(p.Skipped))
 
+	p.writeDirectNote(&b)
+
 	return b.String()
+}
+
+// writeDirectNote says what a preview could not hold back, since migr up commits those on their own.
+func (p compiledPlan) writeDirectNote(b *strings.Builder) {
+	if p.Direct == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\nmarked ! above: %s sent through the escape hatch rather than the plan. "+
+		"migr %s commits each on its own, before the transaction its migration's operations "+
+		"run in, and a later failure does not undo it.\n", describeStatements(p.Direct), p.Direction)
 }
 
 // countOperations returns how many operations the whole plan emitted, across every migration.
@@ -209,13 +251,47 @@ func (p compiledPlan) countOperations() int {
 	return total
 }
 
-// write renders one migration's heading and every operation under it.
+// write renders one migration's heading, what it runs itself, and every operation under it.
 func (m compiledMigration) write(b *strings.Builder) {
 	fmt.Fprintf(b, "\n  %d  %s\n", m.Ordinal, m.File)
+
+	m.writeDirect(b)
 
 	for _, op := range m.Operations {
 		op.write(b)
 	}
+}
+
+// writeDirect renders what a migration sends itself, above the operations because that is when it runs.
+func (m compiledMigration) writeDirect(b *strings.Builder) {
+	if len(m.Direct) == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "       !  %s this migration runs itself, outside the plan and outside "+
+		"its transaction\n", describeStatements(len(m.Direct)))
+
+	for _, statement := range m.Direct {
+		statement.write(b)
+	}
+}
+
+// write renders one statement a migration sends itself, and says how many parameters it binds.
+func (d direct) write(b *strings.Builder) {
+	fmt.Fprintf(b, "%s\n", indented(d.SQL))
+
+	if len(d.Args) > 0 {
+		fmt.Fprintf(b, "%s\n", indented(fmt.Sprintf("-- %s bound", describeArguments(len(d.Args)))))
+	}
+}
+
+// describeArguments counts bound parameters with the right noun.
+func describeArguments(n int) string {
+	if n == 1 {
+		return "1 argument"
+	}
+
+	return fmt.Sprintf("%d arguments", n)
 }
 
 // write renders one operation's heading and the statements it compiled to, indented beneath it.

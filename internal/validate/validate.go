@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
@@ -59,7 +60,7 @@ type runner struct {
 }
 
 // ask reads one half of a migration as a question, since a check that ran anything would not be one.
-func (r *runner) ask(ctx context.Context, m migration.Migration, dir ir.Direction) (ir.Operations, error) {
+func (r *runner) ask(ctx context.Context, m migration.Migration, dir ir.Direction) (engine.Emitted, error) {
 	return r.opts.Source.Emit(ctx, m, dir, engine.ModePlan)
 }
 
@@ -73,17 +74,17 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 		return
 	}
 
-	r.compile(m, ir.Up, up)
+	r.compile(m, ir.Up, up.Operations)
 	r.undo(ctx, m, up)
 }
 
 // undo checks what undoes a migration: what its author wrote, what its author declares, or an inverse.
-func (r *runner) undo(ctx context.Context, m migration.Migration, up ir.Operations) {
+func (r *runner) undo(ctx context.Context, m migration.Migration, up engine.Emitted) {
 	down, err := r.ask(ctx, m, ir.Down)
 
 	switch {
 	case err == nil:
-		r.compile(m, ir.Down, down)
+		r.compile(m, ir.Down, down.Operations)
 	case errors.Is(err, engine.ErrDeclaredIrreversible):
 		return
 	case errors.Is(err, engine.ErrNoDownAuthored):
@@ -95,12 +96,18 @@ func (r *runner) undo(ctx context.Context, m migration.Migration, up ir.Operatio
 }
 
 // derive inverts what a migration does, reporting every operation nothing can undo rather than the first.
-func (r *runner) derive(m migration.Migration, up ir.Operations) {
-	inverse := make(ir.Operations, 0, len(up))
+func (r *runner) derive(m migration.Migration, up engine.Emitted) {
+	if len(up.Direct) > 0 {
+		r.report.add(directProblem(m, up.Direct))
+
+		return
+	}
+
+	inverse := make(ir.Operations, 0, len(up.Operations))
 
 	var index int32
 
-	for _, op := range up {
+	for _, op := range up.Operations {
 		index++
 
 		reversed, err := op.Reverse()
@@ -113,7 +120,7 @@ func (r *runner) derive(m migration.Migration, up ir.Operations) {
 		inverse = append(inverse, reversed)
 	}
 
-	if len(inverse) != len(up) {
+	if len(inverse) != len(up.Operations) {
 		return
 	}
 
@@ -132,6 +139,12 @@ func (r *runner) compile(m migration.Migration, dir ir.Direction, ops ir.Operati
 			r.report.add(compileProblem(m, dir, err))
 		}
 	}
+}
+
+// directProblem reports a migration that reaches the database itself and authors nothing to undo it.
+func directProblem(m migration.Migration, direct []driver.Query) Problem {
+	return Problem{Migration: m, Check: CheckReverse, Direction: ir.Down,
+		Detail: (&engine.DirectIrreversibleError{Direct: direct}).Error()}
 }
 
 // reverseProblem reports an operation with no inverse, naming what it is and why it has none.

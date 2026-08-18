@@ -11,6 +11,7 @@ import (
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/runtime"
 )
 
 // fakeName is the driver name a staged project's migr.yaml points at.
@@ -57,6 +58,47 @@ func (f *fake) registry(t *testing.T) *driver.Registry {
 	})
 	if err != nil {
 		t.Fatalf("registering the fake driver: %v", err)
+	}
+
+	return registry
+}
+
+// fakeAdapter stands in for a language adapter, so cli tests need not name a concrete runtime.
+type fakeAdapter struct {
+	// name is the language migr.yaml would spell, and the key the registry holds it under.
+	name string
+}
+
+// Name reports the language this adapter would run.
+func (a *fakeAdapter) Name() string {
+	return a.name
+}
+
+// Discover reports that this machine could run the language, since nothing here starts one.
+func (a *fakeAdapter) Discover(context.Context) error {
+	return nil
+}
+
+// Command refuses, since a cli test that reached this would be starting a process (M6-T10).
+func (a *fakeAdapter) Command(context.Context, runtime.Project) (runtime.Command, error) {
+	return runtime.Command{}, errors.New("this fake adapter starts nothing")
+}
+
+// runtimeRegistry returns a registry carrying one adapter per language a real build registers.
+func runtimeRegistry(t *testing.T, languages ...config.Language) *runtime.Registry {
+	t.Helper()
+
+	registry := runtime.NewRegistry()
+
+	for _, lang := range languages {
+		name := string(lang)
+
+		err := registry.Register(name, func() (runtime.Runtime, error) {
+			return &fakeAdapter{name: name}, nil
+		})
+		if err != nil {
+			t.Fatalf("registering the %s adapter: %v", name, err)
+		}
 	}
 
 	return registry

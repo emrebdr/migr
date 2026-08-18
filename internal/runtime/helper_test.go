@@ -51,6 +51,8 @@ const (
 	actCallbacks = "callbacks"
 	// actMiscount emits one operation and claims two, which §4 makes a protocol error.
 	actMiscount = "miscount"
+	// actBackfills reaches the database through the escape hatch as well as emitting an operation.
+	actBackfills = "backfills"
 	// actRefuses answers migration.execute with no_down_authored.
 	actRefuses = "refuses"
 	// actIrreversible answers with declared_irreversible and the author's reason.
@@ -68,6 +70,9 @@ const (
 	// actSluggish answers everything, slowly, so a canceled context is not racing an answer.
 	actSluggish = "sluggish"
 )
+
+// backfillParams is the escape-hatch statement actBackfills sends, which plan mode holds.
+const backfillParams = `{"sql":"UPDATE users SET status = 'active'","args":["active"]}`
 
 // dawdle is how long actSluggish takes to answer, which is long enough to lose no race.
 const dawdle = 150 * time.Millisecond
@@ -254,7 +259,7 @@ func (f *fake) execute(m *protocol.Message) bool {
 			"this migration authors no down of its own"))
 	case actIrreversible:
 		return f.refuse(m, irreversible())
-	case actCallbacks, actMiscount:
+	case actCallbacks, actMiscount, actBackfills:
 		return f.emit(m)
 	}
 
@@ -275,6 +280,11 @@ func irreversible() *protocol.Error {
 func (f *fake) emit(m *protocol.Message) bool {
 	f.callback(protocol.HostInfo, `{}`)
 	f.callback(protocol.HostDBQuery, `{"sql":"SELECT count(*) AS n FROM users","args":[]}`)
+
+	if f.act == actBackfills {
+		f.callback(protocol.HostDBExec, backfillParams)
+	}
+
 	f.callback(protocol.HostSchemaApply, `{"operations":[{"op":"drop_table","table":"legacy"}]}`)
 	f.notify(protocol.HostLog, `{"level":"info","message":"emitted"}`)
 

@@ -75,6 +75,21 @@
 // child's stdin reaches EOF, because the engine held the only other end -- so
 // §9 and §11 require a runtime to exit when it reads one.
 //
+// # The two streams are not ordered against each other
+//
+// stdout is read by the session's own loop and stderr by a goroutine of its
+// own, so a line a runtime writes to stderr has no ordering against a message
+// it writes to stdout afterwards. Everything the engine does with stderr
+// respects that: the tail is drained by settle before any exit is reported, and
+// a caller who wants a stderr line to have arrived must wait for it rather than
+// infer it from a response.
+//
+// The fixtures here are held to the same rule, because getting it wrong makes a
+// test that passes on an idle machine and fails on a loaded one. A fake that
+// wants to prove it observed something the engine sent says so through
+// host.log, which the read loop serves before it delivers the response that
+// releases the waiter.
+//
 // Status: the contract, the registry, and the session (M6-T5). The first
 // adapter is M6-T6 and nothing constructs a Session outside tests until M6-T10.
 package runtime

@@ -307,7 +307,7 @@ func (f *fake) canceled(m *protocol.Message) bool {
 		return false
 	}
 
-	fmt.Fprintf(os.Stderr, "canceled %d\n", p.ID)
+	f.notify(protocol.HostLog, fmt.Sprintf(`{"level":"info","message":"canceled %d"}`, p.ID))
 
 	f.out.Write(protocol.NewFailure(p.ID,
 		protocol.NewError(protocol.CodeCanceled, "the engine asked")))

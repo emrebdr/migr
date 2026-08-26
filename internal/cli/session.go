@@ -30,9 +30,8 @@ var executable = map[config.Language]string{
 	config.LanguageTypeScript: "M7-T8",
 }
 
-// sdkTask names the task each language's SDK arrives in, which is what its adapter has nothing to run without.
+// sdkTask names the task each remaining SDK arrives in, which is what an adapter has nothing to run without.
 var sdkTask = map[config.Language]string{
-	config.LanguageGo:         "M6-T7",
 	config.LanguageTypeScript: "M7-T2",
 }
 
@@ -259,9 +258,15 @@ func notRunnable(lang config.Language, runtimes *runtime.Registry) error {
 		return fmt.Errorf("migrations.language: %s: %w", lang, err)
 	}
 
-	return fmt.Errorf("migr has a %s runtime adapter, but not yet the SDK it runs: that arrives "+
-		"in %s and the wiring in %s. migrations.language: %s is the format migr runs today",
-		lang, sdkTask[lang], executable[lang], config.LanguageSQL)
+	if task, waiting := sdkTask[lang]; waiting {
+		return fmt.Errorf("migr has a %s runtime adapter, but not yet the SDK it runs: that "+
+			"arrives in %s and the wiring in %s. migrations.language: %s is the format migr "+
+			"runs today", lang, task, executable[lang], config.LanguageSQL)
+	}
+
+	return fmt.Errorf("migr has a %s runtime adapter and the SDK it runs, and starting one from "+
+		"a command is %s. migrations.language: %s is the format migr runs today",
+		lang, executable[lang], config.LanguageSQL)
 }
 
 // compiler builds the driver migr.yaml names, which needs no DSN and reaches no database.

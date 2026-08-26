@@ -12,6 +12,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/source/golang"
 	"github.com/emrebdr/migr/internal/source/sql"
 )
 
@@ -26,11 +27,11 @@ type template struct {
 // templates holds every language migr create can write a migration in today.
 var templates = map[config.Language]template{
 	config.LanguageSQL: {ext: sql.Ext, body: sql.Template},
+	config.LanguageGo:  {ext: golang.Ext, body: golang.Template},
 }
 
 // pending names the task that gives each remaining language its SDK and its template.
 var pending = map[config.Language]string{
-	config.LanguageGo:         "M6-T7",
 	config.LanguageTypeScript: "M7-T2",
 }
 

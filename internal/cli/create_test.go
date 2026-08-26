@@ -12,6 +12,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/source/golang"
 	"github.com/emrebdr/migr/internal/source/sql"
 )
 
@@ -128,7 +129,6 @@ func TestCreateRefusesALanguageWhoseTemplateHasNotArrived(t *testing.T) {
 	dir := initialized(t)
 
 	for _, tc := range []struct{ flag, task string }{
-		{flag: "go", task: "M6-T7"},
 		{flag: "typescript", task: "M7-T2"},
 		{flag: "ts", task: "M7-T2"},
 	} {
@@ -327,4 +327,55 @@ func errorSays(err error, phrases ...string) bool {
 	}
 
 	return true
+}
+
+func TestCreateWritesAGoMigrationDiscoveryAccepts(t *testing.T) {
+	dir := initialized(t)
+
+	stdout, _, err := runIn(t, dir, noon, "create", "add_users", "--lang", "go")
+	if err != nil {
+		t.Fatalf("create --lang go: %v", err)
+	}
+
+	written := strings.TrimSpace(strings.TrimPrefix(stdout, "created "))
+
+	parsed, err := migration.Parse(filepath.Base(written))
+	if err != nil {
+		t.Fatalf("create wrote %q, which discovery refuses: %v", written, err)
+	}
+
+	t.Log("The grammar records an extension and never judges it, so a .golang file passes")
+	t.Log("discovery and then matches no runtime -- which is why this asserts the extension too.")
+
+	if parsed.Ext != ".go" {
+		t.Errorf("create wrote a %q file, want a .go one", parsed.Ext)
+	}
+
+	body, err := os.ReadFile(written)
+	if err != nil {
+		t.Fatalf("reading what create wrote: %v", err)
+	}
+
+	for _, want := range []string{"migr.Register", golang.SDK, "func (m Migration) Up("} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("the template carries no %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestTheGoTemplateSaysWhatTheEscapeHatchCosts(t *testing.T) {
+	body := golang.Template
+
+	t.Log("ADR 0036, D: a derived down is refused outright for a migration that used s.Exec, so")
+	t.Log("an author who reaches for it has to learn the price where they first meet it.")
+
+	for _, want := range []string{"s.Exec", "Irreversible", "no inverse"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the template never mentions %q", want)
+		}
+	}
+
+	if strings.Count(body, "s.Exec") < 2 {
+		t.Error("the template mentions s.Exec once; say what it is and then what it costs")
+	}
 }

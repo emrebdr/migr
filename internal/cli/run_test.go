@@ -381,10 +381,15 @@ func TestALanguageWithNoRuntimeIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
 		t.Fatal("up ran migrations in a language nothing can execute")
 	}
 
-	for _, named := range []string{"M6-T7", "M6-T10"} {
-		if !strings.Contains(err.Error(), named) {
-			t.Errorf("the refusal does not name %s, which Go migrations wait on: %v", named, err)
-		}
+	if !strings.Contains(err.Error(), "M6-T10") {
+		t.Errorf("the refusal does not name the task Go migrations wait on: %v", err)
+	}
+
+	t.Log("The SDK landed in M6-T7, so what is left is the wiring alone. A refusal still naming")
+	t.Log("M6-T7 would send a reader to a task that is already done.")
+
+	if strings.Contains(err.Error(), "M6-T7") {
+		t.Errorf("the refusal names M6-T7, whose SDK has landed: %v", err)
 	}
 
 	if got := ExitCode(err); got != ExitValidation {
@@ -411,8 +416,8 @@ func TestALanguageThisBuildRegisteredNoAdapterForSaysSo(t *testing.T) {
 		t.Errorf("the refusal does not say the registry is empty: %v", err)
 	}
 
-	if strings.Contains(err.Error(), "M6-T7") {
-		t.Errorf("the refusal names the SDK task for an adapter this build does not have: %v", err)
+	if strings.Contains(err.Error(), "runtime adapter") {
+		t.Errorf("the refusal claims an adapter this build does not have: %v", err)
 	}
 }
 

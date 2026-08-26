@@ -142,26 +142,38 @@ than a restore.
 
 ## The idea, in code
 
-> **Not implemented yet.** The Go SDK lands in M6 and the TypeScript SDK in M7. This is shown
-> so the shape of the contract is legible, not because you can run it.
+> **Partly implemented.** The Go migration contract and its protocol client are real (M6-T7);
+> the schema builder shown here arrives in M6-T8, and the TypeScript SDK in M7. The signatures
+> below are the ones that ship.
 
 ```go
 package migrations
 
-import migr "github.com/emrebdr/migr/sdk/go"
+import (
+    "context"
 
-func (AddUsers) Up(s *migr.Schema) {
-    s.CreateTable("users", func(t *migr.Table) {
+    migr "github.com/emrebdr/migr/sdk/go"
+)
+
+func init() { migr.Register(AddUsers{}) }
+
+type AddUsers struct{}
+
+func (AddUsers) Up(ctx context.Context, s *migr.Schema) error {
+    return s.CreateTable(ctx, "users", func(t *migr.Table) {
         t.UUID("id").PrimaryKey()
         t.String("email", 255).Unique()
         t.Timestamptz("created_at")
     })
 }
 
-func (AddUsers) Down(s *migr.Schema) {
-    s.DropTable("users")
+func (AddUsers) Down(ctx context.Context, s *migr.Schema) error {
+    return s.DropTable(ctx, "users")
 }
 ```
+
+`Down` is optional: leave it out and migr derives the inverse from what `Up` emitted. So are
+`Validate` and `Dependencies`, each one method.
 
 ```typescript
 import { Schema, Table } from "@migr/sdk";
@@ -325,6 +337,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0034](docs/adr/0034-runtime-process-lifecycle.md) | The runtime process, and what outlives what |
 | [0035](docs/adr/0035-generated-go-runner.md) | Running a Go migration |
 | [0036](docs/adr/0036-escape-hatch-statements-in-a-preview.md) | An escape-hatch statement in a preview |
+| [0037](docs/adr/0037-go-migration-contract.md) | The Go migration contract |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

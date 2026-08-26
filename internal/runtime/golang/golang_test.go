@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,10 +16,10 @@ func TestTheGeneratedRunnerLoadsTheProjectsMigrationsAndRuns(t *testing.T) {
 	p := fixture(t)
 	built := commandFor(t, p)
 
-	if registered := runBinary(t, built); registered != "20260727T153000" {
+	if loaded := discovered(t, built); !slices.Equal(loaded, []string{"20260727T153000"}) {
 		t.Log("Nothing else proves the blank import linked the user's package into the binary:")
-		t.Log("a runner that compiled but loaded nothing would print an empty line and pass.")
-		t.Fatalf("the built runner reported %q, want the migration the fixture registers", registered)
+		t.Log("a runner that compiled but loaded nothing would answer with an empty list and pass.")
+		t.Fatalf("the built runner loaded %v, want the migration the fixture registers", loaded)
 	}
 
 	if built.Dir != p.Root {
@@ -46,14 +47,14 @@ func TestEditingAMigrationRebuilds(t *testing.T) {
 	built := commandFor(t, p)
 
 	spoil(t, built)
-	edit(t, p, filepath.Join("migrations", "20260727T153000_add_users.go"), migrationSource)
+	edit(t, p, filepath.Join("migrations", "20260727T153000_add_users.go"), editedUsers)
 
 	if again := commandFor(t, p); spoiled(t, again) {
 		t.Fatal("a migration changed and the cached runner was handed back anyway")
 	}
 
-	if registered := runBinary(t, commandFor(t, p)); registered != "20260727T153100" {
-		t.Errorf("the rebuilt runner reported %q, want the edited migration", registered)
+	if loaded := discovered(t, commandFor(t, p)); !slices.Equal(loaded, []string{"20260727T153000"}) {
+		t.Errorf("the rebuilt runner loaded %v", loaded)
 	}
 }
 
@@ -62,10 +63,15 @@ func TestAddingAMigrationRebuilds(t *testing.T) {
 	built := commandFor(t, p)
 
 	spoil(t, built)
-	edit(t, p, filepath.Join("migrations", "20260727T153100_add_teams.go"), migrationSource)
+	edit(t, p, filepath.Join("migrations", "20260727T153100_add_teams.go"), addTeams)
 
 	if again := commandFor(t, p); spoiled(t, again) {
 		t.Fatal("a migration was added and the cached runner was handed back anyway")
+	}
+
+	want := []string{"20260727T153000", "20260727T153100"}
+	if loaded := discovered(t, commandFor(t, p)); !slices.Equal(loaded, want) {
+		t.Errorf("the rebuilt runner loaded %v, want %v", loaded, want)
 	}
 }
 
@@ -139,7 +145,7 @@ func TestTheBuildDirectoryIgnoresItselfAndIsNotOverwritten(t *testing.T) {
 	}
 
 	edit(t, p, filepath.Join(workDir, ignoreFile), "!keep-this\n")
-	edit(t, p, filepath.Join("migrations", "20260727T153000_add_users.go"), migrationSource)
+	edit(t, p, filepath.Join("migrations", "20260727T153000_add_users.go"), editedUsers)
 	commandFor(t, p)
 
 	if again, _ := os.ReadFile(ignore); string(again) != "!keep-this\n" {
@@ -267,7 +273,7 @@ func TestADeletedBinaryRebuildsEvenWithItsStampStillThere(t *testing.T) {
 	t.Log("The stamp says what a binary was built from, not that one is there. A hit that")
 	t.Log("trusted the stamp alone would hand back a path with nothing on the end of it.")
 
-	if registered := runBinary(t, commandFor(t, p)); registered != "20260727T153000" {
-		t.Errorf("the rebuilt runner reported %q", registered)
+	if loaded := discovered(t, commandFor(t, p)); !slices.Equal(loaded, []string{"20260727T153000"}) {
+		t.Errorf("the rebuilt runner loaded %v", loaded)
 	}
 }

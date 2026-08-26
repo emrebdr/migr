@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -377,5 +379,31 @@ func TestTheGoTemplateSaysWhatTheEscapeHatchCosts(t *testing.T) {
 
 	if strings.Count(body, "s.Exec") < 2 {
 		t.Error("the template mentions s.Exec once; say what it is and then what it costs")
+	}
+}
+
+func TestTheGoTemplateShowsTheBuilderAndWhatForgettingApplyCosts(t *testing.T) {
+	body := golang.Template
+
+	t.Log("The scaffold is where an author meets the SDK, and the builder emits nothing until")
+	t.Log("Apply -- so a template that showed the chain without the terminal call would teach")
+	t.Log("the one mistake that makes a migration report success having changed nothing.")
+
+	for _, want := range []string{"s.CreateTable(", "s.Table(", "Apply(ctx)", "Null", "NOT NULL"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the template never mentions %q", want)
+		}
+	}
+}
+
+func TestEveryTemplateIsWhatItClaimsToBe(t *testing.T) {
+	for language, tmpl := range templates {
+		if tmpl.ext != ".go" {
+			continue
+		}
+
+		if _, err := parser.ParseFile(token.NewFileSet(), "migration.go", tmpl.body, parser.AllErrors); err != nil {
+			t.Errorf("the %s template is not valid Go: %v", language, err)
+		}
 	}
 }

@@ -1,15 +1,11 @@
 package migr
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 )
-
-// Kind names one operation in the v1 IR vocabulary, spelled as docs/ir.md spells it.
-type Kind string
-
-// KindRaw is the one operation this SDK ships today; M6-T8 brings the other nineteen.
-const KindRaw Kind = "raw"
 
 // Operation is one schema change a migration emits, which the engine compiles for its driver.
 type Operation interface {
@@ -19,50 +15,80 @@ type Operation interface {
 	check() error
 }
 
-// Raw is SQL addressed to one engine by name, and the escape hatch the IR cannot express.
-type Raw struct {
-	// Op is the discriminator, and is set for you when the operation is emitted.
-	Op Kind `json:"op"`
-	// Driver is the engine this SQL is written for, which no other engine will run.
-	Driver string `json:"driver"`
-	// SQL is the statement itself, in that engine's own dialect.
-	SQL string `json:"sql"`
-}
-
-// Kind names this operation, which is raw.
-func (r Raw) Kind() Kind {
-	return KindRaw
-}
-
-// check reports a raw operation naming no engine or carrying no SQL.
-func (r Raw) check() error {
-	if r.Driver == "" {
-		return fmt.Errorf("%w: raw SQL names the engine it is written for", ErrInvalidOperation)
-	}
-
-	if r.SQL == "" {
-		return fmt.Errorf("%w: raw carries no SQL", ErrInvalidOperation)
-	}
-
-	return nil
-}
-
 // ErrInvalidOperation marks an operation the engine would refuse as an IR document.
-var ErrInvalidOperation = errors.New("this is not a valid operation")
+var ErrInvalidOperation = errors.New("invalid operation")
 
-// stamped returns the operation with its discriminator set, since an author never writes it.
-func stamped(op Operation) (any, error) {
+// documentOf checks one operation and renders the IR document that crosses the wire verbatim.
+func documentOf(op Operation) (json.RawMessage, error) {
+	if op == nil {
+		return nil, errors.New("there is nothing here")
+	}
+
 	if err := op.check(); err != nil {
 		return nil, err
 	}
 
-	raw, ok := op.(Raw)
-	if !ok {
-		return nil, fmt.Errorf("%w: %T is not an operation this SDK version emits",
-			ErrInvalidOperation, op)
+	document, err := marshal(op)
+	if err != nil {
+		return nil, err
 	}
 
-	raw.Op = raw.Kind()
+	return document, nil
+}
 
-	return raw, nil
+// labelOf names the operation an error is about, when there is an operation to name.
+func labelOf(op Operation) string {
+	if op == nil {
+		return ""
+	}
+
+	return " (" + op.Kind().String() + ")"
+}
+
+// marshal encodes IR without HTML escaping, which docs/ir.md §3.3 requires of every producer.
+func marshal(v any) ([]byte, error) {
+	var buf bytes.Buffer
+
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+
+	if err := enc.Encode(v); err != nil {
+		return nil, fmt.Errorf("encoding IR: %w", err)
+	}
+
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+// marshalOp renders an operation with its discriminator first, ahead of the type's own fields.
+func marshalOp(kind Kind, fields any) ([]byte, error) {
+	body, err := marshal(fields)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", kind, err)
+	}
+
+	head, err := marshal(discriminator{Op: kind})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", kind, err)
+	}
+
+	return splice(head, body), nil
+}
+
+// discriminator is the one member every operation document is guaranteed to carry.
+type discriminator struct {
+	Op Kind `json:"op"`
+}
+
+// splice joins two JSON objects, keeping the first object's keys ahead of the second's.
+func splice(head, body []byte) []byte {
+	if len(body) <= 2 {
+		return head
+	}
+
+	joined := make([]byte, 0, len(head)+len(body))
+	joined = append(joined, head[:len(head)-1]...)
+	joined = append(joined, ',')
+	joined = append(joined, body[1:]...)
+
+	return joined
 }

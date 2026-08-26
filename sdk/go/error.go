@@ -32,6 +32,9 @@ var ErrCanceled = errors.New("the engine canceled this request")
 // ErrClosed marks a callback made outside the window it is valid in, which is one execute.
 var ErrClosed = errors.New("this call has ended, and its callbacks are no longer valid")
 
+// ErrNotApplied marks a migration that built changes and returned without applying them.
+var ErrNotApplied = errors.New("changes were built and never applied")
+
 // RegistrationError reports everything wrong with what a program registered, rather than the first.
 type RegistrationError struct {
 	// Problems are the registrations that could not be accepted, in the order they were made.

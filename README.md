@@ -20,11 +20,11 @@ operator discipline.
 
 ## Status
 
-> **Pre-alpha.** There is no migration engine yet. The repository builds, lints, and tests
-> clean, and the foundations are in place — but nothing here will migrate a database today.
-> Do not depend on it.
+> **Pre-alpha.** migr applies and rolls back migrations against PostgreSQL today, written as
+> `.sql` files or in Go. SQLite, MySQL, TypeScript, schema diffing, and the zero-downtime
+> guarantees are not built yet. Do not depend on it.
 
-What the binary actually does right now:
+Two of the ten subcommands, since they need no database:
 
 ```console
 $ migr version
@@ -65,24 +65,28 @@ validation:
   allow_destructive: false
 ```
 
-That is the complete list. `version` and `config` are the only subcommands registered in
-[root.go](internal/cli/root.go); everything else in the planned surface below is unimplemented.
-Credentials in a DSN are redacted on every output path, so leaking one takes a deliberate call.
+Ten subcommands are registered in [root.go](internal/cli/root.go); the table further down says
+which, and which are still planned. Credentials in a DSN are redacted on every output path, so
+leaking one takes a deliberate call.
 
 ### Now, next, later
 
-**Done — M0, M1, M2.** The foundations: a two-module layout, a Makefile that cannot skip a
+**Done — M0 through M5.** The foundations: a two-module layout, a Makefile that cannot skip a
 module, a 24-linter gate, a mechanically enforced import boundary, a custom AST check for the
 comment rules, and CI on Linux and macOS. Then the neutral middle: a logical type system, the
 twenty-operation IR with a versioned envelope and a checksum scheme. Then the contracts every
 database plugs into: the driver interface and registry, the two-axis capability model, a
-golden-file harness, a conformance suite that proves a driver's compiler agrees with what it
-declared, and the migration history store — thirteen architecture decision records so far.
+golden-file harness, and a conformance suite that proves a driver's compiler agrees with what it
+declared. Then the PostgreSQL driver, the engine — apply, rollback, locking, history
+reconciliation, drift — and a CLI, which made `migr up` against a real PostgreSQL with `.sql`
+migrations the first thing a person could actually use.
 
-**Now — M3, the PostgreSQL driver**, and it is the first code that touches a database. The
-engine core follows in M4. **M5 is the first version a person can actually use** — against
-PostgreSQL, with SQL-file migrations. The Go SDK and the runtime protocol land in M6, and
-TypeScript in M7, which is where the polyglot claim stops being a claim.
+**Now — M6, the runtime protocol and the Go SDK**, which is where the polyglot claim starts being
+testable. The wire is specified and implemented on both sides, a Go migration is executed by a
+runner migr generates and builds inside the user's own module, and the SDK covers the whole
+twenty-operation IR. What is left of the milestone is the conformance fixtures and the end-to-end
+proof. TypeScript is M7, and it is where "identical IR from two languages" becomes a test rather
+than a claim.
 
 **Later.** The SQLite and MySQL drivers (M8, M9), validation and safety (M10), introspection
 and schema diffing (M11), seeds and data transformations (M12), and the zero-downtime milestone
@@ -142,9 +146,9 @@ than a restore.
 
 ## The idea, in code
 
-> **Partly implemented.** The Go migration contract and its protocol client are real (M6-T7);
-> the schema builder shown here arrives in M6-T8, and the TypeScript SDK in M7. The signatures
-> below are the ones that ship.
+> **The Go half is real** — the contract, the protocol client, and the whole twenty-operation
+> schema builder (M6-T7, M6-T8). The TypeScript below is what M7 will mirror, and is not written
+> yet.
 
 ```go
 package migrations
@@ -160,34 +164,41 @@ func init() { migr.Register(AddUsers{}) }
 type AddUsers struct{}
 
 func (AddUsers) Up(ctx context.Context, s *migr.Schema) error {
-    return s.CreateTable(ctx, "users", func(t *migr.Table) {
-        t.UUID("id").PrimaryKey()
-        t.String("email", 255).Unique()
-        t.Timestamptz("created_at")
-    })
+    return s.CreateTable("users").
+        Column("id", migr.UUID()).
+        Column("email", migr.String(255)).
+        Column("created_at", migr.TimestampTZ()).Default(migr.Call(migr.FuncCurrentTimestamp)).
+        PrimaryKey("id").
+        Apply(ctx)
 }
 
 func (AddUsers) Down(ctx context.Context, s *migr.Schema) error {
-    return s.DropTable(ctx, "users")
+    return s.Table("users").Drop().Apply(ctx)
 }
 ```
+
+Nothing is emitted until `Apply`, and a chain built without it emits nothing at all — so migr
+fails such a migration rather than reporting a change it never made. A column is `NOT NULL`
+unless the chain says `Null`.
 
 `Down` is optional: leave it out and migr derives the inverse from what `Up` emitted. So are
 `Validate` and `Dependencies`, each one method.
 
 ```typescript
-import { Schema, Table } from "@migr/sdk";
+import { Schema } from "@migr/sdk";
+import { uuid, string, timestamptz, call } from "@migr/sdk/types";
 
-export function up(s: Schema) {
-  s.createTable("users", (t: Table) => {
-    t.uuid("id").primaryKey();
-    t.string("email", 255).unique();
-    t.timestamptz("created_at");
-  });
+export async function up(s: Schema) {
+  await s.createTable("users")
+    .column("id", uuid())
+    .column("email", string(255))
+    .column("created_at", timestamptz()).default(call("current_timestamp"))
+    .primaryKey("id")
+    .apply();
 }
 
-export function down(s: Schema) {
-  s.dropTable("users");
+export async function down(s: Schema) {
+  await s.table("users").drop().apply();
 }
 ```
 
@@ -338,6 +349,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0035](docs/adr/0035-generated-go-runner.md) | Running a Go migration |
 | [0036](docs/adr/0036-escape-hatch-statements-in-a-preview.md) | An escape-hatch statement in a preview |
 | [0037](docs/adr/0037-go-migration-contract.md) | The Go migration contract |
+| [0038](docs/adr/0038-go-schema-builder.md) | The Go schema builder |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

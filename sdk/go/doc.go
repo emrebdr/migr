@@ -8,7 +8,11 @@
 //	type AddUsers struct{}
 //
 //	func (m AddUsers) Up(ctx context.Context, s *migr.Schema) error {
-//		return s.Apply(ctx, migr.Raw{Driver: "postgres", SQL: "CREATE TABLE users (id bigint)"})
+//		return s.CreateTable("users").
+//			Column("id", migr.UUID()).
+//			Column("email", migr.String(255)).
+//			PrimaryKey("id").
+//			Apply(ctx)
 //	}
 //
 //	func (m AddUsers) Down(ctx context.Context, s *migr.Schema) error { ... }  // optional
@@ -16,9 +20,36 @@
 //	func (m AddUsers) Validate() error                                { ... }  // optional
 //	func (m AddUsers) Dependencies() []string                         { ... }  // optional
 //
-// Raw is the only operation this version emits. The schema builder that covers the
-// whole v1 operation set arrives in M6-T8; until then a migration reaches its engine
-// by name, which trades away the database independence the builder exists to give.
+// # The builder
+//
+// Schema.CreateTable, Schema.Table, Schema.View, and Schema.Raw each open a change and
+// return a chain; every v1 operation is a method on one of them. Nothing is emitted
+// until Apply, which sends the whole chain in one call and empties it, so applying twice
+// does not emit twice.
+//
+// A chain built and never applied emits nothing, and a migration that reports success
+// having changed nothing is the worst failure this format has. So the window a migration
+// acts through remembers what it handed out: a chain still holding operations when Up or
+// Down returns fails the migration, naming what was never applied. A chain nothing was
+// added to is not one.
+//
+// Errors are deferred to Apply rather than returned at every link, because a chain
+// cannot return one. That includes a logical type: migr.String(0) has no canonical
+// spelling, and carries the reason it has none until the operation using it is emitted.
+//
+// A column is NOT NULL unless the chain says Null, which is what an unqualified column
+// means in every SDK -- see docs/ir.md §7.2, where the convention lives because it has
+// to be one convention rather than one per language.
+//
+// The structs the builder produces are exported and can be constructed by hand, and
+// Schema.Apply takes them directly. The builder is sugar over that, never a second path:
+// a chain and the operation written out emit the same bytes.
+//
+// Schema.Raw and Schema.Exec are not the same escape hatch. Raw emits an operation: the
+// engine records it, compiles it, shows it in migr plan, and runs it in the migration's
+// transaction, and it names one engine so no other will run it. Exec reaches the database
+// directly, before that transaction opens, and is the one thing below that no Down can be
+// derived over.
 //
 // # Import path and package name
 //
@@ -60,8 +91,9 @@
 // This is its own module so that importing the SDK does not drag the CLI's dependency
 // tree -- pgx, the MySQL and SQLite drivers, cobra, yaml -- into a user's application.
 // It also declares a lower Go floor than the CLI, since it compiles inside other
-// people's projects. The wire types are therefore written twice; both halves are held
-// to docs/protocol.md rather than to each other.
+// people's projects. The wire types and the IR structs are therefore written twice;
+// both halves are held to docs/protocol.md and docs/ir.md rather than to each other,
+// and each has a test that reads its document and checks every vector in it.
 //
 // # One thing stdout cannot be protected from
 //
@@ -72,6 +104,6 @@
 // it -- and the alternative, redirecting from this package's init, would hijack
 // stdout for every program that imports the SDK, including the user's own tests.
 //
-// Status: the migration contract and the protocol client (M6-T7). The schema builder
-// is M6-T8 and the runtime conformance fixtures are M6-T9 (see TASKS.md).
+// Status: the migration contract, the protocol client, and the whole v1 schema builder
+// (M6-T7, M6-T8). The runtime conformance fixtures are M6-T9 (see TASKS.md).
 package migr

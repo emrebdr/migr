@@ -271,7 +271,11 @@ func init() { migr.Register(AddTeams{}) }
 type AddTeams struct{}
 
 func (m AddTeams) Up(ctx context.Context, s *migr.Schema) error {
-	return s.Apply(ctx, migr.Raw{Driver: "postgres", SQL: "CREATE TABLE teams (id bigint)"})
+	return s.CreateTable("teams").
+		Column("id", migr.Int64()).
+		Column("name", migr.String(255)).
+		PrimaryKey("id").
+		Apply(ctx)
 }
 `
 

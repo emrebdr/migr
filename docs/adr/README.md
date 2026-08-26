@@ -47,6 +47,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0035](0035-generated-go-runner.md) | Running a Go migration | Accepted | A runner `main` is generated in the user's module, built, and cached by content hash in `.migr/`; there is no in-process fast path, and the stamp's one hole is stated and asserted rather than omitted |
 | [0036](0036-escape-hatch-statements-in-a-preview.md) | An escape-hatch statement in a preview | Accepted | `Emit` returns `engine.Emitted`, so what a preview held rather than ran reaches `migr plan`; and a down derived over a migration that used the escape hatch is refused |
 | [0037](0037-go-migration-contract.md) | The Go migration contract | Accepted | One required method and four optional interfaces, so "authors no down" is a type fact; identity is read from the call site; and the duplicated wire is held to the specification on both sides rather than to itself |
+| [0038](0038-go-schema-builder.md) | The Go schema builder | Accepted | A chain ending in Apply, with a window that fails a migration for one it never applied; §9.1 checked locally so two SDKs refuse the same operations; and the second copy of the IR held to docs/ir.md, decoding every vector in it |
 
 ## When to write one
 

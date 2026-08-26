@@ -21,7 +21,20 @@ func init() { migr.Register(Migration{}) }
 type Migration struct{}
 
 // Up performs the change. Every operation it emits is recorded, compiled for the target
-// engine, and run in one transaction.
+// engine, and run in one transaction:
+//
+//	return s.CreateTable("users").
+//		Column("id", migr.UUID()).
+//		Column("email", migr.String(255)).
+//		Column("created_at", migr.TimestampTZ()).Default(migr.Call(migr.FuncCurrentTimestamp)).
+//		PrimaryKey("id").
+//		Apply(ctx)
+//
+// s.Table(name) does the same for a table that already exists, and s.View(name) for a
+// view. A column is NOT NULL unless the chain says Null.
+//
+// Nothing is emitted until Apply, and a chain built without it emits nothing at all --
+// so migr fails such a migration rather than reporting a change it never made.
 func (m Migration) Up(ctx context.Context, s *migr.Schema) error {
 	return nil
 }

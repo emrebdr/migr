@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/emrebdr/migr/sdk/go/internal/wire"
@@ -56,10 +57,12 @@ type Schema struct {
 	// mode is whether this call runs the migration or asks it, read from this call alone.
 	mode Mode
 
-	// mu guards the emitted count and whether the window is still open.
+	// mu guards the emitted count, the builders handed out, and whether the window is still open.
 	mu sync.Mutex
 	// emitted is how many operations this window has recorded, which the result reports.
 	emitted int
+	// built is every builder this window handed out, which seal holds to having been applied.
+	built []*builder
 	// closed reports whether the window has ended, after which no callback is valid.
 	closed bool
 }
@@ -89,6 +92,44 @@ func (s *Schema) Planning() bool {
 	return s.mode == ModePlan
 }
 
+// Table opens a change to an existing table, which its own Apply emits.
+func (s *Schema) Table(name string) *Table {
+	return &Table{build: s.builder(fmt.Sprintf("table %q", name)), name: name}
+}
+
+// CreateTable opens a table being created, which states its key inline (docs/ir.md §7.2).
+func (s *Schema) CreateTable(name string) *NewTable {
+	op := &CreateTable{Table: name}
+	build := s.builder(fmt.Sprintf("table %q", name))
+	build.add(op)
+
+	return &NewTable{build: build, op: op}
+}
+
+// View opens a change to a view, which its own Apply emits.
+func (s *Schema) View(name string) *View {
+	return &View{build: s.builder(fmt.Sprintf("view %q", name)), name: name}
+}
+
+// Raw opens raw statements addressed to one engine by name, which no other engine will run.
+func (s *Schema) Raw(driver, sql string) *Statements {
+	statements := &Statements{build: s.builder("raw statements")}
+
+	return statements.Raw(driver, sql)
+}
+
+// builder registers a builder with this window, so seal can hold it to having been applied.
+func (s *Schema) builder(subject string) *builder {
+	build := &builder{schema: s, subject: subject}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.built = append(s.built, build)
+
+	return build
+}
+
 // Apply emits operations, which the engine records in both modes and compiles for its own driver.
 func (s *Schema) Apply(ctx context.Context, ops ...Operation) error {
 	if len(ops) == 0 {
@@ -115,14 +156,9 @@ func documentsOf(ops []Operation) ([]json.RawMessage, error) {
 	documents := make([]json.RawMessage, 0, len(ops))
 
 	for i, op := range ops {
-		stamped, err := stamped(op)
+		document, err := documentOf(op)
 		if err != nil {
-			return nil, fmt.Errorf("operation %d: %w", i+1, err)
-		}
-
-		document, err := wire.MarshalPayload(stamped)
-		if err != nil {
-			return nil, fmt.Errorf("operation %d: %w", i+1, err)
+			return nil, fmt.Errorf("%w %d%s: %w", ErrInvalidOperation, i+1, labelOf(op), err)
 		}
 
 		documents = append(documents, document)
@@ -204,14 +240,9 @@ type Verdict struct {
 
 // Capability asks what the target engine makes of one whole operation, before emitting it.
 func (s *Schema) Capability(ctx context.Context, op Operation) (Verdict, error) {
-	stamped, err := stamped(op)
+	document, err := documentOf(op)
 	if err != nil {
-		return Verdict{}, err
-	}
-
-	document, err := wire.MarshalPayload(stamped)
-	if err != nil {
-		return Verdict{}, err
+		return Verdict{}, fmt.Errorf("%w%s: %w", ErrInvalidOperation, labelOf(op), err)
 	}
 
 	var answered wire.CapabilityGetResult
@@ -283,14 +314,31 @@ func (s *Schema) over() bool {
 	return s.closed
 }
 
-// seal closes the window and reports how many operations it recorded.
-func (s *Schema) seal() int {
+// seal closes the window, reporting how many operations it recorded and what it never applied.
+func (s *Schema) seal() (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.closed = true
 
-	return s.emitted
+	return s.emitted, unapplied(s.built)
+}
+
+// unapplied reports every change built and never applied, which is a migration that emits nothing.
+func unapplied(built []*builder) error {
+	var forgotten []string
+
+	for _, build := range built {
+		if build.held() > 0 {
+			forgotten = append(forgotten, fmt.Sprintf("%d to %s", build.held(), build.subject))
+		}
+	}
+
+	if len(forgotten) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s", ErrNotApplied, strings.Join(forgotten, ", "))
 }
 
 // bound renders a statement's arguments, since an absent list crosses the wire as an empty one.

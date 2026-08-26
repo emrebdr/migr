@@ -397,8 +397,15 @@ foreign key, or a primary key removes a rule, not a row. Only `drop_table`, `dro
 
 ### 7.2 Conventions the format does not enforce
 
-Two rules that producers must follow and that no validation can check. A producer that ignores
+Three rules that producers must follow and that no validation can check. A producer that ignores
 them emits a valid document that means something else.
+
+**A column is NOT NULL unless the migration says otherwise.** [`nullable`](#61-column) is always
+emitted, so an SDK whose builder lets an author declare a column without mentioning nullability has
+to choose what that means. Choosing differently from another SDK emits different bytes for the same
+schema change — the same failure the rule below describes, arrived at from the author's side rather
+than the document's. The choice is stated here rather than in each SDK because there is one answer,
+not one per language.
 
 **Primary keys have two spellings.** A new table states its key inline in `create_table`;
 `add_primary_key` is for a table that already exists. Both are valid, so nothing rejects the wrong

@@ -330,7 +330,11 @@ func (s *session) emit(ctx context.Context, id int64, entry *Registered,
 
 	err := run(ctx, schema)
 
-	emitted := schema.seal()
+	emitted, forgotten := schema.seal()
+	if err == nil {
+		err = forgotten
+	}
+
 	if err != nil {
 		return wire.NewFailure(id, failed(entry, p.Direction, err))
 	}

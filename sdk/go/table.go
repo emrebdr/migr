@@ -52,9 +52,10 @@ func (t *Table) Drop() *Recorded[TableDef] {
 	return &Recorded[TableDef]{Table: t, record: func(d *TableDef) { op.From = d }}
 }
 
-// RenameTo renames the table, preserving its contents.
+// RenameTo renames the table, and every later change in the chain names it by its new name.
 func (t *Table) RenameTo(to string) *Table {
 	t.build.add(&RenameTable{From: t.name, To: to})
+	t.name = to
 
 	return t
 }

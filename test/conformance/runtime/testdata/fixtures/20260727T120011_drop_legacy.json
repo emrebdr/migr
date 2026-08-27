@@ -1,0 +1,9 @@
+{
+  "up": [
+    {"op":"drop_table","table":"legacy"}
+  ],
+  "downRefusal": {
+    "code": "declared_irreversible",
+    "reason": "the rows in legacy are not recorded anywhere; restore from a backup"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "up": [
+    {"op":"add_check","table":"orders","name":"ck_orders_sane","expression":"total >= 0 AND note <> 'a&b' AND label <> 'naïve — \"ok\"'"},
+    {"op":"create_view","view":"small_orders","query":"SELECT id FROM orders WHERE total < 100 AND note <> 'a&b'"}
+  ],
+  "down": [
+    {"op":"drop_view","view":"small_orders","from":{"query":"SELECT id FROM orders WHERE total < 100 AND note <> 'a&b'"}},
+    {"op":"drop_check","table":"orders","name":"ck_orders_sane","from":{"expression":"total >= 0 AND note <> 'a&b' AND label <> 'naïve — \"ok\"'"}}
+  ]
+}

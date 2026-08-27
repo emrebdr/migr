@@ -1,0 +1,12 @@
+{
+  "up": [
+    {"op":"add_column","table":"users","column":{"name":"bio","type":"text","nullable":true}},
+    {"op":"add_column","table":"users","column":{"name":"tier","type":"string(16)","nullable":false,"default":{"literal":"free"}}},
+    {"op":"alter_column","table":"users","column":"email","type":"string(320)","from":{"type":"string(255)"}}
+  ],
+  "down": [
+    {"op":"alter_column","table":"users","column":"email","type":"string(255)","from":{"type":"string(320)"}},
+    {"op":"drop_column","table":"users","column":"tier","from":{"name":"tier","type":"string(16)","nullable":false,"default":{"literal":"free"}}},
+    {"op":"drop_column","table":"users","column":"bio","from":{"name":"bio","type":"text","nullable":true}}
+  ]
+}

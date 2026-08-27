@@ -1,0 +1,10 @@
+{
+  "up": [
+    {"op":"create_view","view":"active_people","query":"SELECT id, address FROM people WHERE tier = 'paid'"},
+    {"op":"create_view","view":"recent_people","query":"SELECT id FROM people ORDER BY created_at DESC","or_replace":true,"from":{"query":"SELECT id FROM people"}}
+  ],
+  "down": [
+    {"op":"drop_view","view":"recent_people","from":{"query":"SELECT id FROM people ORDER BY created_at DESC"}},
+    {"op":"drop_view","view":"active_people","from":{"query":"SELECT id, address FROM people WHERE tier = 'paid'"}}
+  ]
+}

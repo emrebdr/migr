@@ -325,6 +325,28 @@ func TestReplacingAViewRecordsTheDefinitionItOverwrote(t *testing.T) {
 	}
 }
 
+func TestAChangeAfterARenameNamesTheTableByItsNewName(t *testing.T) {
+	s := newSchema(nil, version, Up, ModeApply)
+
+	ops := s.Table("users").
+		RenameTo("people").
+		AddColumn("note", Text()).
+		build.ops
+
+	added, ok := ops[1].(*AddColumn)
+	if !ok {
+		t.Fatalf("the chain built a %T after the rename", ops[1])
+	}
+
+	if added.Table != "people" {
+		t.Errorf("the column was added to %q, and after a rename the table is called %q",
+			added.Table, "people")
+	}
+
+	t.Log("A chain that kept naming the old table would emit a migration the engine compiles and")
+	t.Log("the database refuses -- and the author wrote nothing wrong.")
+}
+
 func TestRecordingTwoThingsAboutAColumnKeepsBoth(t *testing.T) {
 	s := newSchema(nil, version, Up, ModeApply)
 

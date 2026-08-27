@@ -1,0 +1,8 @@
+{
+  "up": [
+    {"op":"create_table","table":"users","columns":[{"name":"id","type":"uuid","nullable":false},{"name":"email","type":"string(255)","nullable":false},{"name":"created_at","type":"timestamptz","nullable":true,"default":{"function":"current_timestamp"}}],"primary_key":["id"]}
+  ],
+  "down": [
+    {"op":"drop_table","table":"users","from":{"columns":[{"name":"id","type":"uuid","nullable":false},{"name":"email","type":"string(255)","nullable":false},{"name":"created_at","type":"timestamptz","nullable":true,"default":{"function":"current_timestamp"}}],"primary_key":["id"]}}
+  ]
+}

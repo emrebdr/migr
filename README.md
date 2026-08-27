@@ -84,9 +84,10 @@ migrations the first thing a person could actually use.
 **Now — M6, the runtime protocol and the Go SDK**, which is where the polyglot claim starts being
 testable. The wire is specified and implemented on both sides, a Go migration is executed by a
 runner migr generates and builds inside the user's own module, and the SDK covers the whole
-twenty-operation IR. What is left of the milestone is the conformance fixtures and the end-to-end
-proof. TypeScript is M7, and it is where "identical IR from two languages" becomes a test rather
-than a claim.
+twenty-operation IR, and a conformance suite reads what a migration emits off the wire and holds
+it, byte for byte, to a set of fixtures that belong to no language. What is left of the milestone is
+the end-to-end proof against a real database. TypeScript is M7, and it is where "identical IR from
+two languages" becomes a test rather than a claim.
 
 **Later.** The SQLite and MySQL drivers (M8, M9), validation and safety (M10), introspection
 and schema diffing (M11), seeds and data transformations (M12), and the zero-downtime milestone
@@ -350,6 +351,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0036](docs/adr/0036-escape-hatch-statements-in-a-preview.md) | An escape-hatch statement in a preview |
 | [0037](docs/adr/0037-go-migration-contract.md) | The Go migration contract |
 | [0038](docs/adr/0038-go-schema-builder.md) | The Go schema builder |
+| [0039](docs/adr/0039-runtime-conformance-fixtures.md) | The runtime conformance fixtures |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

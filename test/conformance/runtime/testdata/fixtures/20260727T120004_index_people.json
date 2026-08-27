@@ -1,0 +1,10 @@
+{
+  "up": [
+    {"op":"add_index","table":"people","name":"idx_people_tier","columns":["tier"]},
+    {"op":"add_unique","table":"people","name":"uq_people_address","columns":["address"]}
+  ],
+  "down": [
+    {"op":"drop_unique","table":"people","name":"uq_people_address","from":{"columns":["address"]}},
+    {"op":"drop_index","table":"people","name":"idx_people_tier","from":{"columns":["tier"]}}
+  ]
+}

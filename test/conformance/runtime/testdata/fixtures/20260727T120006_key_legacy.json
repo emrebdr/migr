@@ -1,0 +1,8 @@
+{
+  "up": [
+    {"op":"add_primary_key","table":"legacy","name":"pk_legacy","columns":["id"]}
+  ],
+  "down": [
+    {"op":"drop_primary_key","table":"legacy","name":"pk_legacy","from":{"columns":["id"]}}
+  ]
+}

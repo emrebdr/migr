@@ -1,0 +1,8 @@
+{
+  "up": [
+    {"op":"add_column","table":"people","column":{"name":"note","type":"text","nullable":true}}
+  ],
+  "downRefusal": {
+    "code": "no_down_authored"
+  }
+}

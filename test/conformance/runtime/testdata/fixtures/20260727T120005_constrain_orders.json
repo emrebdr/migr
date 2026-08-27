@@ -1,0 +1,10 @@
+{
+  "up": [
+    {"op":"add_check","table":"orders","name":"ck_orders_total","expression":"total >= 0"},
+    {"op":"add_foreign_key","table":"orders","name":"fk_orders_person","columns":["person_id"],"references_table":"people","references_columns":["id"],"on_delete":"cascade","on_update":"restrict"}
+  ],
+  "down": [
+    {"op":"drop_foreign_key","table":"orders","name":"fk_orders_person","from":{"columns":["person_id"],"references_table":"people","references_columns":["id"],"on_delete":"cascade","on_update":"restrict"}},
+    {"op":"drop_check","table":"orders","name":"ck_orders_total","from":{"expression":"total >= 0"}}
+  ]
+}

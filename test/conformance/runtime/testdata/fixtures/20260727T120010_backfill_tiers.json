@@ -1,0 +1,17 @@
+{
+  "reads": [
+    {"sql":"SELECT count(*) FROM people WHERE tier IS NULL","columns":["count"],"rows":[["2"]]},
+    {"sql":"SELECT count(*) FROM people WHERE note IS NULL","columns":["count"],"rows":[["0"]]}
+  ],
+  "writes": [
+    {"sql":"UPDATE people SET tier = 'free' WHERE tier IS NULL","rowsAffected":"2"}
+  ],
+  "up": [
+    {"op":"raw","driver":"postgres","sql":"ANALYZE people"},
+    {"op":"add_column","table":"people","column":{"name":"tier_backfilled","type":"bool","nullable":false,"default":{"literal":"true"}}}
+  ],
+  "down": [
+    {"op":"drop_column","table":"people","column":"tier_backfilled","from":{"name":"tier_backfilled","type":"bool","nullable":false,"default":{"literal":"true"}}},
+    {"op":"raw","driver":"postgres","sql":"ANALYZE people"}
+  ]
+}

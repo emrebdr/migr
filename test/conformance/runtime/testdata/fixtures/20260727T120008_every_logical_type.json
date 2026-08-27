@@ -1,0 +1,8 @@
+{
+  "up": [
+    {"op":"create_table","table":"specimens","columns":[{"name":"c_string","type":"string(255)","nullable":false},{"name":"c_text","type":"text","nullable":false},{"name":"c_bool","type":"bool","nullable":false},{"name":"c_int16","type":"int16","nullable":false},{"name":"c_int32","type":"int32","nullable":false},{"name":"c_int64","type":"int64","nullable":false},{"name":"c_float32","type":"float32","nullable":false},{"name":"c_float64","type":"float64","nullable":false},{"name":"c_decimal","type":"decimal(10,2)","nullable":false},{"name":"c_uuid","type":"uuid","nullable":false},{"name":"c_json","type":"json","nullable":false},{"name":"c_timestamp","type":"timestamp","nullable":false},{"name":"c_timestamptz","type":"timestamptz","nullable":false},{"name":"c_date","type":"date","nullable":false},{"name":"c_time","type":"time","nullable":false},{"name":"c_binary","type":"binary","nullable":false},{"name":"c_enum","type":"enum(draft,live)","nullable":false},{"name":"c_array","type":"array(string(64))","nullable":false}],"primary_key":["c_uuid"]}
+  ],
+  "down": [
+    {"op":"drop_table","table":"specimens"}
+  ]
+}

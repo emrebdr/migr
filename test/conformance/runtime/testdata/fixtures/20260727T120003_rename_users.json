@@ -1,0 +1,10 @@
+{
+  "up": [
+    {"op":"rename_table","from":"users","to":"people"},
+    {"op":"rename_column","table":"people","from":"email","to":"address"}
+  ],
+  "down": [
+    {"op":"rename_column","table":"people","from":"address","to":"email"},
+    {"op":"rename_table","from":"people","to":"users"}
+  ]
+}

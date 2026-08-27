@@ -549,15 +549,15 @@ func TestAHeldStatementIsMarkedInTheTextRendering(t *testing.T) {
 }
 
 func TestALanguageIsRefusedWhenNoRegistryWasBuiltAtAll(t *testing.T) {
-	_, err := sourceFor(config.LanguageGo, nil, fakeName, nil)
+	_, err := runnable(config.LanguageGo, nil)
 	if err == nil {
-		t.Fatal("sourceFor returned a source for a build with no runtime registry")
+		t.Fatal("runnable returned an adapter for a build with no runtime registry")
 	}
 
 	t.Log("newRootCmd builds options with neither registry, so a nil one is reachable and")
 	t.Log("must say what is missing rather than dereference its way to a panic.")
 
 	if !errors.Is(err, errNoRuntimes) {
-		t.Errorf("sourceFor returned %v, want %v", err, errNoRuntimes)
+		t.Errorf("runnable returned %v, want %v", err, errNoRuntimes)
 	}
 }

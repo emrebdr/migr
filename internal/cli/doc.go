@@ -140,11 +140,22 @@
 //
 // open split into resolve (config and target), files (discovery and hashing),
 // and connect (driver and session), so what a command needs is visible in which
-// it calls. status skips the source, since it compiles nothing -- and a project
-// whose language has no runtime until M6-T10 can therefore still ask for its
-// status. history skips discovery too: the log is the database's, and refusing
-// to print it because the migrations directory is broken removes the tool
-// somebody reached for to diagnose that.
+// it calls. status skips the source, since it compiles nothing, and can
+// therefore report on a project whose language it could not start. history skips
+// discovery too: the log is the database's, and refusing to print it because the
+// migrations directory is broken removes the tool somebody reached for to
+// diagnose that.
+//
+// The source is built after connect and never before it (ADR 0040). A runtime
+// session needs the driver.Conn its callbacks reach, so before the connection
+// exists there is nothing to give one; t.source takes it as a parameter, and
+// building the source first is refused by runtime.Options.check rather than by
+// the compiler, since a nil interface is still spellable. Two consequences: a
+// source that fails to start leaves a connection open, so open closes it rather
+// than leaking a backend on every failed run; and session.close ends the process
+// before closing the connection, because a callback in flight reaches it. Those
+// two defers are not interchangeable, for the reason the lock and the
+// transaction are not (ADR 0020).
 //
 // Consequently status renders a filename and history renders version_name. No
 // history row records an extension, deliberately, since a run may outlive the
@@ -193,8 +204,21 @@
 //
 // Opening no database is not the same as needing no configuration. Which engine
 // to compile for comes from migr.yaml, so a config it cannot read is still a
-// failure. And it cannot validate a Go or TypeScript project, since sourceFor
-// refuses a language whose runtime does not exist yet.
+// failure.
+//
+// A language needing a runtime keeps that promise rather than trading it away
+// (ADR 0040). The process is started -- so a module that will not build, and the
+// registration errors ADR 0037 answers at migration.discover, are caught here and
+// nowhere earlier -- but the session behind it is driver.Offline, which refuses
+// every database call. A migration that reads nothing is therefore validated in
+// full, exactly as a .sql one is; a migration that reaches the database is
+// reported as unchecked, carrying its reason, and is not a failure. Failing there
+// would have a CI gate reject a migration for reading, which migrations may do.
+//
+// The offline session remembers being reached, because a caller cannot learn it
+// from the error: the migration runs in another process, so the sentinel is a
+// string by the time it comes back. That is what the checking source in
+// session.go wraps, and it exists only for this command.
 //
 // The remedy line is this package's, not the check's. ir.Raw's reason says to
 // write the undo "in Down" -- source-neutral, correct, and language an author of

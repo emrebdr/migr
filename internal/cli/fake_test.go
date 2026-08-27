@@ -79,7 +79,7 @@ func (a *fakeAdapter) Discover(context.Context) error {
 	return nil
 }
 
-// Command refuses, since a cli test that reached this would be starting a process (M6-T10).
+// Command refuses, which is the adapter for the tests about a runtime that will not start.
 func (a *fakeAdapter) Command(context.Context, runtime.Project) (runtime.Command, error) {
 	return runtime.Command{}, errors.New("this fake adapter starts nothing")
 }

@@ -81,13 +81,17 @@ declared. Then the PostgreSQL driver, the engine — apply, rollback, locking, h
 reconciliation, drift — and a CLI, which made `migr up` against a real PostgreSQL with `.sql`
 migrations the first thing a person could actually use.
 
-**Now — M6, the runtime protocol and the Go SDK**, which is where the polyglot claim starts being
-testable. The wire is specified and implemented on both sides, a Go migration is executed by a
-runner migr generates and builds inside the user's own module, and the SDK covers the whole
-twenty-operation IR, and a conformance suite reads what a migration emits off the wire and holds
-it, byte for byte, to a set of fixtures that belong to no language. What is left of the milestone is
-the end-to-end proof against a real database. TypeScript is M7, and it is where "identical IR from
-two languages" becomes a test rather than a claim.
+**Done — M6, the runtime protocol and the Go SDK**, which is where the polyglot claim stopped being
+a claim. The wire is specified and implemented on both sides, a Go migration is executed by a runner
+migr generates and builds inside the user's own module, the SDK covers the whole twenty-operation
+IR, and a conformance suite reads what a migration emits off the wire and holds it, byte for byte,
+to a set of fixtures that belong to no language. `migr up` then applies a Go migration against
+PostgreSQL and `migr down` reverts it, compared by a schema digest taken before and after — a Go
+migration authoring no `Down` included, which is the first time the framework's derived inverse has
+run against a real database.
+
+**Next — M7, TypeScript**, where "identical IR from two languages" becomes a test rather than a
+claim: the fixtures are already there, and they belong to neither language.
 
 **Later.** The SQLite and MySQL drivers (M8, M9), validation and safety (M10), introspection
 and schema diffing (M11), seeds and data transformations (M12), and the zero-downtime milestone
@@ -352,6 +356,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0037](docs/adr/0037-go-migration-contract.md) | The Go migration contract |
 | [0038](docs/adr/0038-go-schema-builder.md) | The Go schema builder |
 | [0039](docs/adr/0039-runtime-conformance-fixtures.md) | The runtime conformance fixtures |
+| [0040](docs/adr/0040-running-a-go-migration.md) | Running a Go migration from the CLI |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

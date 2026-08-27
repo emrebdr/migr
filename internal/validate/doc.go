@@ -1,10 +1,11 @@
 // Package validate checks a set of migrations without running them: that each one can be read,
 // that every operation it emits compiles for the target engine, and that something can undo it.
 //
-// Status: the framework and the three checks knowable with no database (M5-T5). Destructive-
-// operation detection is M10-T1, capability preflight M10-T2, reference integrity M10-T3, and a
-// pluggable lint rule set M10-T4 — each of which adds a Check rather than a second report.
-// See docs/adr/0028-validation-report.md.
+// Status: the framework and the three checks knowable with no database (M5-T5); a third outcome
+// for the halves nothing could judge (M6-T10). Destructive-operation detection is M10-T1,
+// capability preflight M10-T2, reference integrity M10-T3, and a pluggable lint rule set M10-T4 —
+// each of which adds a Check rather than a second report. See docs/adr/0028-validation-report.md
+// and docs/adr/0040-running-a-go-migration.md.
 //
 // # It never opens a database
 //
@@ -12,6 +13,15 @@
 // makes this the one command CI can run on a pull request with no secret at all, and it is a
 // property of the package rather than of the caller — Options carries a plan.Planner, which holds
 // a driver.Compiler, and there is nowhere to put a session.
+//
+// A migration may itself need one, which is a different problem and has a different answer. A
+// source raises ErrNotCheckable for a half whose answer cannot be trusted — one that reached a
+// database this run deliberately did not open — and the runner records it as Unchecked, carrying
+// the reason, rather than as a Problem. Unchecked is not a failure: rejecting a migration for
+// reading would make a CI gate refuse something migrations are allowed to do. Reporting it as
+// passing would be worse, since a half nothing judged would be indistinguishable from one that
+// was. What decides it is the caller's, not this package's: internal/cli owns the offline session
+// and knows whether it was reached (ADR 0040, C).
 //
 // The half it therefore cannot answer is the version-dependent one: postgres.checkServer refuses
 // an operation this *server* cannot perform, and reading that needs a capability.Set built inside

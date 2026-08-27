@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -14,7 +16,7 @@ import (
 )
 
 // noDatabase is what every validation run says for itself, since the claim is the command's point.
-const noDatabase = "no database was opened."
+const noDatabase = "no database was opened"
 
 // newValidateCmd builds the `migr validate` subcommand.
 func newValidateCmd(opts *options) *cobra.Command {
@@ -32,7 +34,7 @@ func newValidateCmd(opts *options) *cobra.Command {
 }
 
 // runValidate checks every migration and reports what is wrong with them, connecting to nothing.
-func runValidate(cmd *cobra.Command, opts *options) error {
+func runValidate(cmd *cobra.Command, opts *options) (err error) {
 	t, err := resolve(opts)
 	if err != nil {
 		return err
@@ -43,10 +45,14 @@ func runValidate(cmd *cobra.Command, opts *options) error {
 		return err
 	}
 
-	source, err := t.source(opts)
+	source, stop, err := t.offlineSource(cmd.Context(), opts)
 	if err != nil {
 		return err
 	}
+
+	defer func() {
+		err = errors.Join(err, stop(context.WithoutCancel(cmd.Context())))
+	}()
 
 	d, err := t.compiler(opts)
 	if err != nil {
@@ -96,6 +102,18 @@ type fault struct {
 	Detail string `json:"detail"`
 }
 
+// unchecked is one half of one migration a run could not judge, in the form --json reports it.
+type unchecked struct {
+	// Version is the migration's UTC timestamp.
+	Version string `json:"version"`
+	// File is the filename it was found in.
+	File string `json:"file"`
+	// Direction is which of the migration's two halves went unchecked.
+	Direction ir.Direction `json:"direction"`
+	// Reason states what stopped the check, in terms an operator can act on.
+	Reason string `json:"reason"`
+}
+
 // validation is what one validation run found, in the form --json reports it.
 type validation struct {
 	// Database is the name migr.yaml holds the target under, whose driver the compiling was for.
@@ -108,6 +126,8 @@ type validation struct {
 	Checked int `json:"migrations"`
 	// Problems is everything found wrong, in the order the checks found it.
 	Problems []fault `json:"problems"`
+	// Unchecked is every half nothing could judge, which is not the same as one that passed.
+	Unchecked []unchecked `json:"unchecked,omitempty"`
 }
 
 // validationOf renders what a validation run found against one project.
@@ -121,12 +141,32 @@ func validationOf(database, driverName string, lang config.Language,
 	}
 
 	return validation{
-		Database: database,
-		Driver:   driverName,
-		Language: lang,
-		Checked:  report.Checked(),
-		Problems: found,
+		Database:  database,
+		Driver:    driverName,
+		Language:  lang,
+		Checked:   report.Checked(),
+		Problems:  found,
+		Unchecked: uncheckedOf(report.Unchecked()),
 	}
+}
+
+// uncheckedOf renders every half a run could not judge, naming the migration each belongs to.
+func uncheckedOf(skipped []validate.Unchecked) []unchecked {
+	if len(skipped) == 0 {
+		return nil
+	}
+
+	out := make([]unchecked, 0, len(skipped))
+	for _, s := range skipped {
+		out = append(out, unchecked{
+			Version:   s.Migration.Version,
+			File:      s.Migration.Filename(),
+			Direction: s.Direction,
+			Reason:    s.Reason,
+		})
+	}
+
+	return out
 }
 
 // faultOf renders one problem, naming the migration it belongs to rather than repeating it in detail.
@@ -149,8 +189,10 @@ func (v validation) String() string {
 	fmt.Fprintf(&b, "validate — database %q (%s), %s\n", v.Database, v.Driver,
 		describeMigrations(v.Checked))
 
+	v.writeUnchecked(&b)
+
 	if len(v.Problems) == 0 {
-		fmt.Fprintf(&b, "\nno problems found. %s\n", noDatabase)
+		fmt.Fprintf(&b, "\nno problems found. %s\n", v.describeDatabase())
 
 		return b.String()
 	}
@@ -158,13 +200,45 @@ func (v validation) String() string {
 	v.writeProblems(&b)
 
 	fmt.Fprintf(&b, "\n%s in %s. %s\n", describeProblems(len(v.Problems)),
-		describeMigrations(v.faulted()), noDatabase)
+		describeMigrations(v.faulted()), v.describeDatabase())
 
 	if remedy := v.describeRemedy(); remedy != "" {
 		fmt.Fprintf(&b, "\n%s\n", remedy)
 	}
 
 	return b.String()
+}
+
+// describeDatabase says what opening no database cost this run, which for most projects is nothing.
+func (v validation) describeDatabase() string {
+	if len(v.Unchecked) == 0 {
+		return noDatabase + "."
+	}
+
+	return fmt.Sprintf("%s, so %s could not be checked.", noDatabase,
+		describeHalves(len(v.Unchecked)))
+}
+
+// writeUnchecked lists every half nothing could judge, above the problems, since it qualifies them.
+func (v validation) writeUnchecked(b *strings.Builder) {
+	if len(v.Unchecked) == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\n  not checked — %s\n", describeHalves(len(v.Unchecked)))
+
+	for _, skipped := range v.Unchecked {
+		fmt.Fprintf(b, "    %s %s: %s\n", skipped.File, skipped.Direction, skipped.Reason)
+	}
+}
+
+// describeHalves counts unchecked halves with the right noun.
+func describeHalves(n int) string {
+	if n == 1 {
+		return "1 migration half"
+	}
+
+	return fmt.Sprintf("%d migration halves", n)
 }
 
 // describeRemedy says how this project's own format answers a problem, since a check cannot know.

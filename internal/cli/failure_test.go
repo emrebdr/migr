@@ -62,7 +62,9 @@ var codes = []coded{
 		args: []string{"--to", "20990101T000000"}, stage: staged, want: ExitValidation},
 	{name: "--step with --to", command: "up", args: []string{"--step", "1", "--to", versionAt(0)},
 		stage: staged, want: ExitValidation},
-	{name: "a language nothing can run yet", command: "up", stage: stagedGo, want: ExitValidation},
+	{name: "a language whose SDK has not landed", command: "up", stage: stagedTypeScript,
+		want: ExitValidation},
+	{name: "a runtime that will not start", command: "up", stage: stagedGo, want: ExitRuntime},
 	{name: "a filename the grammar refuses", command: "up", stage: stagedUnnamed,
 		want: ExitValidation},
 	{name: "a migrations directory that is not there", command: "up", stage: stagedNoDirectory,
@@ -598,12 +600,22 @@ func stagedUnreadable(t *testing.T) (string, *fake, *driver.Registry) {
 	return dir, f, drivers
 }
 
-// stagedGo is a project written in a language whose runtime does not exist yet.
+// stagedGo is a project whose language migr runs, over an adapter that will not start a process.
 func stagedGo(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
 	dir, f, drivers := project(t, twoTables()...)
 	swapLanguage(t, dir, "go")
+
+	return dir, f, drivers
+}
+
+// stagedTypeScript is a project written in a language whose SDK has not landed yet.
+func stagedTypeScript(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := project(t, twoTables()...)
+	swapLanguage(t, dir, "typescript")
 
 	return dir, f, drivers
 }

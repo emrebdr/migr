@@ -98,9 +98,11 @@ linters:
     # All three are allowed to everyone, so none may ever import a concrete driver or
     # runtime -- that would reopen the transitive path this rule exists to close.
     #
-    # If a driver ever grows a subpackage (internal/driver/postgres/lock), this
-    # blanket deny will block the driver from importing its own child; that driver
-    # then needs a negated files entry here.
+    # A driver that grows a subpackage is blocked by this blanket deny from importing
+    # its own child, so that driver needs a negated files entry here and a rule set of
+    # its own to be held by instead. postgres is the first, at M6-T10: pgtest holds the
+    # catalog digest cmd/migr's end-to-end suite compares schemas with, which invariant
+    # #3 will not let that suite compose for itself (ADR 0040).
     depguard:
       rules:
         implementations:
@@ -108,6 +110,7 @@ linters:
           files:
             - "**/*.go"
             - "!**/cmd/migr/**"
+            - "!**/internal/driver/postgres/**"
           allow:
             - github.com/emrebdr/migr/internal/runtime/protocol
             - github.com/emrebdr/migr/internal/runtime/host
@@ -122,6 +125,25 @@ linters:
               desc: >-
                 only cmd/migr may import a concrete language runtime; core reaches
                 runtimes through the registry (CLAUDE.md invariant #1)
+
+        # What the postgres subtree is held to instead of the blanket deny above. It
+        # may import its own child packages -- that is the whole reason it is exempted
+        # there -- but invariants #1 and #2 still bind: no other driver, and no
+        # concrete language runtime. Exempting it above without this would have traded
+        # one rule for none.
+        postgres:
+          list-mode: lax
+          files:
+            - "**/internal/driver/postgres/**"
+          deny:
+            - pkg: github.com/emrebdr/migr/internal/driver/mysql
+              desc: drivers must not import one another (CLAUDE.md invariant #2)
+            - pkg: github.com/emrebdr/migr/internal/driver/sqlite
+              desc: drivers must not import one another (CLAUDE.md invariant #2)
+            - pkg: github.com/emrebdr/migr/internal/runtime/
+              desc: >-
+                only cmd/migr may import a concrete language runtime; a driver reaches
+                none at all (CLAUDE.md invariant #1)
 
         # Invariant #1 again, for a shape it did not anticipate. internal/source/sql
         # is a concrete implementation of engine.Source, so core must not name it --

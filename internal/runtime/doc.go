@@ -90,6 +90,7 @@
 // host.log, which the read loop serves before it delivers the response that
 // releases the waiter.
 //
-// Status: the contract, the registry, and the session (M6-T5). The first
-// adapter is M6-T6 and nothing constructs a Session outside tests until M6-T10.
+// Status: the contract, the registry, and the session (M6-T5); the Go adapter
+// (M6-T6); and, since M6-T10, internal/cli starts one for every command that
+// runs or previews a migration in a language migr does not read itself.
 package runtime

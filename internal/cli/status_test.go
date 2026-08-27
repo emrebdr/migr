@@ -320,16 +320,16 @@ func TestStatusJSONReportsBothDigestsOfADriftedMigrationAndNoOthers(t *testing.T
 func TestStatusReportsAProjectWhoseLanguageNothingCanRunYet(t *testing.T) {
 	dir, _, drivers := project(t, twoTables()...)
 
-	swapLanguage(t, dir, "go")
+	swapLanguage(t, dir, "typescript")
 
 	if _, _, err := runWith(t, dir, noon, drivers, "status"); err != nil {
-		t.Log("A status compiles nothing and reads no migration body, so the source that cannot")
-		t.Log("run Go migrations until M6-T10 is one it never needed to build.")
-		t.Fatalf("status over a Go project: %v", err)
+		t.Log("A status compiles nothing and reads no migration body, so the source no build can")
+		t.Log("start yet is one it never needed to build (ADR 0027).")
+		t.Fatalf("status over a TypeScript project: %v", err)
 	}
 
 	if _, _, err := runWith(t, dir, noon, drivers, "up"); err == nil {
-		t.Errorf("up over a Go project succeeded, though nothing can run those migrations yet")
+		t.Errorf("up over a TypeScript project succeeded, though its SDK does not exist")
 	}
 }
 

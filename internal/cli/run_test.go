@@ -371,29 +371,47 @@ func TestUpJSONIsValidAndOnStdout(t *testing.T) {
 	}
 }
 
-func TestALanguageWithNoRuntimeIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
+func TestALanguageWithNoSDKIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
+	dir, _, drivers := project(t, twoTables()...)
+	write(t, filepath.Join(dir, config.DefaultFilename),
+		strings.Replace(projectConfig, "language: sql", "language: typescript", 1))
+
+	_, _, err := runWith(t, dir, noon, drivers, "up")
+	if err == nil {
+		t.Fatal("up ran migrations in a language whose SDK does not exist")
+	}
+
+	if !strings.Contains(err.Error(), "M7-T2") {
+		t.Errorf("the refusal does not name the task the TypeScript SDK lands in: %v", err)
+	}
+
+	t.Log("Go is no longer in this refusal's company: M6-T10 wired it up, so the message names")
+	t.Log("both formats migr runs today rather than sql alone.")
+
+	if !strings.Contains(err.Error(), string(config.LanguageGo)) {
+		t.Errorf("the refusal does not name go as a format migr runs: %v", err)
+	}
+
+	if got := ExitCode(err); got != ExitValidation {
+		t.Errorf("ExitCode = %d, want %d", got, ExitValidation)
+	}
+}
+
+func TestARuntimeThatWillNotStartIsTheWorldNotBeingReady(t *testing.T) {
 	dir, _, drivers := project(t, twoTables()...)
 	write(t, filepath.Join(dir, config.DefaultFilename),
 		strings.Replace(projectConfig, "language: sql", "language: go", 1))
 
 	_, _, err := runWith(t, dir, noon, drivers, "up")
 	if err == nil {
-		t.Fatal("up ran migrations in a language nothing can execute")
+		t.Fatal("up ran migrations through an adapter that starts nothing")
 	}
 
-	if !strings.Contains(err.Error(), "M6-T10") {
-		t.Errorf("the refusal does not name the task Go migrations wait on: %v", err)
-	}
+	t.Log("ADR 0029: the argument is wrong is 2, the world is not ready is 1. A toolchain that")
+	t.Log("is missing or a module that will not build is the second, not the first.")
 
-	t.Log("The SDK landed in M6-T7, so what is left is the wiring alone. A refusal still naming")
-	t.Log("M6-T7 would send a reader to a task that is already done.")
-
-	if strings.Contains(err.Error(), "M6-T7") {
-		t.Errorf("the refusal names M6-T7, whose SDK has landed: %v", err)
-	}
-
-	if got := ExitCode(err); got != ExitValidation {
-		t.Errorf("ExitCode = %d, want %d", got, ExitValidation)
+	if got := ExitCode(err); got != ExitRuntime {
+		t.Errorf("ExitCode = %d, want %d (%v)", got, ExitRuntime, err)
 	}
 }
 

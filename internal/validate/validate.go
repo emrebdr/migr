@@ -68,14 +68,25 @@ func (r *runner) ask(ctx context.Context, m migration.Migration, dir ir.Directio
 func (r *runner) migration(ctx context.Context, m migration.Migration) {
 	up, err := r.ask(ctx, m, ir.Up)
 	if err != nil {
-		r.report.add(Problem{Migration: m, Check: CheckFormat, Direction: ir.Up,
-			Detail: detailOf(m, err)})
+		r.unanswered(m, ir.Up, err)
 
 		return
 	}
 
 	r.compile(m, ir.Up, up.Operations)
 	r.undo(ctx, m, up)
+}
+
+// unanswered tells a migration this run judged and found wanting from one it could not judge at all.
+func (r *runner) unanswered(m migration.Migration, dir ir.Direction, err error) {
+	if errors.Is(err, ErrNotCheckable) {
+		r.report.skip(Unchecked{Migration: m, Direction: dir, Reason: detailOf(m, err)})
+
+		return
+	}
+
+	r.report.add(Problem{Migration: m, Check: CheckFormat, Direction: dir,
+		Detail: detailOf(m, err)})
 }
 
 // undo checks what undoes a migration: what its author wrote, what its author declares, or an inverse.
@@ -90,8 +101,7 @@ func (r *runner) undo(ctx context.Context, m migration.Migration, up engine.Emit
 	case errors.Is(err, engine.ErrNoDownAuthored):
 		r.derive(m, up)
 	default:
-		r.report.add(Problem{Migration: m, Check: CheckFormat, Direction: ir.Down,
-			Detail: detailOf(m, err)})
+		r.unanswered(m, ir.Down, err)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/source/golang"
 	"github.com/emrebdr/migr/internal/source/sql"
+	"github.com/emrebdr/migr/internal/source/typescript"
 )
 
 // migrations opens the migrations directory of an initialized project, as discovery is handed it.
@@ -127,33 +128,21 @@ func TestCreateRefusesANameTheGrammarRefuses(t *testing.T) {
 	t.Log("and the file on disk would not be the one that was asked for.")
 }
 
-func TestCreateRefusesALanguageWhoseTemplateHasNotArrived(t *testing.T) {
-	dir := initialized(t)
+func TestEveryLanguageMigrKnowsHasATemplate(t *testing.T) {
+	t.Log("M7-T2 wrote the last one, so there is no longer a language migr create refuses. What")
+	t.Log("replaces that refusal is this: a fourth language added to migr.yaml and not to the")
+	t.Log("template map fails here rather than at the moment somebody runs migr create.")
 
-	for _, tc := range []struct{ flag, task string }{
-		{flag: "typescript", task: "M7-T2"},
-		{flag: "ts", task: "M7-T2"},
-	} {
-		t.Run(tc.flag, func(t *testing.T) {
-			_, _, err := runIn(t, dir, noon, "create", "add_users", "--lang", tc.flag)
-			if err == nil {
-				t.Fatal("create wrote a migration in a language nothing can run")
-			}
-
-			if got := ExitCode(err); got != ExitValidation {
-				t.Errorf("ExitCode = %d, want %d", got, ExitValidation)
-			}
-
-			if !strings.Contains(err.Error(), tc.task) {
-				t.Errorf("the refusal does not name the task that adds it: %v", err)
-				t.Log("An honest refusal naming the milestone beats a stub that will not compile,")
-				t.Log("and it tells a reader whether to wait or to write SQL.")
-			}
-		})
+	for _, lang := range config.Languages() {
+		if _, ok := templates[lang]; !ok {
+			t.Errorf("migr.yaml accepts migrations.language: %s, and migr create cannot write one", lang)
+		}
 	}
 
-	t.Log("`--lang ts` is the spelling CLAUDE.md documents, and it resolves to typescript before")
-	t.Log("support is checked -- otherwise the alias would report an unknown language instead.")
+	if len(templates) != len(config.Languages()) {
+		t.Errorf("templates holds %d languages and migr knows %d: one of them is not a language",
+			len(templates), len(config.Languages()))
+	}
 }
 
 func TestCreateRefusesALanguageMigrDoesNotKnow(t *testing.T) {
@@ -175,13 +164,13 @@ func TestCreateWritesTheLanguageTheConfigNames(t *testing.T) {
 	dir := t.TempDir()
 	writeConfigNaming(t, dir, config.LanguageTypeScript)
 
-	_, _, err := runIn(t, dir, noon, "create", "add_users")
-	if err == nil {
-		t.Fatal("create ignored migrations.language and wrote something else")
+	stdout, _, err := runIn(t, dir, noon, "create", "add_users")
+	if err != nil {
+		t.Fatalf("create: %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "M7-T2") {
-		t.Errorf("create did not default to the language the config names: %v", err)
+	if !strings.HasSuffix(strings.TrimSpace(stdout), ".ts") {
+		t.Errorf("create reported %q, want a .ts file", stdout)
 		t.Log("--lang is an override, and a create that always wrote SQL would look correct in")
 		t.Log("every test written against a scaffolded project, which names SQL already.")
 	}
@@ -361,6 +350,63 @@ func TestCreateWritesAGoMigrationDiscoveryAccepts(t *testing.T) {
 	for _, want := range []string{"migr.Register", golang.SDK, "func (m Migration) Up("} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("the template carries no %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestCreateWritesATypeScriptMigrationDiscoveryAccepts(t *testing.T) {
+	for _, flag := range []string{"typescript", "ts"} {
+		t.Run(flag, func(t *testing.T) {
+			dir := initialized(t)
+
+			stdout, _, err := runIn(t, dir, noon, "create", "add_users", "--lang", flag)
+			if err != nil {
+				t.Fatalf("create --lang %s: %v", flag, err)
+			}
+
+			written := strings.TrimSpace(strings.TrimPrefix(stdout, "created "))
+
+			parsed, err := migration.Parse(filepath.Base(written))
+			if err != nil {
+				t.Fatalf("create wrote %q, which discovery refuses: %v", written, err)
+			}
+
+			if parsed.Ext != ".ts" {
+				t.Errorf("create wrote a %q file, want a .ts one (source/typescript says %q)",
+					parsed.Ext, typescript.Ext)
+			}
+
+			body, err := os.ReadFile(written)
+			if err != nil {
+				t.Fatalf("reading what create wrote: %v", err)
+			}
+
+			for _, want := range []string{"defineMigration", typescript.SDK, "async up(s)"} {
+				if !strings.Contains(string(body), want) {
+					t.Errorf("the template carries no %q:\n%s", want, body)
+				}
+			}
+		})
+	}
+
+	t.Log("`--lang ts` is the spelling CLAUDE.md documents, and it resolves to typescript before")
+	t.Log("the template is looked up -- otherwise the alias would report an unknown language.")
+}
+
+func TestTheTypeScriptTemplateCarriesBothStylesAndTheChoiceOfUndo(t *testing.T) {
+	body := typescript.Template
+
+	t.Log("A module uses one export style or the other and offering both is refused, so a")
+	t.Log("template showing only one leaves an author to discover the other from an error.")
+	t.Log("ADR 0036, D is the same argument as the Go template's: a migration that reaches the")
+	t.Log("database itself owes an authored down or a declared irreversibility.")
+
+	for _, want := range []string{
+		"export default", "export async function up", "export const dependencies",
+		"irreversible:", "one or the other", "no inverse to derive",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the template never mentions %q", want)
 		}
 	}
 }

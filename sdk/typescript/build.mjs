@@ -5,7 +5,7 @@
 // nothing here is a dependency the package would not carry anyway (ADR 0041).
 
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,6 +42,26 @@ function emitDeclarations() {
     ],
     { stdio: "inherit" },
   );
+}
+
+// A relative module specifier in a declaration file, which tsc leaves spelled the way it was written.
+//
+// The sources import each other with .ts because that is the only thing Node resolves when it runs
+// them, and running them is how this package is tested with no transpiler in the loop.
+// rewriteRelativeImportExtensions turns those into .js in emitted JavaScript -- and does not reach
+// declaration output, where a .ts specifier is one a consumer cannot resolve at all. So the build
+// finishes the rewrite tsc started, and dist.test.ts holds every shipped declaration to it.
+const DECLARED_SPECIFIER = /(from\s*|import\s*\(\s*)(['"])(\.\.?\/[^'"]*)\.ts\2/g;
+
+// rewriteDeclarations points every declaration at the JavaScript beside it rather than at a source.
+function rewriteDeclarations() {
+  for (const file of readdirSync(declarationsIn)) {
+    if (file.endsWith(".d.ts")) {
+      const path = join(declarationsIn, file);
+
+      writeFileSync(path, readFileSync(path, "utf8").replace(DECLARED_SPECIFIER, "$1$2$3.js$2"));
+    }
+  }
 }
 
 // bundle emits one module format from the single entry point.
@@ -87,6 +107,7 @@ for (const target of targets) {
 }
 
 emitDeclarations();
+rewriteDeclarations();
 await Promise.all(targets.map(bundle));
 shareDeclarations();
 

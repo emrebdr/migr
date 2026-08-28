@@ -32,9 +32,9 @@ var executable = map[config.Language]string{
 	config.LanguageTypeScript: "M7-T8",
 }
 
-// sdkTask names the task each remaining SDK arrives in, which is what an adapter has nothing to run without.
+// sdkTask names the task each remaining runtime arrives in, which is what an adapter has nothing to spawn without.
 var sdkTask = map[config.Language]string{
-	config.LanguageTypeScript: "M7-T2",
+	config.LanguageTypeScript: "M7-T5",
 }
 
 // target is the one database a command reaches, resolved from the config and reaching nothing yet.
@@ -387,9 +387,10 @@ func runnable(lang config.Language, runtimes *runtime.Registry) (runtime.Runtime
 	}
 
 	if task, waiting := sdkTask[lang]; waiting {
-		return nil, fmt.Errorf("migr has a %s runtime adapter, but not yet the SDK it runs: that "+
-			"arrives in %s and the wiring in %s. migrations.language: %s and %s are the formats "+
-			"migr runs today", lang, task, executable[lang], config.LanguageSQL, config.LanguageGo)
+		return nil, fmt.Errorf("migr has a %s runtime adapter and the SDK a migration is written "+
+			"against, but not yet the runtime it spawns: that arrives in %s and the wiring in %s. "+
+			"migrations.language: %s and %s are the formats migr runs today",
+			lang, task, executable[lang], config.LanguageSQL, config.LanguageGo)
 	}
 
 	return adapter, nil

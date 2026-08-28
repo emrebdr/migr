@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -32,6 +32,7 @@ test("the ESM build loads and reports what the sources do", async () => {
 
   assert.equal(loaded.PROTOCOL_VERSION, PROTOCOL_VERSION);
   assert.equal(loaded.VERSION, VERSION);
+  assert.equal(typeof loaded.defineMigration, "function");
 });
 
 test("the CJS build loads and reports what the sources do", () => {
@@ -39,6 +40,22 @@ test("the CJS build loads and reports what the sources do", () => {
 
   assert.equal(loaded.PROTOCOL_VERSION, PROTOCOL_VERSION);
   assert.equal(loaded.VERSION, VERSION);
+  assert.equal(typeof loaded.defineMigration, "function");
+});
+
+test("the contract a migration is written against is what both formats ship", async () => {
+  const esm = await import(join(root, "dist", "esm", "index.js"));
+  const cjs = require(join(root, "dist", "cjs", "index.js")) as Record<string, unknown>;
+
+  for (const exported of ["defineMigration", "fromModule", "parseName", "Registry"]) {
+    assert.equal(typeof esm[exported], "function", `dist/esm ships no ${exported}`);
+    assert.equal(typeof cjs[exported], "function", `dist/cjs ships no ${exported}`);
+  }
+
+  const written = esm["defineMigration"]({ up() {} });
+  const loaded = esm["fromModule"]("20260727T153000_add_users.ts", { default: written });
+
+  assert.equal(loaded.version, "20260727T153000");
 });
 
 test("both formats are built, and neither is the other", () => {
@@ -76,6 +93,32 @@ test("every file the exports map names was built", () => {
       shipped(named);
     }
   }
+});
+
+test("every shipped declaration points at the JavaScript beside it, never at a source", () => {
+  for (const format of ["esm", "cjs"]) {
+    const directory = join(root, "dist", format);
+
+    for (const file of readdirSync(directory).filter((named) => named.endsWith(".d.ts"))) {
+      const declared = readFileSync(join(directory, file), "utf8");
+
+      assert.doesNotMatch(
+        declared,
+        /(from\s*|import\s*\(\s*)['"]\.\.?\/[^'"]*\.ts['"]/,
+        `dist/${format}/${file} imports a .ts source, which a consumer cannot resolve`,
+      );
+    }
+  }
+});
+
+test("the rewrite reaches module specifiers and not the strings beside them", () => {
+  const declared = shipped("dist/esm/name.d.ts");
+
+  assert.match(
+    declared,
+    /readonly \[".ts", ".js", ".mjs"\]/,
+    "the extensions this SDK loads were rewritten along with the imports",
+  );
 });
 
 test("the declarations exclude the tests, which are not part of what ships", () => {

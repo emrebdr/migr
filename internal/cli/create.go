@@ -14,6 +14,7 @@ import (
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/source/golang"
 	"github.com/emrebdr/migr/internal/source/sql"
+	"github.com/emrebdr/migr/internal/source/typescript"
 )
 
 // template is the file migr create writes for one language.
@@ -24,15 +25,11 @@ type template struct {
 	body string
 }
 
-// templates holds every language migr create can write a migration in today.
+// templates holds every language migr create can write a migration in, which is every one it knows.
 var templates = map[config.Language]template{
-	config.LanguageSQL: {ext: sql.Ext, body: sql.Template},
-	config.LanguageGo:  {ext: golang.Ext, body: golang.Template},
-}
-
-// pending names the task that gives each remaining language its SDK and its template.
-var pending = map[config.Language]string{
-	config.LanguageTypeScript: "M7-T2",
+	config.LanguageSQL:        {ext: sql.Ext, body: sql.Template},
+	config.LanguageGo:         {ext: golang.Ext, body: golang.Template},
+	config.LanguageTypeScript: {ext: typescript.Ext, body: typescript.Template},
 }
 
 // aliases are the short spellings --lang accepts, which migr.yaml itself does not.
@@ -127,16 +124,10 @@ func resolveLanguage(configured config.Language, flag string) config.Language {
 	return config.Language(flag)
 }
 
-// templateFor returns what create writes for a language, or why it cannot write one yet.
+// templateFor returns what create writes for a language, or why it is not a language at all.
 func templateFor(lang config.Language) (template, error) {
 	if tmpl, ok := templates[lang]; ok {
 		return tmpl, nil
-	}
-
-	if task, ok := pending[lang]; ok {
-		return template{}, fmt.Errorf("migr create cannot write a %s migration yet: that SDK and "+
-			"the template it defines arrive in %s. --lang %s is the format M5 runs",
-			lang, task, config.LanguageSQL)
 	}
 
 	return template{}, fmt.Errorf("%q is not a language migr knows (expected: %s)",

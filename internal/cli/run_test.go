@@ -371,18 +371,21 @@ func TestUpJSONIsValidAndOnStdout(t *testing.T) {
 	}
 }
 
-func TestALanguageWithNoSDKIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
+func TestALanguageWithNoRuntimeIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
 	dir, _, drivers := project(t, twoTables()...)
 	write(t, filepath.Join(dir, config.DefaultFilename),
 		strings.Replace(projectConfig, "language: sql", "language: typescript", 1))
 
 	_, _, err := runWith(t, dir, noon, drivers, "up")
 	if err == nil {
-		t.Fatal("up ran migrations in a language whose SDK does not exist")
+		t.Fatal("up ran migrations in a language nothing can execute")
 	}
 
-	if !strings.Contains(err.Error(), "M7-T2") {
-		t.Errorf("the refusal does not name the task the TypeScript SDK lands in: %v", err)
+	t.Log("M7-T2 landed the contract a TypeScript migration is written against, so what is")
+	t.Log("missing is no longer the SDK: it is migr-runtime-node, the process an adapter spawns.")
+
+	if !strings.Contains(err.Error(), "M7-T5") {
+		t.Errorf("the refusal does not name the task the Node runtime lands in: %v", err)
 	}
 
 	t.Log("Go is no longer in this refusal's company: M6-T10 wired it up, so the message names")

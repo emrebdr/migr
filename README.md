@@ -152,8 +152,8 @@ than a restore.
 ## The idea, in code
 
 > **The Go half is real** — the contract, the protocol client, and the whole twenty-operation
-> schema builder (M6-T7, M6-T8). The TypeScript below is what M7 will mirror, and is not written
-> yet.
+> schema builder (M6-T7, M6-T8). The TypeScript **contract** is real too (M7-T2); the builder it
+> calls is M7-T3 and is not written yet, so the chain below is what that task will mirror.
 
 ```go
 package migrations
@@ -190,22 +190,27 @@ unless the chain says `Null`.
 `Validate` and `Dependencies`, each one method.
 
 ```typescript
-import { Schema } from "@migr/sdk";
-import { uuid, string, timestamptz, call } from "@migr/sdk/types";
+import { defineMigration } from "@migr/sdk";
 
-export async function up(s: Schema) {
-  await s.createTable("users")
-    .column("id", uuid())
-    .column("email", string(255))
-    .column("created_at", timestamptz()).default(call("current_timestamp"))
-    .primaryKey("id")
-    .apply();
-}
+export default defineMigration({
+  async up(s) {
+    await s.createTable("users")
+      .column("id", uuid())
+      .column("email", string(255))
+      .column("created_at", timestamptz()).default(call("current_timestamp"))
+      .primaryKey("id")
+      .apply();
+  },
 
-export async function down(s: Schema) {
-  await s.table("users").drop().apply();
-}
+  async down(s) {
+    await s.table("users").drop().apply();
+  },
+});
 ```
+
+Nothing is annotated: `s` is inferred, and writing both a `down` and an `irreversible` reason does
+not compile. The parts can also be exported one by one — `export async function up(s)` — which is
+the style a plain `.js` migration usually takes; a module uses one or the other.
 
 Different syntax, identical meaning. Both emit the same IR, byte for byte, and the conformance
 suite is what holds that true as both SDKs evolve.
@@ -285,11 +290,11 @@ internal/
   migration/           the migration filename grammar, discovery, and dependency order
   driver/              Driver contract + registry; drivertest/ postgres/ mysql/ sqlite/
   runtime/             Runtime contract + registry; protocol/ golang/ node/
-  source/sql/          the SQL migration file format: extension, markers, template
+  source/              per-language migration file formats: sql/ golang/ typescript/
   cli/ config/ version/
 sdk/
   go/                  separate module: github.com/emrebdr/migr/sdk/go
-  typescript/          npm package @migr/sdk
+  typescript/          npm package @migr/sdk: the migration contract, ESM and CJS
 test/
   golden/              per-driver, per-operation expected SQL
   conformance/         shared driver, runtime, and zero-downtime suites
@@ -361,6 +366,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0039](docs/adr/0039-runtime-conformance-fixtures.md) | The runtime conformance fixtures |
 | [0040](docs/adr/0040-running-a-go-migration.md) | Running a Go migration from the CLI |
 | [0041](docs/adr/0041-typescript-package-scaffold.md) | The TypeScript package and its version policy |
+| [0042](docs/adr/0042-typescript-migration-contract.md) | The TypeScript migration contract |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

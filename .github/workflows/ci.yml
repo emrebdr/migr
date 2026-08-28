@@ -48,10 +48,27 @@ jobs:
             **/go.mod
             **/go.sum
 
+      # M7-T1 gave the Makefile a second toolchain: ts_run is gated on
+      # sdk/typescript/package.json, so lint, test, and build all invoke npm now
+      # that it exists. Without this step they would fail on a missing node.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: sdk/typescript/.nvmrc
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      # npm ci rather than `make tools`, which installs it too: that step is skipped
+      # on a tools cache hit, and the dependencies would then silently not be there.
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: sdk/typescript
+
       - name: Report toolchain
         run: |
           make --version | head -1
           go version
+          node --version
 
       # Read the pinned version out of the Makefile rather than restating it.
       # Hard-coding it here would recreate the two-places-to-update drift that

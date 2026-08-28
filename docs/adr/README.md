@@ -50,6 +50,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0038](0038-go-schema-builder.md) | The Go schema builder | Accepted | A chain ending in Apply, with a window that fails a migration for one it never applied; §9.1 checked locally so two SDKs refuse the same operations; and the second copy of the IR held to docs/ir.md, decoding every vector in it |
 | [0039](0039-runtime-conformance-fixtures.md) | The runtime conformance fixtures | Accepted | A fixture is a neutral manifest neither language owns, whose own bytes are held to being what ir.Marshal emits; the reads it branches on are pinned in it; and every fixture is asked both directions in both modes |
 | [0040](0040-running-a-go-migration.md) | Running a Go migration from the CLI | Accepted | The source is built after the connection and the process ends before it; migr validate stays database-free and reports what it could not check; the schema digest lives in a package the driver owns |
+| [0041](0041-typescript-package-scaffold.md) | The TypeScript package and its version policy | Accepted | The package major is the protocol version it speaks, as a publishing convention rather than a protocol mechanism; ESM and CJS ship in directories that declare their own type; the test runner is Node itself |
 
 ## When to write one
 

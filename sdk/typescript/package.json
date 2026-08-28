@@ -1,0 +1,49 @@
+{
+  "name": "@migr/sdk",
+  "version": "1.0.0-alpha.0",
+  "description": "Write database migrations in TypeScript, run them against any engine migr supports.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emrebdr/migr.git",
+    "directory": "sdk/typescript"
+  },
+  "homepage": "https://github.com/emrebdr/migr/tree/main/sdk/typescript#readme",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "npm run build && node --test",
+    "lint": "tsc --noEmit && prettier --check .",
+    "fmt": "prettier --write .",
+    "clean": "node --eval \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "esbuild": "^0.25.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.8.0"
+  }
+}

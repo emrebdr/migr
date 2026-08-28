@@ -243,8 +243,11 @@ against that same one exits 4, and `migr validate` exits 2. They answer differen
 
 ## Building from source
 
-Requires **Go 1.26**. Nothing else, yet — Node 24 becomes a prerequisite when the TypeScript
-SDK arrives in M7, and Docker when the integration suites arrive in M3.
+Requires **Go 1.26** and **Node 24** — the TypeScript SDK arrived in M7, and `make lint`, `make
+test`, and `make build` all cross it. Docker is needed only for `make test-integration`.
+
+`make tools` installs what both toolchains need: golangci-lint into `./bin`, and the SDK's npm
+dependencies with `npm ci`.
 
 ```console
 $ git clone https://github.com/emrebdr/migr.git && cd migr
@@ -357,6 +360,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0038](docs/adr/0038-go-schema-builder.md) | The Go schema builder |
 | [0039](docs/adr/0039-runtime-conformance-fixtures.md) | The runtime conformance fixtures |
 | [0040](docs/adr/0040-running-a-go-migration.md) | Running a Go migration from the CLI |
+| [0041](docs/adr/0041-typescript-package-scaffold.md) | The TypeScript package and its version policy |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

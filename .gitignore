@@ -36,6 +36,10 @@ bin/
 dist/
 .migr/
 
+# Node dependencies. package-lock.json is committed: npm ci is what the Makefile and CI
+# run, so a build never resolves a version the lockfile did not pin.
+node_modules/
+
 # Markdown: ignored by default, project docs kept.
 # The ADRs, IR spec, and protocol spec are contract deliverables (CLAUDE.md §10)
 # and must stay under version control.

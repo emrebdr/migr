@@ -58,12 +58,21 @@ endef
 
 # Run a command in the TypeScript SDK once it exists. The skip is announced, never
 # silent: an invisible skip is how a green run stops meaning anything.
+#
+# The node_modules check is the difference between an actionable message and npm's own
+# "Cannot find module", which names a dependency rather than the step that installs it.
+# M7-T1 is where this stopped being a skip, so it is also where a fresh checkout first
+# needs `make tools`.
 define ts_run
-	@if [ -f $(TSDIR)/package.json ]; then \
+	@if [ ! -f $(TSDIR)/package.json ]; then \
+	  echo "==> $(1)  ($(TSDIR)): skipped -- no package.json"; \
+	elif [ ! -d $(TSDIR)/node_modules ]; then \
+	  echo "==> $(1)  ($(TSDIR)): FAILED -- dependencies are not installed"; \
+	  echo "    run \`make tools\`, which installs them with npm ci"; \
+	  exit 1; \
+	else \
 	  echo "==> $(1)  ($(TSDIR))"; \
 	  ( cd $(TSDIR) && $(1) ) || exit 1; \
-	else \
-	  echo "==> $(1)  ($(TSDIR)): skipped -- created in M7"; \
 	fi
 endef
 
@@ -77,7 +86,7 @@ help:
 	@echo "  lint              comment rules + golangci-lint across both modules"
 	@echo "  golden-update     regenerate golden files -- read the diff before committing"
 	@echo ""
-	@echo "  tools             install pinned dev tools into ./bin"
+	@echo "  tools             install pinned dev tools into ./bin, and the SDK's npm deps"
 	@echo "  fmt vet tidy      formatting, vet, and go mod tidy across both modules"
 	@echo "  check             lint + test, the CLAUDE.md §10 gate"
 	@echo "  clean             remove build output and tear down containers"
@@ -147,6 +156,10 @@ tools:
 	@echo "==> installing golangci-lint $(GOLANGCI_VERSION) into ./bin"
 	@GOBIN=$(CURDIR)/bin go install \
 	  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	@if [ -f $(TSDIR)/package-lock.json ]; then \
+	  echo "==> npm ci  ($(TSDIR))"; \
+	  ( cd $(TSDIR) && npm ci ) || exit 1; \
+	fi
 
 fmt:
 	$(call golangci_each,fmt)
@@ -161,8 +174,8 @@ tidy:
 check: lint test
 
 clean:
-	@echo "==> removing bin/ dist/"
-	@rm -rf bin dist
+	@echo "==> removing bin/ dist/ $(TSDIR)/dist/"
+	@rm -rf bin dist $(TSDIR)/dist
 	@if [ -f $(COMPOSE) ]; then \
 	  echo "==> docker compose down"; \
 	  docker compose -f $(COMPOSE) down -v; \

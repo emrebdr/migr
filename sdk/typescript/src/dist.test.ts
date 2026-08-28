@@ -47,7 +47,16 @@ test("the contract a migration is written against is what both formats ship", as
   const esm = await import(join(root, "dist", "esm", "index.js"));
   const cjs = require(join(root, "dist", "cjs", "index.js")) as Record<string, unknown>;
 
-  for (const exported of ["defineMigration", "fromModule", "parseName", "Registry"]) {
+  for (const exported of [
+    "defineMigration",
+    "fromModule",
+    "parseName",
+    "Registry",
+    "newSchema",
+    "encode",
+    "literal",
+    "call",
+  ]) {
     assert.equal(typeof esm[exported], "function", `dist/esm ships no ${exported}`);
     assert.equal(typeof cjs[exported], "function", `dist/cjs ships no ${exported}`);
   }
@@ -56,6 +65,52 @@ test("the contract a migration is written against is what both formats ship", as
   const loaded = esm["fromModule"]("20260727T153000_add_users.ts", { default: written });
 
   assert.equal(loaded.version, "20260727T153000");
+});
+
+test("the schema builder is what both formats ship, and it emits what the sources do", async () => {
+  const esm = await import(join(root, "dist", "esm", "index.js"));
+  const cjs = require(join(root, "dist", "cjs", "index.js")) as Record<string, unknown>;
+
+  for (const module of [esm, cjs]) {
+    const { newSchema, encode, t } = module as {
+      newSchema: (
+        call: unknown,
+        sink: (ops: unknown[]) => Promise<void>,
+      ) => {
+        createTable: (name: string) => {
+          column: (
+            name: string,
+            type: string,
+          ) => {
+            primaryKey: (...columns: string[]) => { apply: () => Promise<void> };
+          };
+        };
+      };
+      encode: (op: unknown) => string;
+      t: { uuid: () => string };
+    };
+
+    const emitted: unknown[] = [];
+    const schema = newSchema(
+      {
+        migration: "20260727T153000",
+        direction: "up",
+        mode: "apply",
+        signal: new AbortController().signal,
+      },
+      async (ops) => {
+        emitted.push(...ops);
+      },
+    );
+
+    await schema.createTable("users").column("id", t.uuid()).primaryKey("id").apply();
+
+    assert.equal(
+      encode(emitted[0]),
+      '{"op":"create_table","table":"users","columns":' +
+        '[{"name":"id","type":"uuid","nullable":false}],"primary_key":["id"]}',
+    );
+  }
 });
 
 test("both formats are built, and neither is the other", () => {

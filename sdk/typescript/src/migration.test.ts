@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { authored, check, declared, defineMigration, dependencies } from "./migration.ts";
 import type { Schema } from "./schema.ts";
+import { newSchema } from "./schema.ts";
 
 // Half of what this file asserts is checked by tsc rather than by node: a @ts-expect-error line
 // fails the build when the error it expects stops happening, which is what `npm run lint` runs.
@@ -11,13 +12,15 @@ import type { Schema } from "./schema.ts";
 
 /** Builds the window a migration acts through, which M7-T4 replaces with the real one. */
 function schema(): Schema {
-  return {
-    migration: "20260727T153000",
-    direction: "up",
-    mode: "apply",
-    planning: false,
-    signal: new AbortController().signal,
-  };
+  return newSchema(
+    {
+      migration: "20260727T153000",
+      direction: "up",
+      mode: "apply",
+      signal: new AbortController().signal,
+    },
+    async () => undefined,
+  );
 }
 
 test("a migration's parameters are inferred with nothing annotated", async () => {

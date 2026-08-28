@@ -14,6 +14,20 @@ export type MigrationErrorCode =
   | "bad_member"
   | "duplicate";
 
+/** OperationError reports an operation or a logical type the engine would refuse as IR. */
+export class OperationError extends Error {
+  /** operation names which operation of an emit it is about, when there is one to name. */
+  readonly operation: string | undefined;
+
+  /** Builds one refusal, naming the operation it is about when the emit knows which. */
+  constructor(message: string, operation?: string) {
+    super(message);
+
+    this.name = "OperationError";
+    this.operation = operation;
+  }
+}
+
 /** MigrationError reports a migration this SDK will not load, and which rule refused it. */
 export class MigrationError extends Error {
   /** code is the rule that refused it, which the session maps onto a protocol error code. */

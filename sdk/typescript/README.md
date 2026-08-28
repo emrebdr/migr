@@ -3,9 +3,8 @@
 Write database migrations in TypeScript and run them against any engine
 [migr](https://github.com/emrebdr/migr) supports.
 
-> **Pre-alpha.** A migration can be written against this contract and cannot yet be run: the schema
-> builder, the protocol client, and the `migr-runtime-node` process that executes any of it land in
-> M7-T3 through M7-T5. Do not depend on it.
+> **Pre-alpha.** A migration can be written and cannot yet be run: the protocol client and the
+> `migr-runtime-node` process that executes it land in M7-T4 and M7-T5. Do not depend on it.
 
 ```console
 npm install @migr/sdk@alpha
@@ -63,6 +62,72 @@ could branch on live data would let `migr plan` and `migr up` order the same mig
 
 Everything above is enforced twice — in the types, and again when the module is read, since a `.js`
 migration is compiled by nothing and no type can constrain a module's exports against each other.
+
+## Describing a change
+
+Four chains, one per thing a change acts on, each ending in `apply()`:
+
+```ts
+import { call, defineMigration, t } from "@migr/sdk";
+
+export default defineMigration({
+  async up(s) {
+    await s
+      .createTable("users")
+      .column("id", t.uuid())
+      .column("email", t.string(255))
+      .column("created_at", t.timestamptz())
+      .default(call("current_timestamp"))
+      .primaryKey("id")
+      .apply();
+
+    await s
+      .table("posts")
+      .addForeignKey("fk_posts_author", ["author_id"], "users", ["id"])
+      .onDelete("cascade")
+      .apply();
+  },
+});
+```
+
+`s.table(name)` changes a table that already exists, `s.view(name)` a view, and `s.raw(driver, sql)`
+is the escape hatch for what the IR cannot express — it names one engine, so no other will run it.
+
+**Nothing is emitted until `apply`**, which sends the whole chain in one call and empties it, so
+applying twice does not emit twice. A chain built without it emits nothing at all, and a migration
+that reports success having changed nothing is the worst failure this format has — so migr fails
+such a migration, naming the object and counting what was never applied. An `apply()` that is sent
+and never `await`ed is caught the same way: its failure is surfaced when the call ends rather than
+disappearing into a promise nobody read.
+
+Two rules are structural rather than documented, because two SDKs disagreeing about either would
+emit different bytes for the same schema change:
+
+- **a column is `NOT NULL`** unless the chain says `.null()`;
+- **a new table states its key inline** (`createTable(...).primaryKey(...)`) where an existing table
+  states it as an operation (`table(...).addPrimaryKey(...)`). Different calls, so the wrong choice
+  is not spellable.
+
+The operations are exported too, and `s.apply(...ops)` takes them — a chain and a hand-written
+literal emit the same bytes, which is asserted for all twenty.
+
+### Logical types
+
+`t` holds the eighteen types [`docs/ir.md` §5.2](../../docs/ir.md) defines, and a type **is** its
+canonical spelling: `t.string(255)` is `"string(255)"`, branded so a bare string cannot be passed
+where a type is wanted.
+
+```ts
+t.uuid(); // "uuid"
+t.decimal(10, 2); // "decimal(10,2)"
+t.enum("draft", "live"); // "enum(draft,live)"  -- order is part of the type
+t.array(t.string(255)); // "array(string(255))"
+```
+
+What the type system can read from a literal, it refuses before anything runs — a length of `0`, a
+fractional precision, an empty `enum`, a label listed twice. What it cannot read, it does not
+pretend to: an argument computed at runtime is a plain `number`, so **every rule is checked twice**
+and a bad type throws where it was written.
 
 ## The version means something
 

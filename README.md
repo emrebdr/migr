@@ -151,9 +151,10 @@ than a restore.
 
 ## The idea, in code
 
-> **The Go half is real** — the contract, the protocol client, and the whole twenty-operation
-> schema builder (M6-T7, M6-T8). The TypeScript **contract** is real too (M7-T2); the builder it
-> calls is M7-T3 and is not written yet, so the chain below is what that task will mirror.
+> **Both halves are real.** The Go SDK is the contract, the protocol client, and the whole
+> twenty-operation schema builder (M6-T7, M6-T8); the TypeScript SDK is the contract and the same
+> builder, emitting the same IR (M7-T2, M7-T3). What TypeScript is still missing is the process
+> that runs it — the protocol client is M7-T4 and `migr-runtime-node` is M7-T5.
 
 ```go
 package migrations
@@ -190,14 +191,15 @@ unless the chain says `Null`.
 `Validate` and `Dependencies`, each one method.
 
 ```typescript
-import { defineMigration } from "@migr/sdk";
+import { call, defineMigration, t } from "@migr/sdk";
 
 export default defineMigration({
   async up(s) {
-    await s.createTable("users")
-      .column("id", uuid())
-      .column("email", string(255))
-      .column("created_at", timestamptz()).default(call("current_timestamp"))
+    await s
+      .createTable("users")
+      .column("id", t.uuid())
+      .column("email", t.string(255))
+      .column("created_at", t.timestamptz()).default(call("current_timestamp"))
       .primaryKey("id")
       .apply();
   },
@@ -367,6 +369,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0040](docs/adr/0040-running-a-go-migration.md) | Running a Go migration from the CLI |
 | [0041](docs/adr/0041-typescript-package-scaffold.md) | The TypeScript package and its version policy |
 | [0042](docs/adr/0042-typescript-migration-contract.md) | The TypeScript migration contract |
+| [0043](docs/adr/0043-typescript-schema-builder.md) | The TypeScript schema builder |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

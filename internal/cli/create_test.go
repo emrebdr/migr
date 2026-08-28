@@ -381,7 +381,7 @@ func TestCreateWritesATypeScriptMigrationDiscoveryAccepts(t *testing.T) {
 				t.Fatalf("reading what create wrote: %v", err)
 			}
 
-			for _, want := range []string{"defineMigration", typescript.SDK, "async up(s)"} {
+			for _, want := range []string{"defineMigration", typescript.SDK, "async up(s)", "t."} {
 				if !strings.Contains(string(body), want) {
 					t.Errorf("the template carries no %q:\n%s", want, body)
 				}
@@ -404,6 +404,23 @@ func TestTheTypeScriptTemplateCarriesBothStylesAndTheChoiceOfUndo(t *testing.T) 
 	for _, want := range []string{
 		"export default", "export async function up", "export const dependencies",
 		"irreversible:", "one or the other", "no inverse to derive",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the template never mentions %q", want)
+		}
+	}
+}
+
+func TestTheTypeScriptTemplateShowsTheBuilderAndWhatForgettingApplyCosts(t *testing.T) {
+	body := typescript.Template
+
+	t.Log("The scaffold is where an author meets the SDK, and the builder emits nothing until")
+	t.Log("apply -- so a template that showed the chain without the terminal call would teach")
+	t.Log("the one mistake that makes a migration report success having changed nothing. This")
+	t.Log("is TestTheGoTemplateShowsTheBuilder... asked of the SDK that mirrors it.")
+
+	for _, want := range []string{
+		"s.createTable(", "s.table(", ".apply()", "t.uuid()", "null()", "NOT NULL",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the template never mentions %q", want)

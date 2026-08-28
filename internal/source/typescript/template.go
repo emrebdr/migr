@@ -7,7 +7,7 @@ const Ext = ".ts"
 const SDK = "@migr/sdk"
 
 // Template is the file migr create writes, which typechecks once the SDK is in node_modules.
-const Template = `import { defineMigration } from "` + SDK + `";
+const Template = `import { defineMigration, t } from "` + SDK + `";
 
 /**
  * What this migration does. Rename the file to something the next reader will recognize.
@@ -25,12 +25,27 @@ const Template = `import { defineMigration } from "` + SDK + `";
 export default defineMigration({
   /**
    * up performs the change. Every operation it emits is recorded, compiled for the target
-   * engine, and run in one transaction.
+   * engine, and run in one transaction:
+   *
+   *   await s.createTable("users")
+   *     .column("id", t.uuid())
+   *     .column("email", t.string(255))
+   *     .column("nickname", t.text()).null()
+   *     .primaryKey("id")
+   *     .apply();
+   *
+   * s.table(name) does the same for a table that already exists, and s.view(name) for a
+   * view. A column is NOT NULL unless the chain says null.
+   *
+   * Nothing is emitted until apply, and a chain built without it emits nothing at all --
+   * so migr fails such a migration rather than reporting a change it never made.
    */
   async up(s) {},
 
   /**
-   * down undoes it. Delete this member and migr derives the inverse from what up emitted.
+   * down undoes it. Delete this member and migr derives the inverse from what up emitted:
+   *
+   *   await s.table("users").drop().was({ columns: [...] }).apply();
    *
    * One thing has no inverse to derive: a statement this migration sends the database
    * itself. That is committed on its own, before the transaction the operations run in,

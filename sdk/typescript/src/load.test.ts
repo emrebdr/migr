@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { MigrationError } from "./error.ts";
 import { fromModule, Registry } from "./load.ts";
 import type { Schema } from "./schema.ts";
+import { newSchema } from "./schema.ts";
 
 // Every module here is written the way a .js migration arrives: a plain object, checked by nothing.
 // That is the point of the file -- migration.ts states these rules in types, and a migration that
@@ -27,13 +28,15 @@ function refusal(namespace: unknown, file = FILE): MigrationError {
 
 /** Builds the window a migration acts through, which M7-T4 replaces with the real one. */
 function schema(): Schema {
-  return {
-    migration: "20260727T153000",
-    direction: "up",
-    mode: "apply",
-    planning: false,
-    signal: new AbortController().signal,
-  };
+  return newSchema(
+    {
+      migration: "20260727T153000",
+      direction: "up",
+      mode: "apply",
+      signal: new AbortController().signal,
+    },
+    async () => undefined,
+  );
 }
 
 test("a module default-exporting a migration is read as one", () => {

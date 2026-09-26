@@ -7,7 +7,7 @@ import type { Kind } from "./kind.ts";
 import { kinds } from "./kind.ts";
 import type { Operation } from "./operation.ts";
 import { encode } from "./operation.ts";
-import type { Schema, Window } from "./schema.ts";
+import type { Host, Schema, Window } from "./schema.ts";
 import { newSchema } from "./schema.ts";
 import { t } from "./type.ts";
 
@@ -23,8 +23,19 @@ interface Built {
   want: Operation;
 }
 
-/** opened returns a window over a sink that keeps what it was sent. */
-function opened(emitted: Operation[]): Window {
+/** opened returns a window over a host that keeps the documents it was sent. */
+function opened(emitted: unknown[]): Window {
+  const host: Host = {
+    call: async <R>(_method: string, params: unknown): Promise<R> => {
+      const { operations } = params as { operations: unknown[] };
+
+      emitted.push(...operations);
+
+      return { recorded: operations.length } as R;
+    },
+    notify: () => undefined,
+  };
+
   return newSchema(
     {
       migration: "20260727T153000",
@@ -32,10 +43,13 @@ function opened(emitted: Operation[]): Window {
       mode: "apply",
       signal: new AbortController().signal,
     },
-    async (ops) => {
-      emitted.push(...ops);
-    },
+    host,
   );
+}
+
+/** sent renders one document the host was handed, which is the bytes the operations array carries. */
+function sent(document: unknown): string {
+  return JSON.stringify(document);
 }
 
 const chains: Record<Kind, Built> = {
@@ -237,9 +251,9 @@ const chains: Record<Kind, Built> = {
   },
 };
 
-/** emit runs one chain and returns the operations the window sent. */
-async function emit(built: Built): Promise<Operation[]> {
-  const emitted: Operation[] = [];
+/** emit runs one chain and returns the documents the window sent. */
+async function emit(built: Built): Promise<unknown[]> {
+  const emitted: unknown[] = [];
 
   await built.chain(opened(emitted));
 
@@ -263,8 +277,7 @@ test("every operation is emitted identically by a chain and by a hand-written li
       kind,
       `${kind}: the hand-written operation is a ${built.want.op}`,
     );
-    assert.equal(only.op, kind, `${kind}: the chain built a ${only.op}`);
-    assert.equal(encode(only), encode(built.want), `${kind}: the chain and the literal differ`);
+    assert.equal(sent(only), encode(built.want), `${kind}: the chain and the literal differ`);
   }
 });
 
@@ -273,9 +286,9 @@ test("an unqualified column is NOT NULL, in both places a column is declared", a
   const [column] = added;
 
   assert.ok(column);
-  assert.match(encode(column), /"nullable":false/);
+  assert.match(sent(column), /"nullable":false/);
 
-  const emitted: Operation[] = [];
+  const emitted: unknown[] = [];
   const s = opened(emitted);
 
   await s.createTable("people").column("email", t.string(255)).apply();
@@ -283,34 +296,34 @@ test("an unqualified column is NOT NULL, in both places a column is declared", a
   const [created] = emitted;
 
   assert.ok(created);
-  assert.match(encode(created), /"nullable":false/);
+  assert.match(sent(created), /"nullable":false/);
 });
 
 test("a new table states its key inline where an existing one states it as an operation", async () => {
-  const emitted: Operation[] = [];
+  const emitted: unknown[] = [];
   const s = opened(emitted);
 
   await s.createTable("users").column("id", t.uuid()).primaryKey("id").apply();
   await s.table("people").addPrimaryKey("pk_people", "id").apply();
 
   assert.deepEqual(
-    emitted.map((op) => op.op),
+    emitted.map((document) => (document as { op: string }).op),
     ["create_table", "add_primary_key"],
   );
 
   const [created] = emitted;
 
   assert.ok(created);
-  assert.match(encode(created), /"primary_key":\["id"\]/);
+  assert.match(sent(created), /"primary_key":\["id"\]/);
 });
 
 test("a rename moves the name every later change in the chain uses", async () => {
-  const emitted: Operation[] = [];
+  const emitted: unknown[] = [];
   const s = opened(emitted);
 
   await s.table("users").renameTo("people").addIndex("idx_people_email", "email").apply();
 
-  assert.deepEqual(emitted.map(encode), [
+  assert.deepEqual(emitted.map(sent), [
     encode({ op: "rename_table", from: "users", to: "people" }),
     encode({
       op: "add_index",
@@ -322,7 +335,7 @@ test("a rename moves the name every later change in the chain uses", async () =>
 });
 
 test("a change builder promotes its chain, so the modifiers do not end it", async () => {
-  const emitted: Operation[] = [];
+  const emitted: unknown[] = [];
   const s = opened(emitted);
   const table = s.table("users");
 
@@ -334,12 +347,12 @@ test("a change builder promotes its chain, so the modifiers do not end it", asyn
     .apply();
 
   assert.equal(emitted.length, 2);
-  assert.match(encode(emitted[0] as Operation), /"nullable":true/);
-  assert.match(encode(emitted[1] as Operation), /"nullable":false/);
+  assert.match(sent(emitted[0]), /"nullable":true/);
+  assert.match(sent(emitted[1]), /"nullable":false/);
 });
 
 test("a view of a chain modifies its own change and not the one before it", async () => {
-  const emitted: Operation[] = [];
+  const emitted: unknown[] = [];
   const s = opened(emitted);
   const table = s.table("users");
 
@@ -349,8 +362,8 @@ test("a view of a chain modifies its own change and not the one before it", asyn
 
   await table.apply();
 
-  assert.match(encode(emitted[0] as Operation), /"nullable":true/);
-  assert.match(encode(emitted[1] as Operation), /"nullable":false/);
+  assert.match(sent(emitted[0]), /"nullable":true/);
+  assert.match(sent(emitted[1]), /"nullable":false/);
 });
 
 test("a member the document omits when empty is omitted when a literal writes it empty", () => {

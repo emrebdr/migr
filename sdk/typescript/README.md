@@ -3,8 +3,8 @@
 Write database migrations in TypeScript and run them against any engine
 [migr](https://github.com/emrebdr/migr) supports.
 
-> **Pre-alpha.** A migration can be written and cannot yet be run: the protocol client and the
-> `migr-runtime-node` process that executes it land in M7-T4 and M7-T5. Do not depend on it.
+> **Pre-alpha.** A migration can be written and cannot yet be run by `migr`: the
+> `migr-runtime-node` process that starts this SDK lands in M7-T5. Do not depend on it.
 
 ```console
 npm install @migr/sdk@alpha
@@ -128,6 +128,66 @@ What the type system can read from a literal, it refuses before anything runs �
 fractional precision, an empty `enum`, a label listed twice. What it cannot read, it does not
 pretend to: an argument computed at runtime is a plain `number`, so **every rule is checked twice**
 and a bad type throws where it was written.
+
+## Asking the database
+
+A migration is a program, not a document: it can ask the database a question and branch on the
+answer. Five callbacks beyond `apply`, all of them awaited:
+
+```ts
+export default defineMigration({
+  async up(s) {
+    const { rows } = await s.query("SELECT count(*) AS n FROM users WHERE email IS NULL");
+
+    if (rows[0]?.[0] !== "0") {
+      s.log("warn", "backfilling first", { table: "users" });
+
+      await s.exec("UPDATE users SET email = '' WHERE email IS NULL");
+    }
+
+    await s.table("users").alterColumn("email").notNull().wasNullable(true).apply();
+  },
+});
+```
+
+**Every value a read returns is a string or `null`.** Not a number, not a boolean — a 64-bit integer
+does not survive a round trip through a JSON number in JavaScript, and a migration backfilling a
+table keyed on `bigint` is exactly the case that breaks, silently, at row 2^53. Convert from the
+string, where you know the column's type and JSON does not.
+
+`args` are bound and positional, and the placeholder style is the **target engine's** — `$1` on
+PostgreSQL, `?` on MySQL and SQLite. `(await s.info()).driver` is how a migration knows which. That
+is a real leak of the engine into a migration, and it is the reason the operation IR exists: a
+migration that only emits operations is portable, and one that queries is portable only as far as its
+SQL is.
+
+### What the escape hatch costs
+
+`s.exec(...)` sends a statement the IR cannot express, and it costs three things:
+
+- it is **recorded rather than run** under `migr plan`, and the result says so with
+  `executed: false` — so a migration branching on `rowsAffected` can tell it is being previewed
+  rather than being told a lie;
+- it runs **outside the transaction the operations run in**, committed on its own, so a migration
+  that fails afterwards does not undo it;
+- the engine cannot read the statement, so it cannot invert it, cannot classify its lock impact, and
+  cannot tell another engine what it means.
+
+Reach for it last. A statement whose undo matters belongs in a chain, where the engine can invert it.
+
+### Asking before emitting
+
+`s.capability(op)` reports what the target engine makes of one operation, on both axes at once —
+whether it is `native`, `emulated`, or `unsupported`, and what it costs a live database. A migration
+is not obliged to ask; this exists so one can take a different route when an engine would rewrite a
+table.
+
+### Two channels for two kinds of thing to say
+
+`s.log(level, message, fields)` reaches `migr --json`'s log stream as an object a script can filter.
+Anything the language itself prints goes to **stderr**, which the engine passes through verbatim and
+never parses — `console.log` in a migration is redirected there before the first protocol message,
+because stdout carries protocol and nothing else.
 
 ## The version means something
 

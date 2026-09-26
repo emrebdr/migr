@@ -370,6 +370,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0041](docs/adr/0041-typescript-package-scaffold.md) | The TypeScript package and its version policy |
 | [0042](docs/adr/0042-typescript-migration-contract.md) | The TypeScript migration contract |
 | [0043](docs/adr/0043-typescript-schema-builder.md) | The TypeScript schema builder |
+| [0044](docs/adr/0044-typescript-protocol-client.md) | The TypeScript protocol client |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

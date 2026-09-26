@@ -1,15 +1,16 @@
 // The window a migration acts through, and the four chains it describes a change with.
 //
-// This file declares what one migration.execute carries: which migration is running, which way,
-// whether it is a run or a question, and the signal that ends it. The six host callbacks are
-// M7-T4, so a migration can describe a change and cannot yet ask the database anything.
+// This file declares what one migration.execute carries -- which migration is running, which way,
+// whether it is a run or a question, and the signal that ends it -- and the six callbacks §5
+// defines. It builds and decodes every one of those payloads itself: the session below it only
+// frames, numbers, and matches answers, so §5's shapes sit beside the migration that reads them.
 //
 // The AbortSignal rides here rather than in a second parameter, which is where the Go SDK puts its
 // context. That is CLAUDE.md §8's rule -- idiomatic syntax per language, identical semantics -- and
 // the facts beside it are on the Schema in Go too (ADR 0042).
 //
-// The window takes an emit sink rather than a host, so the whole builder is exercised with a
-// recording sink and no process. M7-T4 supplies the sink that reaches host.schema.apply.
+// The window takes a Host rather than a stream, so the whole builder and every callback is
+// exercised against a recording host and no process. The session supplies the real one.
 //
 // It also seals two holes where Go has one. A chain built and never applied emits nothing, and a
 // migration that reports success having changed nothing is the failure docs/ir.md §3.4 names -- so
@@ -17,17 +18,52 @@
 // sent and never awaited would carry its failure into a promise nobody reads, so the window
 // remembers those too and surfaces the first of them when the call ends (ADR 0043).
 
-import type { Builder, NewTable, Sink, Statements, TableChain, ViewChain } from "./builder.ts";
+import type { Builder, NewTable, Statements, TableChain, ViewChain } from "./builder.ts";
 import { newBuilder, newTableChain, statementsChain, tableChain, viewChain } from "./builder.ts";
 import { checkAll } from "./check.ts";
 import { OperationError } from "./error.ts";
 import type { CreateTable, Operation } from "./operation.ts";
+import { documentOf } from "./operation.ts";
+import {
+  HOST_CAPABILITY_GET,
+  HOST_DB_EXEC,
+  HOST_DB_QUERY,
+  HOST_INFO,
+  HOST_LOG,
+  HOST_SCHEMA_APPLY,
+} from "./wire/method.ts";
+import type {
+  CapabilityGetResult,
+  DBExecResult,
+  DBQueryResult,
+  Direction,
+  InfoResult,
+  Level,
+  Mode,
+  SchemaApplyResult,
+} from "./wire/payload.ts";
 
-/** Direction is which way a migration is being run. */
-export type Direction = "up" | "down";
+export type { Direction, Level, Mode } from "./wire/payload.ts";
 
-/** Mode is whether this call runs the migration or asks it what it would do, per docs/protocol.md §6. */
-export type Mode = "apply" | "plan";
+/** Rows is what a read returned: every value the server's own text, and null where it was null. */
+export type Rows = DBQueryResult;
+
+/** Outcome is what a migration's own statement changed, and whether it ran at all. */
+export type Outcome = DBExecResult;
+
+/** Verdict is what the target engine makes of one operation, on both of §5's axes at once. */
+export type Verdict = CapabilityGetResult;
+
+/** Info is the facts about this run a migration may branch on. */
+export type Info = InfoResult;
+
+/** Host is what a callback goes through: this side's own numbering, framing, and pending table. */
+export interface Host {
+  /** Sends one request and waits for its answer, which the signal abandons. */
+  call<R>(method: string, params: unknown, signal: AbortSignal): Promise<R>;
+  /** Sends one notification, which nothing answers and nothing waits on. */
+  notify(method: string, params: unknown): void;
+}
 
 /** Schema is the window a migration acts through, and every callback it may make. */
 export interface Schema {
@@ -51,6 +87,16 @@ export interface Schema {
   raw(driver: string, sql: string): Statements;
   /** Emits operations, which the engine records in both modes and compiles for its own driver. */
   apply(...ops: Operation[]): Promise<void>;
+  /** Runs this migration's own read, which the host holds to being one, and does so in both modes. */
+  query(sql: string, ...args: string[]): Promise<Rows>;
+  /** Sends one statement the IR cannot express, which plan mode records rather than runs. */
+  exec(sql: string, ...args: string[]): Promise<Outcome>;
+  /** Asks what the target engine makes of an operation, before emitting it. */
+  capability(op: Operation): Promise<Verdict>;
+  /** Reports the facts about this run a migration may branch on. */
+  info(): Promise<Info>;
+  /** Writes one structured line to the engine's own logger, which nothing answers. */
+  log(level: Level, message: string, fields?: Record<string, string>): void;
 }
 
 /** Call is what one migration.execute says about itself, which the window reports unchanged. */
@@ -72,7 +118,7 @@ export interface Window extends Schema {
 }
 
 /** newSchema opens the window one migration.execute acts through. */
-export function newSchema(call: Call, emit: Sink): Window {
+export function newSchema(call: Call, host: Host): Window {
   const built: Builder[] = [];
   const watched: Promise<void>[] = [];
   const failures: unknown[] = [];
@@ -80,17 +126,42 @@ export function newSchema(call: Call, emit: Sink): Window {
   let emitted = 0;
   let closed = false;
 
-  const deliver = async (ops: Operation[]): Promise<void> => {
+  const open = (method: string): void => {
     if (closed) {
-      throw new OperationError("this call has ended, and its callbacks are no longer valid");
+      throw new OperationError(
+        `this call has ended, and ${method} is no longer valid (docs/protocol.md §5.1)`,
+      );
     }
+
+    call.signal.throwIfAborted();
+  };
+
+  const ask = async <R>(method: string, params: unknown): Promise<R> => {
+    open(method);
+
+    return host.call<R>(method, params, call.signal);
+  };
+
+  const deliver = async (ops: Operation[]): Promise<void> => {
+    open(HOST_SCHEMA_APPLY);
 
     if (ops.length === 0) {
       return;
     }
 
     checkAll(ops);
-    await emit(ops);
+
+    const recorded = await host.call<SchemaApplyResult>(
+      HOST_SCHEMA_APPLY,
+      { operations: ops.map(documentOf) },
+      call.signal,
+    );
+
+    if (recorded.recorded !== ops.length) {
+      throw new OperationError(
+        `the host recorded ${recorded.recorded} of the ${ops.length} operations sent`,
+      );
+    }
 
     emitted += ops.length;
   };
@@ -124,6 +195,14 @@ export function newSchema(call: Call, emit: Sink): Window {
     planning: call.mode === "plan",
     signal: call.signal,
     apply,
+    query: (sql: string, ...args: string[]) => ask<Rows>(HOST_DB_QUERY, { sql, args }),
+    exec: (sql: string, ...args: string[]) => ask<Outcome>(HOST_DB_EXEC, { sql, args }),
+    capability: (op: Operation) =>
+      ask<Verdict>(HOST_CAPABILITY_GET, { operation: documentOf(op) }),
+    info: () => ask<Info>(HOST_INFO, {}),
+    log: (level: Level, message: string, fields?: Record<string, string>) => {
+      host.notify(HOST_LOG, { level, message, fields: fields ?? {} });
+    },
     table: (name: string) => tableChain(opened(`table ${JSON.stringify(name)}`, name)),
     createTable: (name: string) => {
       const op: CreateTable = { op: "create_table", table: name, columns: [] };

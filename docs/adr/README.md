@@ -53,6 +53,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0041](0041-typescript-package-scaffold.md) | The TypeScript package and its version policy | Accepted | The package major is the protocol version it speaks, as a publishing convention rather than a protocol mechanism; ESM and CJS ship in directories that declare their own type; the test runner is Node itself |
 | [0042](0042-typescript-migration-contract.md) | The TypeScript migration contract | Accepted | One required member and four optional parts, two of them data; the module is the registration, so there is no Register; every type-level rule has a runtime twin, because .js migrations are checked by nothing |
 | [0043](0043-typescript-schema-builder.md) | The TypeScript schema builder | Accepted | A logical type is its own canonical spelling, branded and thrown at the call; one namespace object so `enum` keeps its name; an ordered shape table decides the bytes rather than insertion order; the window seals the un-awaited apply Go has no hole for |
+| [0044](0044-typescript-protocol-client.md) | The TypeScript protocol client | Accepted | The codec rebuilds the envelope rather than re-stringifying what it parsed, so the 43 vectors test an order; the stdout guard takes over process.stdout.write as Go takes over os.Stdout; a response nobody awaits is dropped, because the cancel race makes it ordinary |
 
 ## When to write one
 

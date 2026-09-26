@@ -72,10 +72,13 @@ test("the schema builder is what both formats ship, and it emits what the source
   const cjs = require(join(root, "dist", "cjs", "index.js")) as Record<string, unknown>;
 
   for (const module of [esm, cjs]) {
-    const { newSchema, encode, t } = module as {
+    const { newSchema, t } = module as {
       newSchema: (
         call: unknown,
-        sink: (ops: unknown[]) => Promise<void>,
+        host: {
+          call: (method: string, params: unknown) => Promise<unknown>;
+          notify: () => void;
+        },
       ) => {
         createTable: (name: string) => {
           column: (
@@ -86,7 +89,6 @@ test("the schema builder is what both formats ship, and it emits what the source
           };
         };
       };
-      encode: (op: unknown) => string;
       t: { uuid: () => string };
     };
 
@@ -98,15 +100,24 @@ test("the schema builder is what both formats ship, and it emits what the source
         mode: "apply",
         signal: new AbortController().signal,
       },
-      async (ops) => {
-        emitted.push(...ops);
+      {
+        call: async (method, params) => {
+          assert.equal(method, "host.schema.apply");
+
+          const { operations } = params as { operations: unknown[] };
+
+          emitted.push(...operations);
+
+          return { recorded: operations.length };
+        },
+        notify: () => undefined,
       },
     );
 
     await schema.createTable("users").column("id", t.uuid()).primaryKey("id").apply();
 
     assert.equal(
-      encode(emitted[0]),
+      JSON.stringify(emitted[0]),
       '{"op":"create_table","table":"users","columns":' +
         '[{"name":"id","type":"uuid","nullable":false}],"primary_key":["id"]}',
     );
@@ -151,20 +162,37 @@ test("every file the exports map names was built", () => {
 });
 
 test("every shipped declaration points at the JavaScript beside it, never at a source", () => {
-  for (const format of ["esm", "cjs"]) {
-    const directory = join(root, "dist", format);
+  let checked = 0;
 
-    for (const file of readdirSync(directory).filter((named) => named.endsWith(".d.ts"))) {
-      const declared = readFileSync(join(directory, file), "utf8");
+  for (const format of ["esm", "cjs"]) {
+    for (const file of declarationsUnder(join(root, "dist", format))) {
+      const declared = readFileSync(file, "utf8");
 
       assert.doesNotMatch(
         declared,
         /(from\s*|import\s*\(\s*)['"]\.\.?\/[^'"]*\.ts['"]/,
-        `dist/${format}/${file} imports a .ts source, which a consumer cannot resolve`,
+        `${file} imports a .ts source, which a consumer cannot resolve`,
       );
+
+      checked += 1;
     }
   }
+
+  assert.ok(checked > 2, "the walk found almost nothing, so it is not walking the tree");
 });
+
+/** declarationsUnder walks one directory tree, since a nested source makes a nested declaration. */
+function declarationsUnder(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      return declarationsUnder(path);
+    }
+
+    return entry.name.endsWith(".d.ts") ? [path] : [];
+  });
+}
 
 test("the rewrite reaches module specifiers and not the strings beside them", () => {
   const declared = shipped("dist/esm/name.d.ts");

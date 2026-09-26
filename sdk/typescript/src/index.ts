@@ -2,7 +2,22 @@ export { defineMigration } from "./migration.ts";
 export type { Down, Migration, Up, Validate } from "./migration.ts";
 
 export { newSchema } from "./schema.ts";
-export type { Call, Direction, Mode, Schema, Window } from "./schema.ts";
+export type {
+  Call,
+  Direction,
+  Host,
+  Info,
+  Level,
+  Mode,
+  Outcome,
+  Rows,
+  Schema,
+  Verdict,
+  Window,
+} from "./schema.ts";
+
+export { EXIT_FAILED, EXIT_OK, guard, run } from "./session.ts";
+export type { Options } from "./session.ts";
 
 export { columns } from "./builder.ts";
 export type {

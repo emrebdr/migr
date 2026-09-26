@@ -35,7 +35,10 @@ function schema(): Schema {
       mode: "apply",
       signal: new AbortController().signal,
     },
-    async () => undefined,
+    {
+      call: () => Promise.reject(new Error("this window answers no callback")),
+      notify: () => undefined,
+    },
   );
 }
 

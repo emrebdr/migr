@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { OperationError } from "./error.ts";
-import type { Operation } from "./operation.ts";
-import type { Window } from "./schema.ts";
+import type { Host, Window } from "./schema.ts";
 import { newSchema } from "./schema.ts";
 import { t } from "./type.ts";
 
@@ -15,11 +14,26 @@ import { t } from "./type.ts";
 // into a promise nobody reads, so the window remembers those too.
 
 /** opened returns a window over a sink, and the operations that sink was sent. */
-function opened(sink?: (ops: Operation[]) => Promise<void>): {
+function opened(refuse?: () => never): {
   schema: Window;
-  emitted: Operation[];
+  emitted: unknown[];
 } {
-  const emitted: Operation[] = [];
+  const emitted: unknown[] = [];
+  const host: Host = {
+    call: async <R>(_method: string, params: unknown): Promise<R> => {
+      if (refuse !== undefined) {
+        refuse();
+      }
+
+      const { operations } = params as { operations: unknown[] };
+
+      emitted.push(...operations);
+
+      return { recorded: operations.length } as R;
+    },
+    notify: () => undefined,
+  };
+
   const schema = newSchema(
     {
       migration: "20260727T153000",
@@ -27,10 +41,7 @@ function opened(sink?: (ops: Operation[]) => Promise<void>): {
       mode: "apply",
       signal: new AbortController().signal,
     },
-    sink ??
-      (async (ops) => {
-        emitted.push(...ops);
-      }),
+    host,
   );
 
   return { schema, emitted };
@@ -73,7 +84,7 @@ test("a chain nothing was added to is not a false alarm", async () => {
 });
 
 test("an apply that was never awaited surfaces its failure when the call ends", async () => {
-  const { schema } = opened(async () => {
+  const { schema } = opened(() => {
     throw new Error("the host refused it");
   });
 

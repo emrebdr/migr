@@ -55,13 +55,22 @@ const DECLARED_SPECIFIER = /(from\s*|import\s*\(\s*)(['"])(\.\.?\/[^'"]*)\.ts\2/
 
 // rewriteDeclarations points every declaration at the JavaScript beside it rather than at a source.
 function rewriteDeclarations() {
-  for (const file of readdirSync(declarationsIn)) {
-    if (file.endsWith(".d.ts")) {
-      const path = join(declarationsIn, file);
-
-      writeFileSync(path, readFileSync(path, "utf8").replace(DECLARED_SPECIFIER, "$1$2$3.js$2"));
-    }
+  for (const path of declarationsUnder(declarationsIn)) {
+    writeFileSync(path, readFileSync(path, "utf8").replace(DECLARED_SPECIFIER, "$1$2$3.js$2"));
   }
+}
+
+// declarationsUnder walks a directory tree, since one source directory makes one output directory.
+function declarationsUnder(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      return declarationsUnder(path);
+    }
+
+    return entry.name.endsWith(".d.ts") ? [path] : [];
+  });
 }
 
 // bundle emits one module format from the single entry point.

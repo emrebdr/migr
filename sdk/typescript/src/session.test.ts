@@ -389,6 +389,48 @@ test("$/cancel answers the named request canceled, and the migration stops at it
   assert.equal(await ended(session), EXIT_OK);
 });
 
+test("a migration that finishes after the cancel is still answered canceled, not answered done", async () => {
+  const racing: Migration = {
+    async up(s) {
+      await s.apply({ op: "raw", driver: "postgres", sql: "SELECT 1" });
+
+      await new Promise<void>((resolve) => {
+        s.signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+    },
+  };
+
+  const session = await handshaken([FILE, { default: racing }]);
+
+  session.send(request(2, "migration.execute", { id: VERSION, direction: "up", mode: "apply" }));
+
+  const emitting = await session.take();
+
+  session.send(response(emitting.id as number, { recorded: 1 }));
+  session.send(notification("$/cancel", { id: 2 }));
+
+  const answer = failureOf(await session.take());
+
+  assert.equal(answer.slug, "canceled");
+  assert.equal(await ended(session), EXIT_OK);
+});
+
+test("a host that records fewer operations than it was sent fails the migration", async () => {
+  const session = await handshaken([FILE, { default: creating }]);
+
+  session.send(request(2, "migration.execute", { id: VERSION, direction: "up", mode: "apply" }));
+
+  const emitting = await session.take();
+
+  session.send(response(emitting.id as number, { recorded: 0 }));
+
+  const answer = failureOf(await session.take());
+
+  assert.equal(answer.slug, "migration_failed");
+  assert.match(answer.message, /recorded 0 of the 1 operations sent/);
+  assert.equal(await ended(session), EXIT_OK);
+});
+
 test("cancelling an id nothing is running is ignored, silently", async () => {
   const session = await handshaken([FILE, { default: creating }]);
 
@@ -502,6 +544,9 @@ test("parameters of the wrong shape are refused as that, and the session continu
   assert.equal(failureOf(await session.take()).slug, "invalid_params");
 
   session.send(request(3, "migration.validate", {}));
+  assert.equal(failureOf(await session.take()).slug, "invalid_params");
+
+  session.send(request(4, "migration.validate", { id: "" }));
   assert.equal(failureOf(await session.take()).slug, "invalid_params");
 
   assert.equal(await ended(session), EXIT_OK);

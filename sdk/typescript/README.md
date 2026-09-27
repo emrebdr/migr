@@ -3,8 +3,8 @@
 Write database migrations in TypeScript and run them against any engine
 [migr](https://github.com/emrebdr/migr) supports.
 
-> **Pre-alpha.** A migration can be written and cannot yet be run by `migr`: the
-> `migr-runtime-node` process that starts this SDK lands in M7-T5. Do not depend on it.
+> **Pre-alpha.** A migration can be written and run by `migr-runtime-node`, and `migr` cannot yet
+> start one: the adapter that spawns this runtime lands in M7-T6. Do not depend on it.
 
 ```console
 npm install @migr/sdk@alpha
@@ -189,6 +189,52 @@ Anything the language itself prints goes to **stderr**, which the engine passes 
 never parses — `console.log` in a migration is redirected there before the first protocol message,
 because stdout carries protocol and nothing else.
 
+## How a migration is loaded
+
+Installing this package installs an executable, **`migr-runtime-node`**. It is what the engine
+spawns, it speaks the protocol over its stdin and stdout, and it is the only thing that reads your
+migration files:
+
+```console
+$ ls migrations
+20260727T153000_add_users.ts  20260727T153100_add_teams.js  20260727T153200_add_plans.mjs
+```
+
+All three load, and each may use either module system — a `.js` file is an ES module where your
+`package.json` says `"type": "module"` and CommonJS (`module.exports = { up }`) where it does not,
+which is Node's own rule rather than one of ours. `.mjs` and `.mts` are always modules, `.cjs` and
+`.cts` always CommonJS.
+
+**TypeScript needs no build step.** Every `.ts` file is compiled by esbuild as it is imported, which
+is why esbuild is a real dependency of this package and not a development one. Two things follow, and
+both are worth knowing before you hit them:
+
+- **It transpiles and does not typecheck.** A type error does not stop a migration — esbuild removes
+  the types and never checks them. `tsc --noEmit` stays your own gate, in your editor and in CI.
+- **`tsconfig.json` is not read.** No `paths` aliases, no `extends`, no `compilerOptions`. An import
+  that relies on an alias will not resolve.
+
+What _does_ resolve is your project's own TypeScript, spelled the only way `tsc` permits:
+
+```ts
+import { tenants } from "../db/schema.js"; // resolves ../db/schema.ts
+```
+
+`tsc` refuses a `./x.ts` specifier unless `allowImportingTsExtensions` is on, so `.js` is what a
+TypeScript project must write — and it is the one Node cannot find. The runtime retries the
+TypeScript sibling when there is no such JavaScript file. Stack traces point at your `.ts` line,
+because source maps are on.
+
+### The migrations directory holds migrations
+
+It is flat, and everything in it is a migration. A subdirectory, a `README.md`, a `helpers.ts`, a
+filename the grammar refuses — each one fails, and **every problem is reported at once** rather than
+the first. Files beginning with `.` are the one exemption.
+
+That is deliberately strict. The alternative is skipping what does not parse, and the cost of that is
+a migration someone wrote, committed, and had reviewed going quietly unrun. Shared helpers live
+outside the directory, where the import above reaches them.
+
 ## The version means something
 
 **The major version is the protocol version this SDK speaks.** `1.x.y` speaks
@@ -212,7 +258,7 @@ The package ships ESM and CommonJS side by side, each in a directory that declar
 so a plain `.d.ts` beside each bundle is unambiguous:
 
 ```
-dist/esm/  index.js  index.d.ts  package.json {"type":"module"}
+dist/esm/  index.js  index.d.ts  package.json {"type":"module"}     migr-runtime-node.js
 dist/cjs/  index.js  index.d.ts  package.json {"type":"commonjs"}
 ```
 
@@ -222,7 +268,9 @@ const { PROTOCOL_VERSION } = require("@migr/sdk"); // CJS
 ```
 
 `npm test` builds first and then loads both artifacts, so "builds to both" is measured on every run
-rather than asserted by a config file.
+rather than asserted by a config file. The executable is a shebang and three lines, generated beside
+the ESM bundle it loads — one test spawns it by path, so the shebang and the executable bit are
+driven rather than assumed.
 
 ## Working on it
 

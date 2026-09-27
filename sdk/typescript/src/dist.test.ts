@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -159,6 +159,26 @@ test("every file the exports map names was built", () => {
       shipped(named);
     }
   }
+});
+
+test("the executable the bin field names was built, and it loads the bundle beside it", () => {
+  const named = manifest()["bin"] as unknown as Record<string, string>;
+  const path = named["migr-runtime-node"];
+
+  assert.ok(path, "package.json installs no migr-runtime-node");
+
+  const source = shipped(path);
+
+  assert.match(source, /^#!\/usr\/bin\/env node\n/, "the executable opens with no shebang");
+  assert.match(
+    source,
+    /from "\.\/index\.js"/,
+    "the executable does not load the bundle beside it",
+  );
+  assert.ok(
+    statSync(join(root, path)).mode & 0o111,
+    "the executable is not executable, so npm links a file nothing can run",
+  );
 });
 
 test("every shipped declaration points at the JavaScript beside it, never at a source", () => {

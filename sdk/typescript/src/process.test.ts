@@ -1,58 +1,66 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
-// The three rules only a real process has, which in-memory streams cannot see.
+// The rules only a real process has, driven through the executable this package installs.
 //
-// docs/protocol.md §2.1 calls a corrupted stdout the commonest way a new SDK fails, and it fails as
-// a parse error three messages later rather than where the print happened -- so the guard is worth a
+// docs/protocol.md §2.1 calls a corrupted stdout the commonest way a new SDK fails, and it fails as a
+// parse error three messages later rather than where the print happened -- so the guard is worth a
 // spawned child. §9 owes two more: end of file on stdin ends the process, because the engine that
 // held the other end of that pipe is gone; and after answering shutdown it exits 0.
 //
-// The child imports the built ESM entry rather than the sources beside it, so what is driven here is
-// what ships. It does not resolve @migr/sdk by name: Node's self-reference does not cross a
-// node_modules boundary, and a runner written outside the package has no other way in.
+// What is spawned is dist/esm/migr-runtime-node.js itself, by path and not through node, so the
+// shebang and the executable bit are driven too -- that file is what npm links into a project's
+// node_modules/.bin, and nothing else here reads it. The project it is pointed at is a real one: a
+// package.json, a node_modules/@migr/sdk, and migration files on disk.
 
-const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, "..");
+const sdk = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** runnerFor is a runtime written the way M7-T5's binary will be, whose migration prints twice.
+/** RUNTIME is the executable package.json's bin field names, which is what a project runs. */
+const RUNTIME = join(sdk, "dist", "esm", "migr-runtime-node.js");
+
+/** MIGRATIONS are the two files every project here holds, one of each format that matters.
  *
- * Both prints are inside the migration, which is where an author's are and which is after the guard
- * is installed. §2.1 asks for the redirect "before the first message", so a print from module scope
- * -- before run is even called -- still reaches stdout. That hole is Go's too, and it fails loudly:
- * the engine reports a line it could not frame, naming it.
+ * The .ts one prints twice from inside up, which is where an author's prints are and which is after
+ * the guard is installed. §2.1 asks for the redirect "before the first message", so a print from
+ * module scope -- before main is even called -- still reaches stdout. That hole is Go's too, and it
+ * fails loudly: the engine reports a line it could not frame, naming it.
+ *
+ * It authors no down, so a rollback of it is §7.4's refusal rather than a failure. The .mjs one
+ * authors one, and declares that it follows the first.
  */
-function runnerFor(entry: string): string {
-  return `import { Registry, run } from ${JSON.stringify(entry)};
+const MIGRATIONS: Record<string, string> = {
+  "migrations/20260727T153000_add_users.ts": `import { defineMigration, t } from "@migr/sdk";
 
-const code = await run({
-  load: async () => {
-    const registry = new Registry();
+enum Width {
+  Email = 255,
+}
 
-    registry.add("20260727T153000_add_users.ts", {
-      default: {
-        up: async (s) => {
-          console.log("a console line must not reach stdout");
-          process.stdout.write("a direct write must not reach stdout\\n");
+export default defineMigration({
+  async up(s) {
+    console.log("a console line must not reach stdout");
+    process.stdout.write("a direct write must not reach stdout\\n");
 
-          await s.apply({ op: "raw", driver: "postgres", sql: "SELECT 1" });
-        },
-      },
-    });
-
-    return registry;
+    await s.createTable("users").column("email", t.string(Width.Email)).apply();
   },
 });
+`,
+  "migrations/20260727T153100_add_teams.mjs": `export const dependencies = ["20260727T153000"];
 
-process.exit(code);
-`;
+export async function up(s) {
+  await s.createTable("teams").column("name", "string(80)").apply();
 }
+
+export async function down(s) {
+  await s.table("teams").apply();
+}
+`,
+};
 
 /** Child is one spawned runtime, and the two streams a test reads it through. */
 interface Child {
@@ -68,16 +76,40 @@ interface Child {
   done: Promise<number>;
 }
 
-/** started writes a runtime that imports what was built and spawns it over real pipes. */
-function started(): Child & { remove(): void } {
-  const written = mkdtempSync(join(tmpdir(), "migr-process-"));
-  const runner = join(written, "runtime.mjs");
+/** Runtime is one spawned runtime and the project it was pointed at. */
+interface Runtime extends Child {
+  /** The project root, which §9 makes the working directory and which the handshake is built from. */
+  root: string;
+  /** The handshake naming this project's migrations directory, which arrives absolute. */
+  handshake: string;
+  /** Kills the child and removes the project, whatever the test made of either. */
+  remove(): void;
+}
 
-  writeFileSync(runner, runnerFor(pathToFileURL(join(root, "dist", "esm", "index.js")).href));
+/** started writes a project, spawns the runtime in it, and returns both over real pipes. */
+function started(files: Record<string, string> = MIGRATIONS): Runtime {
+  const root = mkdtempSync(join(tmpdir(), "migr-process-"));
 
-  const child = spawn(process.execPath, [runner], { stdio: ["pipe", "pipe", "pipe"] });
+  writeFileSync(join(root, "package.json"), '{"name":"fixture","type":"module"}\n');
+  mkdirSync(join(root, "node_modules", "@migr"), { recursive: true });
+  symlinkSync(sdk, join(root, "node_modules", "@migr", "sdk"));
+  mkdirSync(join(root, "migrations"), { recursive: true });
 
-  return { ...read(child), remove: () => rmSync(written, { recursive: true, force: true }) };
+  for (const [path, contents] of Object.entries(files)) {
+    writeFileSync(join(root, path), contents);
+  }
+
+  const child = spawn(RUNTIME, { cwd: root, stdio: ["pipe", "pipe", "pipe"] });
+
+  return {
+    ...read(child),
+    root,
+    handshake: handshakeFor(join(root, "migrations")),
+    remove: () => {
+      child.kill();
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
 }
 
 /** read collects one child's two streams and its exit status, line by line on stdout. */
@@ -154,21 +186,29 @@ function within<T>(waiting: Promise<T>, what: string): Promise<T> {
   ]);
 }
 
-/** HANDSHAKE is the first line on the channel, which no other request may precede. */
-const HANDSHAKE =
-  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":[1],' +
-  '"irVersion":1,"client":{"name":"migr","version":"0.1.0"},"migrations":' +
-  '{"dir":"/srv/app/migrations","language":"typescript"},"database":' +
-  '{"name":"default","driver":"postgres"}}}';
+/** handshakeFor is the first line on the channel, which no other request may precede. */
+function handshakeFor(dir: string): string {
+  return (
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersions":[1],' +
+    `"irVersion":1,"client":{"name":"migr","version":"0.1.0"},"migrations":` +
+    `{"dir":${JSON.stringify(dir)},"language":"typescript"},"database":` +
+    '{"name":"default","driver":"postgres"}}}'
+  );
+}
+
+/** opened sends the handshake and reads its answer, which every other exchange follows. */
+async function opened(child: Runtime): Promise<string> {
+  child.send(child.handshake);
+
+  return child.take();
+}
 
 test("the handshake is answered on stdout, and shutdown is answered before it exits 0", async () => {
   const child = started();
 
   try {
-    child.send(HANDSHAKE);
-
     assert.match(
-      await child.take(),
+      await opened(child),
       /^\{"jsonrpc":"2\.0","id":1,"result":\{"protocolVersion":1,/,
     );
 
@@ -181,12 +221,79 @@ test("the handshake is answered on stdout, and shutdown is answered before it ex
   }
 });
 
+test("every migration in the directory is discovered, with what each one declares", async () => {
+  const child = started();
+
+  try {
+    await opened(child);
+
+    child.send('{"jsonrpc":"2.0","id":2,"method":"migration.discover","params":{}}');
+
+    assert.equal(
+      await child.take(),
+      '{"jsonrpc":"2.0","id":2,"result":{"migrations":[' +
+        '{"version":"20260727T153000","file":"20260727T153000_add_users.ts","dependencies":[]},' +
+        '{"version":"20260727T153100","file":"20260727T153100_add_teams.mjs",' +
+        '"dependencies":["20260727T153000"]}]}}',
+    );
+  } finally {
+    child.remove();
+  }
+});
+
+test("a TypeScript migration on disk is executed, and emits the IR the document specifies", async () => {
+  const child = started();
+
+  try {
+    await opened(child);
+
+    child.send(
+      '{"jsonrpc":"2.0","id":2,"method":"migration.execute","params":' +
+        '{"id":"20260727T153000","direction":"up","mode":"apply"}}',
+    );
+
+    assert.equal(
+      await child.take(),
+      '{"jsonrpc":"2.0","id":1,"method":"host.schema.apply","params":{"operations":' +
+        '[{"op":"create_table","table":"users","columns":' +
+        '[{"name":"email","type":"string(255)","nullable":false}]}]}}',
+    );
+
+    child.send('{"jsonrpc":"2.0","id":1,"result":{"recorded":1}}');
+
+    assert.equal(await child.take(), '{"jsonrpc":"2.0","id":2,"result":{"operations":1}}');
+  } finally {
+    child.remove();
+  }
+});
+
+test("a migration that authors no down refuses the rollback rather than emitting nothing", async () => {
+  const child = started();
+
+  try {
+    await opened(child);
+
+    child.send(
+      '{"jsonrpc":"2.0","id":2,"method":"migration.execute","params":' +
+        '{"id":"20260727T153000","direction":"down","mode":"apply"}}',
+    );
+
+    assert.equal(
+      await child.take(),
+      '{"jsonrpc":"2.0","id":2,"error":{"code":-32012,"message":' +
+        '"20260727T153000_add_users.ts authors no down of its own",' +
+        '"data":{"slug":"no_down_authored"}}}',
+    );
+  } finally {
+    child.remove();
+  }
+});
+
 test("what a migration prints goes to stderr, and stdout carries protocol and nothing else", async () => {
   const child = started();
 
   try {
-    child.send(HANDSHAKE);
-    await child.take();
+    await opened(child);
 
     child.send(
       '{"jsonrpc":"2.0","id":2,"method":"migration.execute","params":' +
@@ -204,6 +311,72 @@ test("what a migration prints goes to stderr, and stdout carries protocol and no
     assert.equal(await child.done, 0);
     assert.match(child.logged(), /a console line must not reach stdout/);
     assert.match(child.logged(), /a direct write must not reach stdout/);
+  } finally {
+    child.remove();
+  }
+});
+
+test("a directory nothing can be loaded from is reported at migration.discover", async () => {
+  const child = started({ "migrations/README.md": "these are the migrations\n" });
+
+  try {
+    await opened(child);
+
+    child.send('{"jsonrpc":"2.0","id":2,"method":"migration.discover","params":{}}');
+
+    const answered = await child.take();
+
+    assert.match(answered, /"code":-32603/);
+    assert.match(answered, /README\.md is not/);
+  } finally {
+    child.remove();
+  }
+});
+
+test("a migrations directory that is not there is reported at migration.discover", async () => {
+  const child = started();
+
+  try {
+    child.send(handshakeFor(join(child.root, "not-the-migrations-directory")));
+    await child.take();
+
+    child.send('{"jsonrpc":"2.0","id":2,"method":"migration.discover","params":{}}');
+
+    const answered = await child.take();
+
+    assert.match(answered, /"code":-32603/);
+    assert.match(answered, /not-the-migrations-directory could not be read/);
+  } finally {
+    child.remove();
+  }
+});
+
+test("a stack trace inside a migration names the author's line, since source maps are enabled", async () => {
+  const child = started({
+    "migrations/20260727T153000_add_users.ts": `enum Width {
+  Email = 255,
+}
+
+export async function up(s) {
+  void Width.Email;
+
+  s.log("error", String(new Error("where am I").stack).split("\\n")[1]);
+}
+`,
+  });
+
+  try {
+    await opened(child);
+
+    child.send(
+      '{"jsonrpc":"2.0","id":2,"method":"migration.execute","params":' +
+        '{"id":"20260727T153000","direction":"up","mode":"apply"}}',
+    );
+
+    const logged = await child.take();
+
+    assert.match(logged, /"method":"host\.log"/);
+    assert.match(logged, /20260727T153000_add_users\.ts:8/);
   } finally {
     child.remove();
   }

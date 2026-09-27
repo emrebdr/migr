@@ -1,11 +1,22 @@
-// Builds @migr/sdk to both module formats, each beside the declarations that describe it.
+// Builds @migr/sdk to both module formats, each beside the declarations that describe it, and the
+// executable it installs as migr-runtime-node.
 //
 // esbuild emits the bundles and tsc emits the types, which is the split the package already pays
-// for: M7-T5 ships esbuild as a runtime dependency to transpile a user's own .ts migrations, so
-// nothing here is a dependency the package would not carry anyway (ADR 0041).
+// for: it ships esbuild as a runtime dependency to transpile a user's own .ts migrations, so nothing
+// here is a dependency the package would not carry anyway (ADR 0041). That dependency is external to
+// both bundles -- it is loaded dynamically, from the hook that needs it, and bundling a transpiler
+// into a library is not what "bundle" is for.
 
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +39,22 @@ const targets = [
 
 // declarationsIn is the directory tsc emits into, which every other target is copied from.
 const declarationsIn = targets[0].dir;
+
+// The executable this package installs as migr-runtime-node, which is a shebang and three lines.
+//
+// It is generated rather than committed for the same reason each format's package.json is: dist/ is
+// the answer to what ships. A second bundled entry point would put a whole second copy of the
+// library in the package, and there is nothing here worth typechecking -- it names one export and
+// exits with what that returns. process.test.ts drives this file itself.
+const runtime = {
+  name: "migr-runtime-node.js",
+  dir: targets[0].dir,
+  source: `#!/usr/bin/env node
+import { main } from "./index.js";
+
+process.exit(await main());
+`,
+};
 
 // emitDeclarations runs tsc over the build config, which excludes the tests from what ships.
 function emitDeclarations() {
@@ -80,11 +107,20 @@ function bundle(target) {
     outfile: join(target.dir, "index.js"),
     format: target.format,
     bundle: true,
+    external: ["esbuild"],
     platform: "node",
     target: "node24",
     sourcemap: true,
     logLevel: "warning",
   });
+}
+
+// writeRuntime puts the executable beside the ESM bundle it loads, and marks it executable.
+function writeRuntime() {
+  const path = join(runtime.dir, runtime.name);
+
+  writeFileSync(path, runtime.source);
+  chmodSync(path, 0o755);
 }
 
 // markFormat writes the package.json that fixes how Node and TypeScript read one directory.
@@ -119,6 +155,7 @@ emitDeclarations();
 rewriteDeclarations();
 await Promise.all(targets.map(bundle));
 shareDeclarations();
+writeRuntime();
 
 for (const target of targets) {
   markFormat(target);

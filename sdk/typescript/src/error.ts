@@ -7,6 +7,7 @@
 /** MigrationErrorCode is every reason a module cannot be read as the migration its filename names. */
 export type MigrationErrorCode =
   | "malformed_name"
+  | "not_loadable"
   | "no_migration"
   | "ambiguous_module"
   | "both_directions"
@@ -36,8 +37,13 @@ export class MigrationError extends Error {
   readonly file: string | undefined;
 
   /** Builds one refusal, naming the rule and the file it was found in. */
-  constructor(code: MigrationErrorCode, file: string | undefined, message: string) {
-    super(message);
+  constructor(
+    code: MigrationErrorCode,
+    file: string | undefined,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
 
     this.name = "MigrationError";
     this.code = code;

@@ -152,9 +152,11 @@ than a restore.
 ## The idea, in code
 
 > **Both halves are real.** The Go SDK is the contract, the protocol client, and the whole
-> twenty-operation schema builder (M6-T7, M6-T8); the TypeScript SDK is the contract and the same
-> builder, emitting the same IR (M7-T2, M7-T3). What TypeScript is still missing is the process
-> that runs it — the protocol client is M7-T4 and `migr-runtime-node` is M7-T5.
+> twenty-operation schema builder (M6-T7, M6-T8); the TypeScript SDK is now all of that plus the
+> process that runs it — the contract, the same builder emitting the same IR, the protocol client,
+> and the `migr-runtime-node` executable that loads `.ts`, `.js`, and `.mjs` migrations with no build
+> step (M7-T2 through M7-T5). What is missing is the engine side: the adapter that starts that
+> process is M7-T6, and the wiring that lets `migr up` reach it is M7-T8.
 
 ```go
 package migrations
@@ -371,6 +373,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0042](docs/adr/0042-typescript-migration-contract.md) | The TypeScript migration contract |
 | [0043](docs/adr/0043-typescript-schema-builder.md) | The TypeScript schema builder |
 | [0044](docs/adr/0044-typescript-protocol-client.md) | The TypeScript protocol client |
+| [0045](docs/adr/0045-node-runtime-binary.md) | The Node runtime binary |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

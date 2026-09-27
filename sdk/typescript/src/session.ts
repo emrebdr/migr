@@ -55,7 +55,7 @@ import {
   PROTOCOL_VERSION,
   SHUTDOWN,
 } from "./wire/method.ts";
-import type { Direction, ExecuteResult, InitializeParams } from "./wire/payload.ts";
+import type { Direction, Discovered, ExecuteResult, InitializeParams } from "./wire/payload.ts";
 import { readCancel, readExecute, readInitialize, readValidate } from "./wire/payload.ts";
 import { dependencies } from "./migration.ts";
 
@@ -211,7 +211,11 @@ async function serve(
 
     loaded ??= options.load(project);
 
-    return loaded;
+    try {
+      return await loaded;
+    } catch (thrown) {
+      throw unloadable(thrown);
+    }
   };
 
   const initialize = async (id: number, params: unknown): Promise<Message> => {
@@ -246,13 +250,7 @@ async function serve(
   const discover = async (id: number): Promise<Message> => {
     const registry = await migrations();
 
-    return response(id, {
-      migrations: registry.all().map((entry) => ({
-        version: entry.version,
-        file: entry.file,
-        dependencies: [...dependencies(entry.migration)],
-      })),
-    });
+    return response(id, { migrations: listed(registry) });
   };
 
   const execute = async (params: unknown, signal: AbortSignal): Promise<ExecuteResult> => {
@@ -447,6 +445,26 @@ async function serve(
   await Promise.allSettled([...working]);
 
   return code;
+}
+
+/** listed reports what a registry read, or everything wrong with the directory it was read from. */
+function listed(registry: Registry): Discovered[] {
+  try {
+    return registry.all().map((entry) => ({
+      version: entry.version,
+      file: entry.file,
+      dependencies: [...dependencies(entry.migration)],
+    }));
+  } catch (thrown) {
+    throw unloadable(thrown);
+  }
+}
+
+/** unloadable reports migrations that could not be read, with the code sdk/go's discover uses. */
+function unloadable(thrown: unknown): ProtocolError {
+  return thrown instanceof ProtocolError
+    ? thrown
+    : new ProtocolError(INTERNAL_ERROR, describe(thrown));
 }
 
 /** performed runs one direction of a migration, then seals the window it acted through. */

@@ -26,6 +26,9 @@
     },
     "./package.json": "./package.json"
   },
+  "bin": {
+    "migr-runtime-node": "./dist/esm/migr-runtime-node.js"
+  },
   "files": [
     "dist",
     "README.md"
@@ -40,9 +43,11 @@
     "fmt": "prettier --write .",
     "clean": "node --eval \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
+  "dependencies": {
+    "esbuild": "^0.25.0"
+  },
   "devDependencies": {
     "@types/node": "^24.13.3",
-    "esbuild": "^0.25.0",
     "prettier": "^3.4.0",
     "typescript": "^5.8.0"
   }

@@ -11,7 +11,8 @@
 // one part of the TypeScript format the CLI legitimately owns, so it lives under the
 // prefix internal/cli is carved out of.
 //
-// The template is written against the contract M7-T2 landed and nothing beyond it. The
-// schema builder is M7-T3 and the runtime that executes the file is M7-T5, so a
-// migration created today typechecks, states both its directions, and cannot yet run.
+// The template is written against the contract M7-T2 landed and the schema builder
+// M7-T3 landed, and M7-T5 shipped the migr-runtime-node process that executes it. What
+// is still missing is the adapter that starts one, which is M7-T6 — so a migration
+// created today typechecks, states both its directions, and cannot yet be run by migr.
 package typescript

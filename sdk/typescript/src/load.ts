@@ -55,6 +55,11 @@ export class Registry {
     }
   }
 
+  /** refuse records a file that could not even be offered, which is the loader's own to find. */
+  refuse(problem: Error): void {
+    this.#problems.push(problem);
+  }
+
   /** all returns what was read, in version order, reporting every problem rather than the first. */
   all(): Loaded[] {
     if (this.#problems.length > 0) {

@@ -22,7 +22,7 @@ import { describeNotifications, notifies } from "./method.ts";
 export const JSONRPC = "2.0";
 
 /** MEMBERS are the envelope's members, in the order every documented message emits them. */
-const MEMBERS = ["jsonrpc", "method", "id", "params", "result", "error"] as const;
+const MEMBERS = ["jsonrpc", "id", "method", "params", "result", "error"] as const;
 
 /** FAILURE_MEMBERS are an error object's members, in the order §7.1 shows them. */
 const FAILURE_MEMBERS = ["code", "message", "data"] as const;

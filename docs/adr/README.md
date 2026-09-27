@@ -54,6 +54,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0042](0042-typescript-migration-contract.md) | The TypeScript migration contract | Accepted | One required member and four optional parts, two of them data; the module is the registration, so there is no Register; every type-level rule has a runtime twin, because .js migrations are checked by nothing |
 | [0043](0043-typescript-schema-builder.md) | The TypeScript schema builder | Accepted | A logical type is its own canonical spelling, branded and thrown at the call; one namespace object so `enum` keeps its name; an ordered shape table decides the bytes rather than insertion order; the window seals the un-awaited apply Go has no hole for |
 | [0044](0044-typescript-protocol-client.md) | The TypeScript protocol client | Accepted | The codec rebuilds the envelope rather than re-stringifying what it parsed, so the 43 vectors test an order; the stdout guard takes over process.stdout.write as Go takes over os.Stdout; a response nobody awaits is dropped, because the cancel race makes it ordinary |
+| [0045](0045-node-runtime-binary.md) | The Node runtime binary | Accepted | module.registerHooks with an esbuild transform, because Node's own stripping refuses an enum and a synchronous load hook cannot await; the module system is read from the nearest package.json, since Node reports none for TypeScript and a CommonJS namespace carries both export styles at once; the executable is generated into dist/ |
 
 ## When to write one
 

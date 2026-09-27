@@ -19,6 +19,10 @@ export type {
 export { EXIT_FAILED, EXIT_OK, guard, run } from "./session.ts";
 export type { Options } from "./session.ts";
 
+export { main } from "./main.ts";
+
+export { fromDirectory } from "./directory.ts";
+
 export { columns } from "./builder.ts";
 export type {
   AlterChange,

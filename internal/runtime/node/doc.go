@@ -50,5 +50,18 @@
 // --max-old-space-size, and a print from a preloaded module fails loudly as a line the
 // engine cannot frame, which is the hole ADR 0044 already documents for module scope.
 //
-// Implemented in M7-T6 (see TASKS.md).
+// # Where the cross-language proof lives
+//
+// Here, in conformance_test.go, behind //go:build conformance: depguard permits only cmd/migr to
+// name a concrete runtime, so the suite in test/conformance/runtime cannot start one and each
+// adapter carries its own run. It writes the fixture set into a project shaped like an install --
+// a "type": "module" package.json, a node_modules/@migr/sdk, the sources under migrations/ -- and
+// holds every operation the runtime emits to a file that belongs to no language.
+//
+// The tag is there because Node is a toolchain make test may not have; make test-conformance
+// reaches it and builds the SDK first. Under the tag a missing node or an unbuilt dist is a
+// failure, where this package's untagged tests skip: asking for that run is a statement that the
+// toolchain is present, and a green run that proved nothing is worse than a red one.
+//
+// Implemented in M7-T6, and held to the fixture set in M7-T7 (see TASKS.md).
 package node

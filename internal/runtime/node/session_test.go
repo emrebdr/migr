@@ -2,11 +2,13 @@ package node
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
@@ -27,9 +29,10 @@ import (
 // migr validate already runs over driver.Offline, and it is what lets the whole path be exercised
 // here rather than waiting for M7-T8's PostgreSQL.
 //
-// Two skips, both announced, because this is the one test in the package that needs the real
-// toolchain and the built package: CI installs Node on both legs and make build runs before
-// make test, so it runs there rather than skipping.
+// Two skips, both announced, because these are the tests in the package that need the real toolchain
+// and the built package: CI installs Node on both legs and make build runs before make test, so they
+// run there rather than skipping. The same two conditions are a failure rather than a skip in
+// conformance_test.go, where asking for the run is itself a statement that the toolchain is there.
 
 // fixture is the one migration this project holds, whose enum is what proves esbuild ran.
 const fixture = `import { defineMigration, t } from "@migr/sdk";
@@ -92,15 +95,24 @@ func started(t *testing.T, root string) *runtime.Session {
 func requireToolchain(t *testing.T) {
 	t.Helper()
 
+	if missing := missingToolchain(); missing != "" {
+		t.Skip(missing)
+	}
+}
+
+// missingToolchain reports which half of the real toolchain is absent, and nothing when both are there.
+func missingToolchain() string {
 	if _, err := exec.LookPath(program); err != nil {
-		t.Skipf("no %s on PATH, which this adapter's own run needs: %v", program, err)
+		return fmt.Sprintf("no %s on PATH, which this adapter's own run needs: %v", program, err)
 	}
 
 	built := filepath.Join(sdkDir, "dist", "esm", executableName+".js")
 
 	if _, err := os.Stat(built); err != nil {
-		t.Skipf("%s is not built, so there is nothing to start: run `make build`", built)
+		return fmt.Sprintf("%s is not built, so there is nothing to start: run `make build`", built)
 	}
+
+	return ""
 }
 
 // prepared writes a project with the SDK linked where an install in it would have left one.
@@ -147,6 +159,27 @@ func written(t *testing.T, root string) {
 
 	write(t, filepath.Join(root, "package.json"), `{"name":"fixture","type":"module"}`)
 	write(t, filepath.Join(root, "migrations", filename), fixture)
+}
+
+func TestBothHalvesOfTheRealToolchainAreReportedByName(t *testing.T) {
+	t.Log("These two sentences are a skip here and a failure under the conformance tag, so what")
+	t.Log("they say is the only thing an operator has to go on in either case.")
+
+	held := sdkDir
+
+	t.Cleanup(func() { sdkDir = held })
+
+	sdkDir = t.TempDir()
+
+	if missing := missingToolchain(); !strings.Contains(missing, "make build") {
+		t.Errorf("an unbuilt package is reported as %q", missing)
+	}
+
+	t.Setenv("PATH", t.TempDir())
+
+	if missing := missingToolchain(); !strings.Contains(missing, program) {
+		t.Errorf("a machine with no node is reported as %q", missing)
+	}
 }
 
 func TestTheAdapterStartsARuntimeThatLoadsTheProjectsMigrations(t *testing.T) {

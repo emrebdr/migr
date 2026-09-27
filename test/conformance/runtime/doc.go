@@ -5,7 +5,8 @@
 //
 //	conformance.Suite{Runtime: adapter, Project: project}.Run(t)
 //
-// Status: complete (M6-T9). Go passes it; TypeScript is M7-T7.
+// Status: complete. Go passes it (M6-T9) and TypeScript passes it (M7-T7), which is the point at
+// which "identical IR from two languages" stopped being a claim.
 //
 // # What this proves that nothing below it did
 //
@@ -74,11 +75,17 @@
 // # Where a language's run lives
 //
 // Not here. depguard permits only cmd/migr to name a concrete runtime, so each adapter runs the
-// suite from its own package -- internal/runtime/golang/conformance_test.go is the worked example
-// -- exactly as M5-T2 put the end-to-end CLI suite in cmd/migr for the same reason. This package
-// must therefore never import internal/runtime/<language>.
+// suite from its own package -- internal/runtime/golang/conformance_test.go and
+// internal/runtime/node/conformance_test.go -- exactly as M5-T2 put the end-to-end CLI suite in
+// cmd/migr for the same reason. This package must therefore never import
+// internal/runtime/<language>.
 //
-// # No build tag
+// Assembling the sources is each language's own problem and the two look nothing alike: Go writes a
+// go.mod with a replace onto sdk/go and has the adapter build a runner; TypeScript writes a
+// package.json and links node_modules/@migr/sdk, and the runtime compiles each migration as it
+// imports it. That difference is why Sources hands over the files rather than a project.
+//
+// # No build tag here, and one on the TypeScript run
 //
 // The suite needs no database, and the Go run needs no toolchain make test does not already have:
 // internal/runtime/golang builds with go build, and the Go toolchain is present by definition when
@@ -86,7 +93,11 @@
 // to every linter but the comment checker, since golangci-lint is invoked with no --build-tags,
 // and invisible to CI, which calls lint, test, and build.
 //
-// The tag is for a toolchain make test might genuinely not have, which begins at Node in M7.
+// The tag is for a toolchain make test might genuinely not have, which begins at Node. So
+// internal/runtime/node's run is tagged conformance and reached by make test-conformance, which
+// builds the SDK first; the tag is named in .golangci.yml, so that file is still linted. Under the
+// tag a missing node is a failure and not a skip, because asking for the run is itself a statement
+// that the toolchain is there.
 //
 // # Two notes for whoever adds a language
 //

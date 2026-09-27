@@ -90,8 +90,10 @@ PostgreSQL and `migr down` reverts it, compared by a schema digest taken before 
 migration authoring no `Down` included, which is the first time the framework's derived inverse has
 run against a real database.
 
-**Next — M7, TypeScript**, where "identical IR from two languages" becomes a test rather than a
-claim: the fixtures are already there, and they belong to neither language.
+**Now — M7, TypeScript**, where "identical IR from two languages" stopped being a claim. The same
+twelve fixtures, asked for both directions in both modes, are answered byte for byte by the Go SDK
+and by the TypeScript one; neither was compared to the other, and the file they are both compared to
+belongs to no language. What is left in the milestone is the run against a real database.
 
 **Later.** The SQLite and MySQL drivers (M8, M9), validation and safety (M10), introspection
 and schema diffing (M11), seeds and data transformations (M12), and the zero-downtime milestone
@@ -156,6 +158,8 @@ than a restore.
 > that runs it and the adapter that starts one — the same builder emitting the same IR, the
 > `migr-runtime-node` executable that loads `.ts`, `.js`, and `.mjs` migrations with no build step,
 > and an engine that finds Node and this project's `@migr/sdk` for itself (M7-T2 through M7-T6).
+> Both are now held to the **same** fixtures, and emit the same operations for every one of them
+> (M7-T7) — which is the whole of the language-independence claim, measured.
 > What has not happened yet is a run: `migr up` against a TypeScript project is M7-T8, and until it
 > lands the CLI says so rather than being the first thing to try it.
 
@@ -266,6 +270,7 @@ $ ./bin/migr version
 
 $ make test           # unit + golden tests, no Docker required
 $ make check          # lint + test -- the gate a change must pass
+$ make test-conformance  # every SDK against the same fixtures (needs Node)
 $ make help           # every target
 ```
 

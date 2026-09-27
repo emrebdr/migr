@@ -97,6 +97,13 @@ jobs:
       - name: Build
         run: make build
 
+      # The cross-language proof (M7-T7). It is behind the conformance tag because it
+      # needs Node, which `make test` may not have -- but this job installs Node on both
+      # OS legs, so here it runs rather than being something only a laptop ever proves.
+      # It comes after Build, which has already produced the SDK's dist.
+      - name: Conformance tests
+        run: make test-conformance
+
       - name: Smoke run
         run: ./bin/migr
 

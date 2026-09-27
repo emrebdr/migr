@@ -15,9 +15,13 @@ version: "2"
 # packages under the default build constraints, and `make lint` passes no flags. Without this,
 # internal/driver/postgres's integration tests would be checked by internal/lint's comment walk
 # and by nothing else. Adding a tag is purely additive -- untagged files still build.
+#
+# conformance joined at M7-T7, which is the tag's first use: internal/runtime/node carries the
+# cross-language proof, which needs Node and so cannot be part of `make test`.
 run:
   build-tags:
     - integration
+    - conformance
 
 linters:
   default: none

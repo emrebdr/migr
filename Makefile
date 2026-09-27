@@ -27,7 +27,8 @@ GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 
 FUZZTIME         ?= 30s
 
-.PHONY: help build test test-integration fuzz lint golden-update tools fmt vet tidy check clean
+.PHONY: help build test test-integration test-conformance fuzz lint golden-update tools fmt vet \
+        tidy check clean
 
 # Run a command in every Go module. The subshell cd means any tool path passed in
 # must be absolute -- a relative ./bin/tool resolves at the root and vanishes in sdk/go.
@@ -82,6 +83,7 @@ help:
 	@echo "  build             compile both modules and emit $(BIN)"
 	@echo "  test              unit + golden tests, no Docker required"
 	@echo "  test-integration  Docker-backed tests (build tag: integration)"
+	@echo "  test-conformance  cross-language SDK proof (build tag: conformance; needs Node)"
 	@echo "  fuzz              run each fuzz target for $(FUZZTIME) (make test runs the seeds)"
 	@echo "  lint              comment rules + golangci-lint across both modules"
 	@echo "  golden-update     regenerate golden files -- read the diff before committing"
@@ -128,6 +130,18 @@ test-integration:
 	@docker compose -f $(COMPOSE) up -d --wait
 	$(call go_each,go test -tags=integration ./...)
 	@echo "    containers left running; 'make clean' tears them down"
+
+# The cross-language proof: every SDK emits byte-identical IR for the fixtures in
+# test/conformance/runtime, which belong to no language. It builds the TypeScript SDK
+# first for the reason test-integration brings its own databases up -- a target that
+# cannot run itself is a target nobody runs. A machine with no Node fails here rather
+# than skipping: asking for this run is a statement that the toolchain is present.
+#
+# Go's own run needs no tag (the Go toolchain is present by definition when `go test`
+# is what is running), so it is part of `make test` and is not repeated here.
+test-conformance:
+	$(call ts_run,npm run build)
+	$(call go_each,go test -tags=conformance ./...)
 
 # commentlint takes a single path where every other target loops MODULES, and that is
 # deliberate: it walks the filesystem rather than loading packages, so it descends into

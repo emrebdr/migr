@@ -38,7 +38,7 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	files, err := t.files(opts)
+	_, files, err := t.files(opts)
 	if err != nil {
 		return err
 	}

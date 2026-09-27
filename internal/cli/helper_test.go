@@ -13,6 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/runtime"
 	"github.com/emrebdr/migr/internal/runtime/protocol"
 	"github.com/emrebdr/migr/internal/source/golang"
@@ -44,7 +45,22 @@ const (
 	actReadsFirst = "reads-first"
 	// actReadsDown reads only for the down, so the up stays checkable and the down does not.
 	actReadsDown = "reads-down"
+	// actAsks asks the host about an operation first, which is the callback that reaches the session.
+	actAsks = "asks"
+	// actLoadsNothing reports loading no migration at all, which the engine routed files to it.
+	actLoadsNothing = "loads-nothing"
+	// actLoadsExtra reports a migration nothing routed to it, so two runtimes would claim one file.
+	actLoadsExtra = "loads-extra"
 )
+
+// strayVersion is the migration actLoadsExtra claims, which no file in any staged project carries.
+const strayVersion = "20991231T235959"
+
+// shutdownMarker opens the name a scripted runtime writes into the project root when it is stopped.
+const shutdownMarker = ".migr-shutdown-"
+
+// askedOperation is the document actAsks asks the host to resolve, which every driver answers for.
+const askedOperation = `{"operation":{"op":"raw","driver":"fake","sql":"SELECT 1"}}`
 
 // firstVersion is the migration actReadsFirst reads for, which is the one staged at index zero.
 var firstVersion = versionAt(0)
@@ -66,6 +82,10 @@ type scriptedRuntime struct {
 	in  *protocol.Reader
 	out *protocol.Writer
 	id  int64
+	// dir is the migrations directory initialize named, which discover reads to say what it loaded.
+	dir string
+	// lang is the language this process was started for, which decides which files are its own.
+	lang config.Language
 }
 
 // run reads the engine's requests and answers them until the pipe closes or shutdown arrives.
@@ -88,12 +108,13 @@ func (r *scriptedRuntime) answer(m *protocol.Message) bool {
 	case protocol.Initialize:
 		return r.initialize(m)
 	case protocol.MigrationDiscover:
-		return r.reply(m, protocol.DiscoverResult{Migrations: []protocol.Discovered{}})
+		return r.discover(m)
 	case protocol.MigrationExecute:
 		return r.execute(m)
 	case protocol.MigrationValidate:
 		return r.reply(m, struct{}{})
 	case protocol.Shutdown:
+		r.mark()
 		r.reply(m, struct{}{})
 
 		return true
@@ -113,10 +134,58 @@ func (r *scriptedRuntime) initialize(m *protocol.Message) bool {
 		return r.refuse(m, protocol.NewErrorf(protocol.CodeInvalidParams, "%s", wrong))
 	}
 
+	r.dir, r.lang = p.Migrations.Dir, config.Language(p.Migrations.Language)
+
 	return r.reply(m, protocol.InitializeResult{ProtocolVersion: 1,
 		Runtime: protocol.Component{Name: "scripted", Version: "1.0.0"},
 		SDK:     protocol.Component{Name: "scripted", Version: "1.0.0"},
 	})
+}
+
+// discover reports the files in the directory this process can execute, which is its own language's.
+func (r *scriptedRuntime) discover(m *protocol.Message) bool {
+	if r.act == actLoadsNothing {
+		return r.reply(m, protocol.DiscoverResult{Migrations: []protocol.Discovered{}})
+	}
+
+	loaded, err := r.loadable()
+	if err != nil {
+		return r.refuse(m, protocol.NewErrorf(protocol.CodeInternal, "%v", err))
+	}
+
+	if r.act == actLoadsExtra {
+		loaded = append(loaded, protocol.Discovered{
+			Version: strayVersion, File: strayVersion + "_stray" + extensions[r.lang][0],
+		})
+	}
+
+	return r.reply(m, protocol.DiscoverResult{Migrations: loaded})
+}
+
+// mark records in the project root that this runtime was shut down rather than merely killed.
+func (r *scriptedRuntime) mark() {
+	_ = os.WriteFile(shutdownMarker+string(r.lang), []byte(r.act), 0o600)
+}
+
+// loadable reads the migrations directory and keeps what this language's extensions name.
+func (r *scriptedRuntime) loadable() ([]protocol.Discovered, error) {
+	entries, err := os.ReadDir(r.dir)
+	if err != nil {
+		return nil, err
+	}
+
+	loaded := []protocol.Discovered{}
+
+	for _, entry := range entries {
+		parsed, err := migration.Parse(entry.Name())
+		if err != nil || !slices.Contains(extensions[r.lang], parsed.Ext) {
+			continue
+		}
+
+		loaded = append(loaded, protocol.Discovered{Version: parsed.Version, File: parsed.Filename()})
+	}
+
+	return loaded, nil
 }
 
 // describeProject reports a runtime told the wrong thing about where it is or what it runs.
@@ -156,6 +225,10 @@ func (r *scriptedRuntime) execute(m *protocol.Message) bool {
 	if r.act == actReads || (r.act == actReadsFirst && p.ID == firstVersion) ||
 		(r.act == actReadsDown && p.Direction == ir.Down) {
 		r.callback(protocol.HostDBQuery, `{"sql":"SELECT count(*) AS n FROM users","args":[]}`)
+	}
+
+	if r.act == actAsks {
+		r.callback(protocol.HostCapabilityGet, askedOperation)
 	}
 
 	if r.act == actDerives && p.Direction == ir.Down {

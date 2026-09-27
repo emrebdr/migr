@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { MigrationError } from "./error.ts";
-import { EXTENSIONS, parseName } from "./name.ts";
+import { EXTENSIONS, foreign, parseName } from "./name.ts";
+
+/** engine is this repository's root, where the extensions the engine routes by are declared. */
+const engine = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 /** Reads a filename the grammar is expected to refuse, returning what it refused it with. */
 function refusal(file: string): MigrationError {
@@ -73,4 +79,49 @@ test("every refusal names the grammar it held the file to", () => {
 
   assert.match(refused.message, /<YYYYMMDDThhmmss>_<snake_case name>\(\.ts\|\.js\|\.mjs\)/);
   assert.equal(refused.file, "20260727T153000_addUsers.ts");
+});
+
+test("a well-formed migration in another extension is another runtime's, and nothing else is", () => {
+  for (const file of [
+    "20260727T153000_add_users.go",
+    "20260727T153000_add_users.sql",
+    "20260727T153000_add_users.py",
+  ]) {
+    assert.equal(foreign(file), true, `${file} is another runtime's migration`);
+  }
+
+  for (const file of [
+    "README.md",
+    "helpers.mts",
+    "20260727T153000-add-users.go",
+    "20260227T999999_add_users.go",
+    "20260727T153000_addUsers.go",
+    "20260727T153000_add_users",
+    "20260727T153000_add_users.ts",
+    "20260727T153000_add_users.js",
+  ]) {
+    assert.equal(foreign(file), false, `${file} is not another runtime's migration`);
+  }
+});
+
+test("the extensions this SDK loads are the ones the engine routes to it", () => {
+  const source = readFileSync(
+    join(engine, "internal", "source", "typescript", "template.go"),
+    "utf8",
+  );
+  const declared = /var Exts = \[\]string\{([^}]*)\}/.exec(source);
+
+  assert.ok(declared, "internal/source/typescript declares no Exts for the engine to route by");
+
+  const routed = declared[1]!
+    .split(",")
+    .map((each) => each.trim().replace(/^Ext$/, '".ts"'))
+    .filter((each) => each !== "")
+    .map((each) => JSON.parse(each) as string);
+
+  assert.deepEqual(
+    routed,
+    [...EXTENSIONS],
+    "the engine routes one set here and this SDK loads another",
+  );
 });

@@ -162,9 +162,9 @@ than a restore.
 > and an engine that finds Node and this project's `@migr/sdk` for itself (M7-T2 through M7-T6).
 > Both are held to the **same** fixtures and emit the same operations for every one of them (M7-T7),
 > and both now run against a real PostgreSQL: `migr up` applies a TypeScript migration and `migr
-> down` reverts it, compared by a schema digest either side (M7-T8). One migrations directory
-> holding **both** languages is the part that does not work yet, and is refused rather than
-> half-applied (M7-T10).
+> down` reverts it, compared by a schema digest either side (M7-T8). One migrations directory may
+> hold **both**: each file is routed by its own extension, the two interleave in timestamp order
+> under a single `migr up`, and each history row records the language of its own migration (M7-T10).
 
 ```go
 package migrations
@@ -385,6 +385,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0045](docs/adr/0045-node-runtime-binary.md) | The Node runtime binary |
 | [0046](docs/adr/0046-node-runtime-adapter.md) | The Node runtime adapter |
 | [0047](docs/adr/0047-line-separator-escaping.md) | U+2028 and U+2029 are emitted as UTF-8, and a scanner undoes Go's escape |
+| [0048](docs/adr/0048-multi-language-projects.md) | One directory, several languages: route each migration by its own extension |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

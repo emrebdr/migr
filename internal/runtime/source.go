@@ -24,6 +24,28 @@ func (s *Session) Discovered(ctx context.Context) ([]protocol.Discovered, error)
 	return found.Migrations, nil
 }
 
+// Loaded reports what a runtime loaded, read back through the grammar discovery holds a file to.
+func (s *Session) Loaded(ctx context.Context) ([]migration.Migration, error) {
+	found, err := s.Discovered(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	loaded := make([]migration.Migration, 0, len(found))
+
+	for _, d := range found {
+		parsed, err := migration.Parse(d.File)
+		if err != nil {
+			return nil, fmt.Errorf("the %s runtime loaded %q, which discovery would refuse: %w",
+				s.opts.Runtime.Name(), d.File, err)
+		}
+
+		loaded = append(loaded, parsed)
+	}
+
+	return loaded, nil
+}
+
 // Check runs one migration's own Validate, which emits nothing and reaches no database.
 func (s *Session) Check(ctx context.Context, m migration.Migration) error {
 	call, err := s.server.Validate(m.Version)

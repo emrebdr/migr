@@ -242,6 +242,13 @@ That is deliberately strict. The alternative is skipping what does not parse, an
 a migration someone wrote, committed, and had reviewed going quietly unrun. Shared helpers live
 outside the directory, where the import above reaches them.
 
+There is a second exemption and it is narrow: a file whose name is a **well-formed migration** in an
+extension this runtime does not load — `20260727T153000_add_users.go` — belongs to another runtime and
+is skipped, because one directory may hold more than one language. A `README.md` is not that, and is
+still refused. Nothing is skipped by everything in silence: migr routed every file by its extension
+and holds what each runtime reports here against what it sent
+([ADR 0048](../../docs/adr/0048-multi-language-projects.md)).
+
 ## The version means something
 
 **The major version is the protocol version this SDK speaks.** `1.x.y` speaks

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -30,6 +31,37 @@ var templates = map[config.Language]template{
 	config.LanguageSQL:        {ext: sql.Ext, body: sql.Template},
 	config.LanguageGo:         {ext: golang.Ext, body: golang.Template},
 	config.LanguageTypeScript: {ext: typescript.Ext, body: typescript.Template},
+}
+
+// extensions holds every extension each language's runtime loads, the first being what create writes.
+var extensions = map[config.Language][]string{
+	config.LanguageSQL:        sql.Exts,
+	config.LanguageGo:         golang.Exts,
+	config.LanguageTypeScript: typescript.Exts,
+}
+
+// languageOf names the language whose runtime loads an extension, and is empty when none does.
+func languageOf(ext string) config.Language {
+	for _, lang := range config.Languages() {
+		if slices.Contains(extensions[lang], ext) {
+			return lang
+		}
+	}
+
+	return ""
+}
+
+// routable renders every extension a migration may be written in, for a message a human reads.
+func routable() string {
+	var found []string
+
+	for _, lang := range config.Languages() {
+		found = append(found, extensions[lang]...)
+	}
+
+	slices.Sort(found)
+
+	return strings.Join(found, ", ")
 }
 
 // aliases are the short spellings --lang accepts, which migr.yaml itself does not.

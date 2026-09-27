@@ -283,7 +283,7 @@ func (e *executor) newRecord(ready prepared) history.Record {
 		Checksum:  ready.sum,
 		AppliedAt: e.opts.Clock(),
 		Driver:    e.conn.Capabilities().Driver(),
-		Runtime:   e.opts.Runtime,
+		Runtime:   e.opts.Runtime(ready.item.migration),
 	}
 }
 

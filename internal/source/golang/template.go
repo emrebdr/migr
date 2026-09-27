@@ -3,6 +3,9 @@ package golang
 // Ext is the extension a Go migration is stored under, and the one migr create writes.
 const Ext = ".go"
 
+// Exts are every extension the Go runner loads, which is the one the go tool compiles.
+var Exts = []string{Ext}
+
 // SDK is the module a Go migration imports, which a new project adds with go get.
 const SDK = "github.com/emrebdr/migr/sdk/go"
 

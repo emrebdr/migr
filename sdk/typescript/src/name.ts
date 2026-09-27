@@ -59,6 +59,23 @@ export function parseName(file: string): Named {
   return { version, name, file };
 }
 
+/** foreign reports a well-formed migration name whose extension belongs to another runtime. */
+export function foreign(file: string): boolean {
+  const extension = extensionOf(file);
+
+  if (extension === "" || (EXTENSIONS as readonly string[]).includes(extension)) {
+    return false;
+  }
+
+  try {
+    parseName(file.slice(0, file.length - extension.length) + EXTENSIONS[0]);
+  } catch {
+    return false;
+  }
+
+  return true;
+}
+
 /** extensionOf returns what a filename ends in, which is empty when it ends in nothing. */
 function extensionOf(file: string): string {
   const dot = file.lastIndexOf(".");

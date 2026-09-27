@@ -210,12 +210,19 @@ const targetSchema = "public"
 func opened(t *testing.T, table string) driver.Conn {
 	t.Helper()
 
+	return openedWith(t.Context(), t, table)
+}
+
+// openedWith dials on a context of the caller's, which a cleanup needs since t.Context is canceled.
+func openedWith(ctx context.Context, t *testing.T, table string) driver.Conn {
+	t.Helper()
+
 	d, err := postgres.New(driver.Options{HistoryTable: table})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	conn, err := d.Open(t.Context(), dsn())
+	conn, err := d.Open(ctx, dsn())
 	if err != nil {
 		t.Fatalf("Open: %v\n\nRun `make test-integration`, which brings the server up first.", err)
 	}

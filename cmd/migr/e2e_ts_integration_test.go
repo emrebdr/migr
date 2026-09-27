@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/config"
+	"github.com/emrebdr/migr/internal/driver/postgres/pgtest"
+	"github.com/emrebdr/migr/internal/history"
 )
 
 // The TypeScript half of the stack, driven the whole way down to a real server.
@@ -28,10 +31,14 @@ import (
 //     transaction its operations run in (ADR 0032) and which migr plan holds rather than running
 //     (ADR 0036).
 //
-// One property this suite deliberately does not prove: that a migration failing *after* an exec
-// leaves that statement committed. Showing it means either leaving a table behind in a database
-// other suites digest, or dropping it from the test -- and a test above a driver package may not
-// compose SQL (invariant #3). It is listed on M7-T10 instead.
+// M7-T8 could not prove one of those two the whole way: that a migration failing *after* an exec
+// leaves that statement committed, which is ADR 0032's warning. M7-T10 proves it, and the cleanup is
+// what made it possible -- a pgtest probe rather than a compensating migration, for two reasons a
+// reader will otherwise try both of. A migration whose only effect is an exec compiles to no
+// statements and the engine refuses it, since reporting success for a change that never happened is
+// what that refusal exists to prevent; and one that dropped the table as an *operation* would be
+// recorded as applied, so a second run of the test would skip it and meet the table still there.
+// Invariant #3 is why the SQL lives in the driver's own subtree and not here.
 
 // tsHistoryTable keeps this suite's runs out of the tables the .sql, Go, and driver suites use.
 const tsHistoryTable = "migr_e2e_ts_migrations"
@@ -422,7 +429,10 @@ func TestStatusAndTheHistoryRowReportATypeScriptProject(t *testing.T) {
 		}
 	}
 
-	for _, rec := range recorded(t, tsHistoryTable) {
+	t.Log("The newest batch rather than the whole log: history is append-only, so a row an earlier")
+	t.Log("run wrote -- including one a mutation sweep wrote -- is not this run's answer.")
+
+	for _, rec := range lastBatch(recorded(t, tsHistoryTable)) {
 		if rec.Runtime != string(config.LanguageTypeScript) {
 			t.Errorf("%s was recorded as runtime %q, want %q", rec.Version, rec.Runtime,
 				config.LanguageTypeScript)
@@ -454,5 +464,104 @@ func TestValidateChecksATypeScriptProjectWithoutOpeningADatabase(t *testing.T) {
 
 	if err := migr(t, cfg, "up"); err != nil {
 		t.Errorf("what validate passed, up refused: %v", err)
+	}
+}
+
+// orphanTable is what the failing migration below execs into being, and never drops.
+const orphanTable = "e2e_ts_orphan"
+
+// orphanMigration execs a statement and then emits an operation the server refuses.
+const orphanMigration = `import { defineMigration, t } from "@migr/sdk";
+
+export default defineMigration({
+  async up(s) {
+    await s.exec("CREATE TABLE ` + orphanTable + ` (id bigint)");
+    await s.table("e2e_ts_no_such_table").addColumn("late", t.bool()).null().apply();
+  },
+});
+`
+
+func TestAStatementAMigrationRanItselfSurvivesTheFailureThatFollowedIt(t *testing.T) {
+	failing := oneMigrationProject(t, tsHistoryTable+"_orphan",
+		"20260727T190000_leave_e2e_ts_orphan.ts", orphanMigration)
+
+	dropOrphan(t)
+	t.Cleanup(func() { dropOrphan(t) })
+
+	reported := migrFailure(t, failing, "up")
+
+	t.Log("ADR 0032's whole warning, measured: host.db.exec runs while the migration is deciding")
+	t.Log("what it does, which is before the engine has compiled anything or opened a transaction.")
+	t.Log("So the statement is committed on its own and a later failure does not undo it -- the")
+	t.Log("compensation is somebody's to write, and here it is a probe rather than a migration.")
+
+	if !strings.Contains(reported, "e2e_ts_no_such_table") {
+		t.Errorf("the failure does not name what the server refused:\n%s", reported)
+	}
+
+	if applied := digest(t); !strings.Contains(applied, orphanTable) {
+		t.Errorf("the table the migration execed is gone, and nothing rolled it back:\n%s", applied)
+	}
+
+	runs := recorded(t, tsHistoryTable+"_orphan")
+	if len(runs) == 0 {
+		t.Fatal("the history holds no row for the run that failed")
+	}
+
+	last := runs[len(runs)-1]
+
+	if last.Outcome == history.Applied {
+		t.Errorf("the run that failed is recorded as %q", last.Outcome)
+		t.Log("The log is append-only, so this is the newest row rather than the only one: an")
+		t.Log("earlier run of this test left its own, and neither is rolled back.")
+	}
+}
+
+// oneMigrationProject writes a TypeScript project holding exactly one migration, and returns its config.
+func oneMigrationProject(t *testing.T, table, name, body string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "migr.yaml")
+
+	manifest := fmt.Sprintf(`version: 1
+migrations:
+  dir: ./migrations
+  language: %s
+databases:
+  default:
+    driver: postgres
+    dsn: %s
+history:
+  table: %s
+`, config.LanguageTypeScript, dsn(), table)
+
+	if err := os.WriteFile(path, []byte(manifest), 0o600); err != nil {
+		t.Fatalf("staging migr.yaml: %v", err)
+	}
+
+	writePackage(t, dir)
+
+	migrations := filepath.Join(dir, "migrations")
+
+	if err := os.MkdirAll(migrations, 0o750); err != nil {
+		t.Fatalf("staging the migrations directory: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(migrations, name), []byte(body), 0o600); err != nil {
+		t.Fatalf("staging %s: %v", name, err)
+	}
+
+	return path
+}
+
+// dropOrphan removes the table the failure leaves behind, which nothing in a migration can undo.
+func dropOrphan(t *testing.T) {
+	t.Helper()
+
+	outliving := context.WithoutCancel(t.Context())
+
+	if err := pgtest.Drop(outliving, openedWith(outliving, t, ""), targetSchema, orphanTable); err != nil {
+		t.Errorf("dropping the table the escape hatch left behind: %v", err)
 	}
 }

@@ -145,6 +145,44 @@ func TestEveryLanguageMigrKnowsHasATemplate(t *testing.T) {
 	}
 }
 
+func TestEveryLanguageOwnsItsExtensionsAndTheFirstIsWhatCreateWrites(t *testing.T) {
+	t.Log("The relation is one language to many extensions -- migr-runtime-node loads .ts, .js and")
+	t.Log(".mjs -- and M7-T8 wrote it as one-to-one, which refused a .js migration in a TypeScript")
+	t.Log("project. The first entry is the one migr create writes, so the two maps cannot disagree.")
+
+	claimed := make(map[string]config.Language, len(config.Languages()))
+
+	for _, lang := range config.Languages() {
+		exts, owned := extensions[lang]
+		if !owned || len(exts) == 0 {
+			t.Errorf("%s owns no extension, so nothing routes a migration to it", lang)
+
+			continue
+		}
+
+		if exts[0] != templates[lang].ext {
+			t.Errorf("%s owns %v first and migr create writes %s", lang, exts[0], templates[lang].ext)
+		}
+
+		for _, ext := range exts {
+			if holder, taken := claimed[ext]; taken {
+				t.Errorf("%s and %s both claim %s, so routing one file has two answers",
+					holder, lang, ext)
+			}
+
+			claimed[ext] = lang
+
+			if languageOf(ext) != lang {
+				t.Errorf("languageOf(%s) = %q, and %s owns it", ext, languageOf(ext), lang)
+			}
+		}
+	}
+
+	if languageOf(".py") != "" {
+		t.Errorf("languageOf(.py) = %q, and nothing here reads one", languageOf(".py"))
+	}
+}
+
 func TestCreateRefusesALanguageMigrDoesNotKnow(t *testing.T) {
 	dir := initialized(t)
 

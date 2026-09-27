@@ -3,6 +3,9 @@ package sql
 // Ext is the extension a SQL migration is stored under, and the one migr create writes.
 const Ext = ".sql"
 
+// Exts are every extension this format is read from, which is the one this package parses.
+var Exts = []string{Ext}
+
 // MarkerUp opens the statements that run when a migration is applied.
 const MarkerUp = "-- migr:up"
 

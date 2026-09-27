@@ -467,8 +467,13 @@ func staged(t *testing.T, specs ...string) (Options, *source) {
 		Source:     src,
 		Migrations: files,
 		Clock:      clock(),
-		Runtime:    runtimeName,
+		Runtime:    written,
 	}, src
+}
+
+// written names the language every staged migration is written in, which is one for these fixtures.
+func written(migration.Migration) string {
+	return runtimeName
 }
 
 // ran returns the row a previous invocation left for the nth staged migration, as it applied it.

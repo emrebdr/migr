@@ -3,6 +3,9 @@ package typescript
 // Ext is the extension a TypeScript migration is stored under, and the one migr create writes.
 const Ext = ".ts"
 
+// Exts are every extension migr-runtime-node loads, which sdk/typescript's EXTENSIONS is held to.
+var Exts = []string{Ext, ".js", ".mjs"}
+
 // SDK is the package a TypeScript migration imports, which a new project adds with npm install.
 const SDK = "@migr/sdk"
 

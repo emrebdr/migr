@@ -224,7 +224,7 @@ Engine → runtime. The handshake.
 | `irVersion` | the Operation IR version the engine will accept. Stated, not negotiated. |
 | `client` | the engine's own name and version, for the runtime's diagnostics. |
 | `migrations.dir` | absolute path to the migrations directory. Not relative: a runtime's working directory is the project root and the two are not the same thing. |
-| `migrations.language` | the value `migrations.language` holds in `migr.yaml`, so a runtime serving more than one can tell which it was started for. |
+| `migrations.language` | the language **this runtime was started for**, spelled as `migr.yaml` spells it. One directory may hold several, so this is the one the engine will route to this process and not necessarily the one `migrations.language` holds. |
 | `database.name` | the key `migr.yaml` holds the target under. For messages; a runtime never connects. |
 | `database.driver` | the engine that will compile the operations, which a migration may branch on. |
 
@@ -316,6 +316,14 @@ Three things this deliberately is not:
   call reports what the runtime could *load*, which is a different question, and the engine
   reconciles the two — a version the engine discovered and the runtime did not load is a failure
   naming the file.
+
+  One directory may hold several languages, so "every migration in `migrations.dir` that it can
+  execute" is what it says: a file whose extension belongs to another runtime is **skipped**, not
+  refused, and a file that is not a migration at all is still refused. The engine routed every file
+  by its extension and holds this result against what it routed here — in **both** directions, so a
+  migration two runtimes both claim is a failure as surely as one nothing loaded. That reconciliation
+  is what lets a loader skip anything at all: nothing is quietly ignored by every runtime at once.
+  See [ADR 0048](adr/0048-multi-language-projects.md).
 - **It is not an ordering.** The result's order carries no meaning. The engine sorts by version and
   overlays the declared dependencies itself.
 - **It is not a computation.** `dependencies` is read from the migration, never derived from a

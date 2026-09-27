@@ -9,6 +9,13 @@
 // migration that was written, committed, and quietly ignored is the expensive mistake; a README
 // failing loudly is by a wide margin the cheap one.
 //
+// One directory may hold two languages (ADR 0048), so there is a second exemption and it is narrow:
+// a file whose name is a well-formed migration in an extension this runtime does not load belongs to
+// another runtime and is skipped. A README is not that -- it is refused, exactly as before. What
+// closes the gap the skip opens is the engine, which routed every file by its extension and holds
+// what each runtime reports here against what it sent, so a migration skipped by everything is a
+// failure naming the file rather than a silence.
+//
 // Every refusal joins the registry instead of ending the walk, so migration.discover reports
 // everything wrong with a directory at once rather than the first thing.
 
@@ -20,7 +27,7 @@ import { pathToFileURL } from "node:url";
 import { MigrationError } from "./error.ts";
 import { install } from "./hook.ts";
 import { Registry } from "./load.ts";
-import { parseName } from "./name.ts";
+import { foreign, parseName } from "./name.ts";
 import { systemOf } from "./system.ts";
 
 /** DOT opens the name of a file discovery ignores, which is the one exemption the grammar has. */
@@ -68,6 +75,10 @@ async function considered(registry: Registry, at: string, entry: Dirent): Promis
       ),
     );
 
+    return;
+  }
+
+  if (foreign(entry.name)) {
     return;
   }
 

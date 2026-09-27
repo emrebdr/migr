@@ -86,7 +86,7 @@ func (t *target) discovered(opts *options) ([]migration.Migration, error) {
 		return nil, unreadable(err)
 	}
 
-	if err := t.checkOneLanguage(found); err != nil {
+	if err := checkRoutable(found); err != nil {
 		return nil, err
 	}
 
@@ -105,44 +105,86 @@ func unreadable(err error) error {
 }
 
 // files discovers the migrations directory, orders it, and hashes what each file currently holds.
-func (t *target) files(opts *options) ([]history.File, error) {
+func (t *target) files(opts *options) ([]migration.Migration, []history.File, error) {
 	found, err := t.discovered(opts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return hashed(t.fsys, found)
+	hashes, err := hashed(t.fsys, found)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return found, hashes, nil
 }
 
-// checkOneLanguage reports a migration written in a language this project does not run.
-func (t *target) checkOneLanguage(found []migration.Migration) error {
-	lang := t.cfg.Migrations.Language
-	runs := extensionOf(lang)
-
+// checkRoutable reports a migration written in a language nothing here reads.
+func checkRoutable(found []migration.Migration) error {
 	for _, m := range found {
-		if m.Ext == runs {
+		if languageOf(m.Ext) != "" {
 			continue
 		}
 
-		return NewExitError(ExitValidation, fmt.Errorf("%s: a %s project runs %s files, and this "+
-			"is a %s one -- migrations.language names one language for the whole directory, so "+
-			"rename the file, move it into its own project, or wait for M7-T10, which is where "+
-			"one directory holding two languages arrives", m.Filename(), lang, runs, m.Ext))
+		return NewExitError(ExitValidation, fmt.Errorf("%s: nothing here reads %s files, and a "+
+			"migrations directory holds migrations one of them runs (%s) -- rename the file or "+
+			"move it out of the directory", m.Filename(), m.Ext, routable()))
 	}
 
 	return nil
 }
 
-// extensionOf returns the file a project in one language holds, which is the file create writes.
-func extensionOf(lang config.Language) string {
-	return templates[lang].ext
+// mux routes each migration to the source that reads the language its own extension names.
+type mux struct {
+	// byExt holds one source per extension, since the file a migration is decides what reads it.
+	byExt map[string]engine.Source
 }
 
-// source returns what reads this project's migrations, and what ends it when the command is done.
-func (t *target) source(ctx context.Context, opts *options,
-	conn driver.Conn) (engine.Source, closer, error) {
-	lang := t.cfg.Migrations.Language
+// Emit asks whichever source reads the language this migration's extension names.
+func (m mux) Emit(ctx context.Context, mig migration.Migration, dir ir.Direction,
+	mode engine.Mode) (engine.Emitted, error) {
+	source, routed := m.byExt[mig.Ext]
+	if !routed {
+		return engine.Emitted{}, fmt.Errorf("%s: nothing here reads %s files", mig.Filename(), mig.Ext)
+	}
 
+	return source.Emit(ctx, mig, dir, mode)
+}
+
+// sources returns what reads every language this directory holds, and what ends all of them.
+func (t *target) sources(ctx context.Context, opts *options, conn driver.Conn,
+	found []migration.Migration) (engine.Source, closer, error) {
+	routed := routedByLanguage(found)
+	built := mux{byExt: make(map[string]engine.Source, len(routed))}
+
+	var stops []closer
+
+	for _, lang := range config.Languages() {
+		mine, needed := routed[lang]
+		if !needed {
+			continue
+		}
+
+		source, stop, err := t.sourceFor(ctx, opts, conn, lang, mine)
+		if err != nil {
+			return nil, nil, errors.Join(err, closeAll(ctx, stops))
+		}
+
+		if stop != nil {
+			stops = append(stops, stop)
+		}
+
+		for _, ext := range extensions[lang] {
+			built.byExt[ext] = source
+		}
+	}
+
+	return built, allEnding(stops), nil
+}
+
+// sourceFor returns what reads one language's migrations, starting a runtime where it needs one.
+func (t *target) sourceFor(ctx context.Context, opts *options, conn driver.Conn,
+	lang config.Language, mine []migration.Migration) (engine.Source, closer, error) {
 	if lang == config.LanguageSQL {
 		return sql.New(t.fsys, t.db.Driver), nil, nil
 	}
@@ -152,22 +194,117 @@ func (t *target) source(ctx context.Context, opts *options,
 		return nil, nil, NewExitError(ExitValidation, err)
 	}
 
-	return t.start(ctx, opts, conn, adapter)
+	started, stop, err := t.start(ctx, opts, conn, lang, adapter)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := checkLoaded(ctx, started, lang, mine); err != nil {
+		return nil, nil, errors.Join(err, stop(context.WithoutCancel(ctx)))
+	}
+
+	return started, stop, nil
 }
 
-// offlineSource returns what reads this project's migrations over a session that opens no database.
-func (t *target) offlineSource(ctx context.Context, opts *options) (engine.Source, closer, error) {
+// routedByLanguage groups the discovered migrations by the language each one's extension names.
+func routedByLanguage(found []migration.Migration) map[config.Language][]migration.Migration {
+	routed := make(map[config.Language][]migration.Migration, len(config.Languages()))
+
+	for _, m := range found {
+		if lang := languageOf(m.Ext); lang != "" {
+			routed[lang] = append(routed[lang], m)
+		}
+	}
+
+	return routed
+}
+
+// checkLoaded holds what a runtime loaded to what was routed to it, so neither side carries a surplus.
+func checkLoaded(ctx context.Context, started *runtime.Session, lang config.Language,
+	routed []migration.Migration) error {
+	loaded, err := started.Loaded(ctx)
+	if err != nil {
+		return err
+	}
+
+	return errors.Join(
+		missingFrom(lang, routed, loaded),
+		surplusIn(lang, routed, loaded),
+	)
+}
+
+// missingFrom reports a migration routed to a runtime that the runtime did not load.
+func missingFrom(lang config.Language, routed, loaded []migration.Migration) error {
+	held := versions(loaded)
+
+	for _, m := range routed {
+		if !held[m.Version] {
+			return fmt.Errorf("%s: the %s runtime did not load it, so nothing here can run it",
+				m.Filename(), lang)
+		}
+	}
+
+	return nil
+}
+
+// surplusIn reports a migration a runtime loaded that was never routed to it.
+func surplusIn(lang config.Language, routed, loaded []migration.Migration) error {
+	sent := versions(routed)
+
+	for _, m := range loaded {
+		if !sent[m.Version] {
+			return fmt.Errorf("%s: the %s runtime loaded it and discovery routed it elsewhere, so "+
+				"two runtimes claim one migration", m.Filename(), lang)
+		}
+	}
+
+	return nil
+}
+
+// versions indexes migrations by the version discovery proved unique.
+func versions(found []migration.Migration) map[string]bool {
+	held := make(map[string]bool, len(found))
+	for _, m := range found {
+		held[m.Version] = true
+	}
+
+	return held
+}
+
+// closeAll ends every source that started, on a context whatever failed may already have canceled.
+func closeAll(ctx context.Context, stops []closer) error {
+	outliving := context.WithoutCancel(ctx)
+
+	var ended error
+
+	for _, stop := range slices.Backward(stops) {
+		ended = errors.Join(ended, stop(outliving))
+	}
+
+	return ended
+}
+
+// allEnding renders every source's close as one a caller may always defer, newest first.
+func allEnding(stops []closer) closer {
+	return func(ctx context.Context) error {
+		return closeAll(ctx, stops)
+	}
+}
+
+// offlineSource returns what reads this project's migrations over sessions that open no database.
+func (t *target) offlineSource(ctx context.Context, opts *options,
+	found []migration.Migration) (engine.Source, closer, error) {
 	conn, err := driver.Offline(t.db.Driver)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	source, stop, err := t.source(ctx, opts, conn)
+	source, stop, err := t.sources(ctx, opts, conn, found)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return checking{source: source, conn: conn}, ending(stop), nil
+	return checking{source: source, conn: conn}, stop, nil
 }
 
 // checking is a source that reports a half whose answer a run with no database cannot trust.
@@ -192,19 +329,10 @@ func (c checking) Emit(ctx context.Context, m migration.Migration, dir ir.Direct
 	return emitted, err
 }
 
-// ending renders a source's close as one a caller may always defer, since a file starts nothing.
-func ending(stop closer) closer {
-	if stop == nil {
-		return func(context.Context) error { return nil }
-	}
-
-	return stop
-}
-
-// start spawns the runtime that reads this project's migrations and shakes hands with it.
-func (t *target) start(ctx context.Context, opts *options, conn driver.Conn,
-	adapter runtime.Runtime) (engine.Source, closer, error) {
-	project, err := t.project()
+// start spawns the runtime that reads one of this project's languages and shakes hands with it.
+func (t *target) start(ctx context.Context, opts *options, conn driver.Conn, lang config.Language,
+	adapter runtime.Runtime) (*runtime.Session, closer, error) {
+	project, err := t.project(lang)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -220,8 +348,8 @@ func (t *target) start(ctx context.Context, opts *options, conn driver.Conn,
 	return session, session.Close, nil
 }
 
-// project describes this run to a runtime, which is told where it is and never what the DSN is.
-func (t *target) project() (runtime.Project, error) {
+// project describes this run to a runtime, which is told the language it is being started for.
+func (t *target) project(lang config.Language) (runtime.Project, error) {
 	dir, err := filepath.Abs(t.cfg.Migrations.Dir)
 	if err != nil {
 		return runtime.Project{}, fmt.Errorf("resolving %s: %w", t.cfg.Migrations.Dir, err)
@@ -230,7 +358,7 @@ func (t *target) project() (runtime.Project, error) {
 	return runtime.Project{
 		Root:     t.root,
 		Dir:      dir,
-		Language: string(t.cfg.Migrations.Language),
+		Language: string(lang),
 		Database: t.name,
 		Driver:   t.db.Driver,
 	}, nil
@@ -268,7 +396,7 @@ func open(ctx context.Context, opts *options, scope engine.Scope) (*session, err
 		return nil, err
 	}
 
-	files, err := t.files(opts)
+	found, files, err := t.files(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +406,7 @@ func open(ctx context.Context, opts *options, scope engine.Scope) (*session, err
 		return nil, err
 	}
 
-	if err := s.attach(ctx, t, opts, files, scope); err != nil {
+	if err := s.attach(ctx, t, opts, found, files, scope); err != nil {
 		return nil, errors.Join(err, s.close(context.WithoutCancel(ctx)))
 	}
 
@@ -287,8 +415,8 @@ func open(ctx context.Context, opts *options, scope engine.Scope) (*session, err
 
 // attach gives this session what reads the migrations, which needs the connection it reaches.
 func (s *session) attach(ctx context.Context, t *target, opts *options,
-	files []history.File, scope engine.Scope) error {
-	source, stop, err := t.source(ctx, opts, s.conn)
+	found []migration.Migration, files []history.File, scope engine.Scope) error {
+	source, stop, err := t.sources(ctx, opts, s.conn, found)
 	if err != nil {
 		return err
 	}
@@ -297,10 +425,15 @@ func (s *session) attach(ctx context.Context, t *target, opts *options,
 	s.options.Source = source
 	s.options.Migrations = files
 	s.options.Clock = opts.clock
-	s.options.Runtime = string(t.cfg.Migrations.Language)
+	s.options.Runtime = runtimeOf
 	s.options.Scope = scope
 
 	return nil
+}
+
+// runtimeOf names the language one migration is written in, by the same map the mux routes on.
+func runtimeOf(m migration.Migration) string {
+	return string(languageOf(m.Ext))
 }
 
 // close ends the runtime before giving the connection back, since its callbacks reach that connection.

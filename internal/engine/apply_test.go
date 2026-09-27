@@ -724,7 +724,7 @@ func TestAnApplyRunIsRefusedForWhatItWasNotGiven(t *testing.T) {
 		{"planner", func(o *Options) { o.Planner = plan.Planner{} }, plan.ErrNoCompiler},
 		{"source", func(o *Options) { o.Source = nil }, ErrNoSource},
 		{"clock", func(o *Options) { o.Clock = nil }, ErrNoClock},
-		{"runtime", func(o *Options) { o.Runtime = "" }, ErrNoRuntime},
+		{"runtime", func(o *Options) { o.Runtime = nil }, ErrNoRuntime},
 	}
 
 	for _, tc := range cases {

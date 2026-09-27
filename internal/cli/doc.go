@@ -146,26 +146,39 @@
 // migrations directory is broken removes the tool somebody reached for to
 // diagnose that.
 //
-// # One language, for the whole directory
+// # One directory, several languages
 //
-// migrations.language names one, so discovered refuses a file whose extension
-// belongs to another -- naming the file, both languages, and M7-T10, where one
-// directory holding two of them arrives. It is in discovery rather than beside
-// the source, so it covers every command that reads the directory, reports
-// included.
+// Each migration is routed by its own extension, through the extensions map in
+// create.go -- a language owns a set, the first of which is what migr create
+// writes, and languageOf reads it backwards. A file whose extension no language
+// owns is refused by discovered, naming the file and every extension that is
+// routed, which keeps §9's strictness while making the answer a set rather than
+// one value. migrations.language is the default for migr create and nothing
+// else reads it.
 //
-// That is the strictness §9 already asks for, applied one level up: a .go file
-// in a TypeScript project would otherwise be printed as pending by status and
-// then fail the run. Before the check, migr up applied every migration its one
-// runtime recognized and failed on the first it did not, leaving the project
-// half applied and blaming the migration -- and the reason it blamed the
-// migration is that the refusal came back from the SDK, as unknown_migration,
-// which is true and useless. A half-applied database is the worst failure this
-// tool has.
+// So sources builds one source per language the directory needs and returns a
+// mux over them: sql needs no process, go and typescript each get a session, and
+// the closer ends every one of them newest first. A failure part-way closes what
+// already started, which is the same rule as before with more than one subject.
 //
-// migr create --lang still writes a file for another language on purpose. That
-// is how a project being moved to one starts, and the refusal above says what to
-// do next.
+// Two consequences are the whole cost of this. Several runtime sessions are
+// alive over one pinned driver.Conn, which is safe only because the engine asks
+// one migration at a time -- the untagged suite counts calls in flight on that
+// session rather than trusting the claim. And engine.Options.Runtime is a
+// function of the migration rather than one string for the run, because
+// history.Record.Runtime was always per row; runtimeOf answers it from the same
+// map the mux routes on, so the row and the runtime that ran it cannot disagree.
+//
+// Before M7-T8's refusal, migr up applied every migration its one runtime
+// recognized and failed on the first it did not, leaving the project half
+// applied and blaming the migration -- the refusal came back from the SDK, as
+// unknown_migration, which is true and useless. That guarantee is re-made rather
+// than dropped: sourceFor asks each session what it loaded and holds it to what
+// was routed there, in both directions, so a routed file nothing loaded and a
+// migration two runtimes claim are each a failure naming the file.
+//
+// migr create --lang still writes a file for another language on purpose, and
+// now the project simply runs it.
 //
 // The source is built after connect and never before it (ADR 0040). A runtime
 // session needs the driver.Conn its callbacks reach, so before the connection

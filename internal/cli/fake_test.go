@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/emrebdr/migr/internal/capability"
@@ -45,6 +46,35 @@ type fake struct {
 	lockErr error
 	// inTx reports whether a transaction is open, which is what a history write must be inside.
 	inTx bool
+
+	// mu guards the two fields below, which are the only ones a second goroutine could reach.
+	mu sync.Mutex
+	// serving counts the calls in flight on this one pinned session, which must never exceed one.
+	serving int
+	// overlapped reports two calls in flight at once, which several live runtimes would produce.
+	overlapped bool
+}
+
+// enter marks one call in flight on this session, recording an overlap rather than serializing it.
+func (f *fake) enter() func() {
+	f.mu.Lock()
+	f.serving++
+	f.overlapped = f.overlapped || f.serving > 1
+	f.mu.Unlock()
+
+	return func() {
+		f.mu.Lock()
+		f.serving--
+		f.mu.Unlock()
+	}
+}
+
+// overlapping reports whether two calls were ever in flight on this session at the same time.
+func (f *fake) overlapping() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.overlapped
 }
 
 // registry returns a registry holding this fake under the name a staged migr.yaml names.
@@ -237,6 +267,8 @@ type fakeConn struct {
 
 // Exec records the statement and refuses the one a test asked it to refuse.
 func (c *fakeConn) Exec(_ context.Context, stmt driver.Statement) error {
+	defer c.fake.enter()()
+
 	c.fake.statements = append(c.fake.statements, stmt.SQL)
 
 	if stmt.SQL == c.fake.refuse {
@@ -248,11 +280,15 @@ func (c *fakeConn) Exec(_ context.Context, stmt driver.Statement) error {
 
 // Query refuses: no command drives a migration's own SQL, since every .sql migration is ir.Raw.
 func (c *fakeConn) Query(context.Context, driver.Query) (driver.Rows, error) {
+	defer c.fake.enter()()
+
 	return driver.Rows{}, errNoMigrationSQL
 }
 
 // Perform refuses, for the reason Query does.
 func (c *fakeConn) Perform(context.Context, driver.Query) (int64, error) {
+	defer c.fake.enter()()
+
 	return 0, errNoMigrationSQL
 }
 
@@ -291,7 +327,11 @@ func (c *fakeConn) Transact(ctx context.Context, work driver.Work) error {
 }
 
 // Capabilities reports the declaration this session was built with.
-func (c *fakeConn) Capabilities() capability.Set { return c.caps }
+func (c *fakeConn) Capabilities() capability.Set {
+	defer c.fake.enter()()
+
+	return c.caps
+}
 
 // History reports this session's store.
 func (c *fakeConn) History() history.Store { return &fakeStore{fake: c.fake} }

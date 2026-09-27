@@ -61,8 +61,8 @@ type Options struct {
 	Migrations []history.File
 	// Clock supplies the instant each run started, which this package may not read for itself.
 	Clock Clock
-	// Runtime is the language migrations are written in, spelled as migr.yaml spells it.
-	Runtime string
+	// Runtime names the language one migration is written in, since a run may hold several.
+	Runtime func(m migration.Migration) string
 	// Scope narrows what this run acts on, and an unset one acts on everything the direction can.
 	Scope Scope
 }
@@ -81,7 +81,7 @@ func (o Options) check() error {
 		return ErrNoClock
 	}
 
-	if o.Runtime == "" {
+	if o.Runtime == nil {
 		return ErrNoRuntime
 	}
 

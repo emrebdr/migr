@@ -338,6 +338,43 @@ export async function up() {
   assert.doesNotMatch(String(reported), /nowhere\.ts/);
 });
 
+test("a migration in another language is skipped, where a file that is not one is refused", async (t) => {
+  const dir = project(t, "module", {
+    "migrations/20260727T153000_add_accounts.ts": "export async function up() {}\n",
+    "migrations/20260727T153100_add_teams.go": "package migrations\n",
+    "migrations/20260727T153200_add_users.py": "def up(s):\n    pass\n",
+    "migrations/README.md": "these are the migrations\n",
+  });
+
+  t.diagnostic(
+    "One directory may hold two languages (ADR 0048), so a well-formed migration name in",
+  );
+  t.diagnostic(
+    "an extension this runtime does not load belongs to another runtime. A README is not",
+  );
+  t.diagnostic(
+    "that, and is still refused -- the engine routes by extension and holds what each",
+  );
+  t.diagnostic(
+    "runtime reports against what it sent, so nothing is skipped by everything in silence.",
+  );
+
+  const reported = await refused(dir);
+
+  assert.equal(reported.length, 1, `reported ${reported.length}: ${reported.join(" | ")}`);
+  assert.match(String(reported[0]), /README\.md is not/);
+});
+
+test("a directory of another language's migrations alone loads nothing and reports nothing", async (t) => {
+  const dir = project(t, "module", {
+    "migrations/20260727T153000_add_accounts.go": "package migrations\n",
+  });
+
+  const loaded = await fromDirectory(dir);
+
+  assert.deepEqual(loaded.all(), []);
+});
+
 test("a dotfile is skipped, which is the one exemption the grammar has", async (t) => {
   const dir = project(t, "module", {
     "migrations/.DS_Store": "",

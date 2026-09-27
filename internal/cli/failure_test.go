@@ -63,7 +63,7 @@ var codes = []coded{
 	{name: "--step with --to", command: "up", args: []string{"--step", "1", "--to", versionAt(0)},
 		stage: staged, want: ExitValidation},
 	{name: "a runtime that will not start", command: "up", stage: stagedGo, want: ExitRuntime},
-	{name: "a directory holding two languages", command: "up", stage: stagedMixed,
+	{name: "a migration nothing here reads", command: "up", stage: stagedUnroutable,
 		want: ExitValidation},
 	{name: "a filename the grammar refuses", command: "up", stage: stagedUnnamed,
 		want: ExitValidation},
@@ -607,12 +607,12 @@ func stagedGo(t *testing.T) (string, *fake, *driver.Registry) {
 	return goProject(t, "add_users", "add_teams")
 }
 
-// stagedMixed is a project holding a file its one language cannot execute, which M7-T10 is about.
-func stagedMixed(t *testing.T) (string, *fake, *driver.Registry) {
+// stagedUnroutable is a project holding a migration written in a language nothing here reads.
+func stagedUnroutable(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
-	dir, f, drivers := goProject(t, "add_users")
-	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.sql"), "-- migr:up\nSELECT 1;\n")
+	dir, f, drivers := staged(t)
+	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.py"), "def up(s):\n    pass\n")
 
 	return dir, f, drivers
 }

@@ -45,7 +45,7 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	source, stop, err := t.offlineSource(cmd.Context(), opts)
+	source, stop, err := t.offlineSource(cmd.Context(), opts, found)
 	if err != nil {
 		return err
 	}

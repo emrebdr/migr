@@ -98,8 +98,13 @@ func queueOptions(t *testing.T, items ...staged) engine.Options {
 		Source:     &queueSource{t: t, staged: items},
 		Migrations: files,
 		Clock:      steadyClock(),
-		Runtime:    queueRuntime,
+		Runtime:    queueWritten,
 	}
+}
+
+// queueWritten names the language every staged migration is written in, which is one for these.
+func queueWritten(migration.Migration) string {
+	return queueRuntime
 }
 
 // compilerOnly compiles operations through this package's own compiler, with no session at all.

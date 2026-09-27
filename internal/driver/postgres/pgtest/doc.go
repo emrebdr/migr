@@ -1,4 +1,5 @@
-// Package pgtest renders a PostgreSQL schema as text, so two moments can be compared.
+// Package pgtest renders a PostgreSQL schema as text, so two moments can be compared, and undoes
+// what a test could not undo any other way.
 //
 // # Why this is a package and not a test helper
 //
@@ -31,6 +32,20 @@
 // render identically. Relations are listed as well as described, because every other probe
 // describes contents: without it, a table drop_column emptied would be indistinguishable from one
 // that was dropped, and a rollback that dropped the wrong thing would compare equal.
+//
+// # The one thing here that writes
+//
+// Drop removes a table if it is there, and exists for one case M7-T10 needed: a migration that sends
+// a statement through host.db.exec and then fails leaves that statement committed (ADR 0032), and
+// proving it means leaving a table behind in a database other suites digest. Nothing in a migration
+// can clean that up. A compensating migration whose only effect is an exec compiles to no statements
+// and the engine refuses it; one that dropped the table as an operation would be recorded as applied,
+// so a second run would skip it and meet the table still there.
+//
+// It takes a driver.Conn and uses Perform, since Ask runs in a read-only transaction and a drop is
+// not a question. It interpolates two identifiers, so it refuses anything but lowercase letters,
+// digits and underscores -- which is every table a test stages, and is a narrower rule than quoting
+// because the alternative is a helper that will interpolate anything.
 //
 // This is not introspection. internal/schema's Snapshot is M11-T1 and per-driver introspection is
 // M11-T2; M11-T6 is where the round trip moves onto the neutral snapshot and this package goes

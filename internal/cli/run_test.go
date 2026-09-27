@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -402,49 +403,111 @@ func TestEveryLanguageMigrRegistersReachesItsRuntime(t *testing.T) {
 	}
 }
 
-func TestADirectoryHoldingTwoLanguagesIsRefusedBeforeAnythingRuns(t *testing.T) {
+func TestADirectoryHoldingTwoLanguagesRunsBothInTimestampOrder(t *testing.T) {
 	dir, f, drivers := goProject(t, "add_scripted")
 	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.sql"),
 		"-- migr:up\nCREATE TABLE other (id bigint);\n\n-- migr:down\nDROP TABLE other;\n")
 
-	_, _, err := runScripted(t, dir, actEmits, drivers, "up")
-	if err == nil {
-		t.Fatal("up ran a directory holding two languages")
+	if _, _, err := runScripted(t, dir, actEmits, drivers, "up"); err != nil {
+		t.Fatalf("up over a directory holding two languages: %v", err)
 	}
 
-	t.Log("Before this refusal, up applied every file its one runtime recognized and then failed")
-	t.Log("on the first it did not -- leaving the project half applied and blaming the migration.")
-	t.Log("A half-applied database is the worst failure this tool has, so the whole set is read")
-	t.Log("before any of it runs.")
+	t.Log("Until M7-T10 this was refused, and before that refusal up applied every file its one")
+	t.Log("runtime recognized and failed on the first it did not -- half applying the project and")
+	t.Log("blaming the migration. Each file is now routed by its own extension, and the .sql half")
+	t.Log("needs no process at all where the .go half needs a session.")
 
-	if len(f.statements) != 0 {
-		t.Errorf("up ran %v before refusing", f.statements)
+	want := []string{"CREATE TABLE scripted (id bigint)", "CREATE TABLE other (id bigint);"}
+	if !slices.Equal(f.statements, want) {
+		t.Errorf("up ran %v, want %v in that order", f.statements, want)
 	}
 
-	for _, want := range []string{"_add_other.sql", "go project", ".go", "M7-T10"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal does not name %q: %v", want, err)
+	languages := map[string]string{versionAt(0): "go", versionAt(1): "sql"}
+
+	for _, rec := range f.runs {
+		if rec.Runtime != languages[rec.Version] {
+			t.Errorf("%s recorded runtime %q, and its own file is a %s one", rec.Version,
+				rec.Runtime, languages[rec.Version])
+			t.Log("The row is per migration and the run is not: a mixed run stamping one language")
+			t.Log("on every row is what engine.Options.Runtime being a string used to guarantee.")
 		}
-	}
-
-	if got := ExitCode(err); got != ExitValidation {
-		t.Errorf("ExitCode = %d, want %d", got, ExitValidation)
 	}
 }
 
-func TestEveryCommandThatRunsOrChecksMigrationsRefusesTwoLanguages(t *testing.T) {
-	t.Log("status and history are reports and take no lock (ADR 0027), but a directory nothing can")
-	t.Log("execute is not one of the five states either -- discovery already fails both for a")
+func TestAJavaScriptMigrationRunsInATypeScriptProject(t *testing.T) {
+	dir, f, drivers := tsProject(t, "add_scripted")
+	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_plain.js"), "exports.up = 0;\n")
+
+	if _, _, err := runScripted(t, dir, actEmits, drivers, "up"); err != nil {
+		t.Fatalf("up over a project holding a .js migration: %v", err)
+	}
+
+	t.Log("migr-runtime-node loads .ts, .js and .mjs, and M7-T8's one-extension-per-language check")
+	t.Log("refused the last two in a project that was already TypeScript. A language owns a set.")
+
+	if len(f.runs) != 2 {
+		t.Fatalf("up recorded %d migrations, want 2", len(f.runs))
+	}
+
+	for _, rec := range f.runs {
+		if rec.Runtime != string(config.LanguageTypeScript) {
+			t.Errorf("%s recorded runtime %q, and both files are TypeScript's", rec.Version, rec.Runtime)
+		}
+	}
+}
+
+func TestTwoRuntimeSessionsShareOnePinnedConnectionWithoutOverlapping(t *testing.T) {
+	dir, f, drivers := goProject(t, "add_scripted")
+	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.ts"), "export const up = 0;\n")
+
+	if _, _, err := runScripted(t, dir, actAsks, drivers, "up"); err != nil {
+		t.Fatalf("up over a project needing two runtimes: %v", err)
+	}
+
+	t.Log("Both sessions' callbacks reach the same pinned driver.Conn, which is safe only because")
+	t.Log("the engine asks one migration at a time. The fake counts calls in flight rather than")
+	t.Log("serializing them, so a run that ever asked two migrations at once fails here.")
+
+	if f.overlapping() {
+		t.Error("two calls were in flight on one session at once")
+	}
+
+	if !f.asked("lock") {
+		t.Error("a run holding two runtime sessions still takes one migration lock")
+	}
+}
+
+func TestEveryCommandThatRunsOrChecksMigrationsReadsTwoLanguages(t *testing.T) {
+	for _, command := range []string{"up", "down", "plan", "validate", "status"} {
+		dir, _, drivers := goProject(t, "add_scripted")
+		write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.sql"),
+			"-- migr:up\nCREATE TABLE other (id bigint);\n\n-- migr:down\nDROP TABLE other;\n")
+
+		if _, _, err := runScripted(t, dir, actEmits, drivers, command); err != nil {
+			t.Errorf("migr %s over a mixed directory: %v", command, err)
+		}
+	}
+}
+
+func TestEveryCommandRefusesAMigrationNothingHereReads(t *testing.T) {
+	t.Log("status and history are reports and take no lock (ADR 0027), but a file no runtime could")
+	t.Log("ever execute is not one of the five states either -- discovery already fails both for a")
 	t.Log("filename the grammar refuses, and this is the same class of malformed project.")
 
 	for _, command := range []string{"up", "down", "plan", "validate", "status"} {
 		dir, _, drivers := goProject(t, "add_scripted")
-		write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.sql"), "-- migr:up\nSELECT 1;\n")
+		write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.py"), "def up(s):\n    pass\n")
 
 		_, _, err := runScripted(t, dir, actEmits, drivers, command)
 		if got := ExitCode(err); got != ExitValidation {
-			t.Errorf("migr %s over a mixed directory exited %d, want %d (%v)", command, got,
+			t.Errorf("migr %s over an unroutable file exited %d, want %d (%v)", command, got,
 				ExitValidation, err)
+		}
+
+		for _, want := range []string{"_add_other.py", ".py", ".go", ".sql", ".ts"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("migr %s: the refusal does not name %q: %v", command, want, err)
+			}
 		}
 	}
 }
@@ -661,5 +724,67 @@ func TestARunWhoseSummaryCannotBeWrittenFails(t *testing.T) {
 		t.Error("up reported success having failed to tell anyone what it did")
 		t.Log("The migrations are applied and the operator was told nothing. Exit code 0 there")
 		t.Log("says the summary they never saw was empty, which is the one reading that is wrong.")
+	}
+}
+
+func TestAMigrationARuntimeDidNotLoadIsAFailureNamingTheFile(t *testing.T) {
+	dir, f, drivers := goProject(t, "add_scripted")
+
+	_, _, err := runScripted(t, dir, actLoadsNothing, drivers, "up")
+	if err == nil {
+		t.Fatal("up ran a project whose runtime loaded nothing")
+	}
+
+	t.Log("Nothing in this package called Session.Discovered before M7-T10, which is why a file the")
+	t.Log("runtime could not load came back from the SDK as unknown_migration -- true and useless.")
+	t.Log("A loader may skip a file it does not own only because this holds both sides to the route.")
+
+	for _, want := range []string{"_add_scripted.go", "go runtime did not load it"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+
+	if len(f.statements) != 0 {
+		t.Errorf("up ran %v before refusing", f.statements)
+	}
+}
+
+func TestAMigrationTwoRuntimesClaimIsAFailureToo(t *testing.T) {
+	dir, _, drivers := goProject(t, "add_scripted")
+
+	_, _, err := runScripted(t, dir, actLoadsExtra, drivers, "up")
+	if err == nil {
+		t.Fatal("up ran a project whose runtime claimed a migration nothing routed to it")
+	}
+
+	t.Log("The reconciliation is two-directional on purpose: a runtime loading what was routed")
+	t.Log("elsewhere is how one migration would be run twice, once by each language.")
+
+	for _, want := range []string{strayVersion, "routed it elsewhere"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+}
+
+func TestEverySessionARunStartedIsShutDownAndNotMerelyKilled(t *testing.T) {
+	dir, _, drivers := goProject(t, "add_scripted")
+	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.ts"), "export const up = 0;\n")
+
+	if _, _, err := runScripted(t, dir, actEmits, drivers, "up"); err != nil {
+		t.Fatalf("up over a project needing two runtimes: %v", err)
+	}
+
+	t.Log("Each scripted runtime writes a marker when it answers shutdown, so a closer that ended")
+	t.Log("only the last session leaves one process to be killed by the process group instead --")
+	t.Log("which is invisible to every other assertion here (ADR 0034, ADR 0048).")
+
+	for _, lang := range scripted {
+		marker := filepath.Join(dir, shutdownMarker+string(lang))
+
+		if _, err := os.Stat(marker); err != nil {
+			t.Errorf("the %s runtime was never shut down: %v", lang, err)
+		}
 	}
 }

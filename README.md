@@ -152,11 +152,12 @@ than a restore.
 ## The idea, in code
 
 > **Both halves are real.** The Go SDK is the contract, the protocol client, and the whole
-> twenty-operation schema builder (M6-T7, M6-T8); the TypeScript SDK is now all of that plus the
-> process that runs it — the contract, the same builder emitting the same IR, the protocol client,
-> and the `migr-runtime-node` executable that loads `.ts`, `.js`, and `.mjs` migrations with no build
-> step (M7-T2 through M7-T5). What is missing is the engine side: the adapter that starts that
-> process is M7-T6, and the wiring that lets `migr up` reach it is M7-T8.
+> twenty-operation schema builder (M6-T7, M6-T8); the TypeScript SDK is all of that plus the process
+> that runs it and the adapter that starts one — the same builder emitting the same IR, the
+> `migr-runtime-node` executable that loads `.ts`, `.js`, and `.mjs` migrations with no build step,
+> and an engine that finds Node and this project's `@migr/sdk` for itself (M7-T2 through M7-T6).
+> What has not happened yet is a run: `migr up` against a TypeScript project is M7-T8, and until it
+> lands the CLI says so rather than being the first thing to try it.
 
 ```go
 package migrations
@@ -374,6 +375,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0043](docs/adr/0043-typescript-schema-builder.md) | The TypeScript schema builder |
 | [0044](docs/adr/0044-typescript-protocol-client.md) | The TypeScript protocol client |
 | [0045](docs/adr/0045-node-runtime-binary.md) | The Node runtime binary |
+| [0046](docs/adr/0046-node-runtime-adapter.md) | The Node runtime adapter |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

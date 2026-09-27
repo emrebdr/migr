@@ -381,11 +381,12 @@ func TestALanguageWithNoRuntimeIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
 		t.Fatal("up ran migrations in a language nothing can execute")
 	}
 
-	t.Log("M7-T5 landed migr-runtime-node, so what is missing is no longer the process either:")
-	t.Log("it is the adapter that starts one, which is what runtime.Session is handed.")
+	t.Log("M7-T6 landed the adapter, so nothing is missing: the SDK, the process it spawns, and")
+	t.Log("the adapter that starts one all exist. What has not happened is a run, which is M7-T8")
+	t.Log("-- and Go was refused on exactly this ground between M6-T8 and M6-T10.")
 
-	if !strings.Contains(err.Error(), "M7-T6") {
-		t.Errorf("the refusal does not name the task the Node adapter lands in: %v", err)
+	if !strings.Contains(err.Error(), "M7-T8") {
+		t.Errorf("the refusal does not name the task that first runs this language: %v", err)
 	}
 
 	t.Log("Go is no longer in this refusal's company: M6-T10 wired it up, so the message names")

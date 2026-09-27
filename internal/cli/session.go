@@ -32,11 +32,6 @@ var executable = map[config.Language]string{
 	config.LanguageTypeScript: "M7-T8",
 }
 
-// adapterTask names the task each remaining language's adapter arrives in, which is what starts its runtime.
-var adapterTask = map[config.Language]string{
-	config.LanguageTypeScript: "M7-T6",
-}
-
 // target is the one database a command reaches, resolved from the config and reaching nothing yet.
 type target struct {
 	// cfg is the whole resolved configuration, defaults applied and secrets expanded.
@@ -386,11 +381,10 @@ func runnable(lang config.Language, runtimes *runtime.Registry) (runtime.Runtime
 		return nil, fmt.Errorf("migrations.language: %s: %w", lang, err)
 	}
 
-	if task, waiting := adapterTask[lang]; waiting {
-		return nil, fmt.Errorf("migr has the SDK a %s migration is written against and the runtime "+
-			"that executes it, but not yet the adapter that starts one: that arrives in %s and the "+
-			"wiring in %s. migrations.language: %s and %s are the formats migr runs today",
-			lang, task, executable[lang], config.LanguageSQL, config.LanguageGo)
+	if task, waiting := executable[lang]; waiting {
+		return nil, fmt.Errorf("migr has a %s runtime adapter and the SDK it runs, and nothing has "+
+			"run one end to end yet: that is %s. migrations.language: %s and %s are the formats "+
+			"migr runs today", lang, task, config.LanguageSQL, config.LanguageGo)
 	}
 
 	return adapter, nil

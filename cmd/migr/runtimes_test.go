@@ -6,6 +6,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/runtime/golang"
+	"github.com/emrebdr/migr/internal/runtime/node"
 )
 
 func TestEveryRegisteredRuntimeIsALanguageMigrYamlAccepts(t *testing.T) {
@@ -42,6 +43,29 @@ func TestTheGoAdapterIsRegisteredUnderTheLanguageMigrYamlSpells(t *testing.T) {
 	}
 
 	if adapter.Name() != golang.Name {
+		t.Errorf("the registry built an adapter naming itself %q", adapter.Name())
+	}
+}
+
+func TestTheNodeAdapterIsRegisteredUnderTheLanguageMigrYamlSpells(t *testing.T) {
+	registry, err := runtimes()
+	if err != nil {
+		t.Fatalf("building the runtime registry: %v", err)
+	}
+
+	if node.Name != string(config.LanguageTypeScript) {
+		t.Log("The adapter runs TypeScript and JavaScript both, and the key is the one migr.yaml")
+		t.Log("spells, since a registry key nothing can name in migrations.language is unreachable.")
+		t.Errorf("the adapter names itself %q and migr.yaml spells it %q",
+			node.Name, config.LanguageTypeScript)
+	}
+
+	adapter, err := registry.New(string(config.LanguageTypeScript))
+	if err != nil {
+		t.Fatalf("the registry has nothing under %q: %v", config.LanguageTypeScript, err)
+	}
+
+	if adapter.Name() != node.Name {
 		t.Errorf("the registry built an adapter naming itself %q", adapter.Name())
 	}
 }

@@ -325,7 +325,11 @@ Three things this deliberately is not:
   is what lets a loader skip anything at all: nothing is quietly ignored by every runtime at once.
   See [ADR 0048](adr/0048-multi-language-projects.md).
 - **It is not an ordering.** The result's order carries no meaning. The engine sorts by version and
-  overlays the declared dependencies itself.
+  overlays the declared dependencies itself — over **every** runtime's answer at once, so an edge may
+  name a version another runtime loaded, and a cycle or an edge naming nothing fails the command
+  before any migration runs. Ordering therefore settles after every session has been started, which
+  is why a command that starts none prints version order and says so. See
+  [ADR 0049](adr/0049-reading-a-declared-dependency.md).
 - **It is not a computation.** `dependencies` is read from the migration, never derived from a
   query. A graph that could branch on live data would let `migr plan` and `migr up` order the same
   migrations differently, and would put `migr status` behind a language toolchain. See
@@ -1014,3 +1018,4 @@ The reasoning behind this protocol, including the options that were rejected:
 | [0032](adr/0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote |
 | [0033](adr/0033-where-the-mode-lives.md) | The mode belongs to the call, and the engine owns it |
 | [0034](adr/0034-runtime-process-lifecycle.md) | The runtime process, and what outlives what |
+| [0049](adr/0049-reading-a-declared-dependency.md) | A declared dependency is read once the runtimes are up |

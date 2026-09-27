@@ -171,6 +171,9 @@ func (f *fake) answer(m *protocol.Message) bool {
 	case protocol.MigrationDiscover:
 		return f.reply(m, protocol.DiscoverResult{Migrations: []protocol.Discovered{{
 			Version: "20260727T153000", File: "20260727T153000_add_users.go", Dependencies: []string{},
+		}, {
+			Version: "20260727T153100", File: "20260727T153100_add_teams.go",
+			Dependencies: []string{"20260727T153000"},
 		}}})
 	case protocol.MigrationExecute:
 		return f.execute(m)

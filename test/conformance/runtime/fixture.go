@@ -78,6 +78,8 @@ type Fixture struct {
 	Reads []Read
 	// Writes are the statements it sends itself, in order, with what an apply reports.
 	Writes []Write
+	// Dependencies are the versions it declares it must follow, which every SDK reports identically.
+	Dependencies []string
 
 	// up is the manifest's own bytes for Up, compacted, which is what an SDK is compared against.
 	up []byte
@@ -110,11 +112,12 @@ func (f Fixture) Operations(dir ir.Direction) ir.Operations {
 
 // manifest is the JSON shape one fixture file carries.
 type manifest struct {
-	Up          json.RawMessage `json:"up"`
-	Down        json.RawMessage `json:"down,omitempty"`
-	DownRefusal *Refusal        `json:"downRefusal,omitempty"`
-	Reads       []Read          `json:"reads,omitempty"`
-	Writes      []Write         `json:"writes,omitempty"`
+	Up           json.RawMessage `json:"up"`
+	Down         json.RawMessage `json:"down,omitempty"`
+	DownRefusal  *Refusal        `json:"downRefusal,omitempty"`
+	Reads        []Read          `json:"reads,omitempty"`
+	Writes       []Write         `json:"writes,omitempty"`
+	Dependencies []string        `json:"dependencies,omitempty"`
 }
 
 // ErrNoFixtures marks a fixture directory with nothing in it, which every SDK would pass.
@@ -152,7 +155,33 @@ func order(loaded []Fixture) ([]Fixture, error) {
 
 	sort.Slice(loaded, func(i, j int) bool { return loaded[i].Version < loaded[j].Version })
 
+	if err := checkDeclared(loaded); err != nil {
+		return nil, err
+	}
+
 	return loaded, nil
+}
+
+// checkDeclared refuses an edge naming no fixture, which every SDK would report and nothing would mean.
+func checkDeclared(loaded []Fixture) error {
+	defined := make(map[string]bool, len(loaded))
+	for _, f := range loaded {
+		defined[f.Version] = true
+	}
+
+	for _, f := range loaded {
+		for _, version := range f.Dependencies {
+			if version == f.Version {
+				return fmt.Errorf("%s declares itself, which no order could satisfy", f.Stem())
+			}
+
+			if !defined[version] {
+				return fmt.Errorf("%s declares %s, which no fixture carries", f.Stem(), version)
+			}
+		}
+	}
+
+	return nil
 }
 
 // Sources returns one language's expression of every fixture, for a caller to write into a project.
@@ -195,7 +224,7 @@ func load(filename string) (Fixture, error) {
 func build(f Fixture, m manifest) (Fixture, error) {
 	var err error
 
-	f.Refusal, f.Reads, f.Writes = m.DownRefusal, m.Reads, m.Writes
+	f.Refusal, f.Reads, f.Writes, f.Dependencies = m.DownRefusal, m.Reads, m.Writes, m.Dependencies
 
 	if f.Up, f.up, err = canonical("up", m.Up); err != nil {
 		return Fixture{}, err

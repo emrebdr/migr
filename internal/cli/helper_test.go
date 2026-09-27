@@ -23,6 +23,9 @@ import (
 // scriptVar names the behavior this binary plays when it is re-executed as a runtime.
 const scriptVar = "MIGR_CLI_FAKE_RUNTIME"
 
+// declareVar names what the re-executed runtime has its migrations declare, which is its own axis.
+const declareVar = "MIGR_CLI_FAKE_DECLARES"
+
 // TestMain re-executes this binary as a language runtime when the script variable is set.
 func TestMain(m *testing.M) {
 	script, playing := os.LookupEnv(scriptVar)
@@ -30,7 +33,7 @@ func TestMain(m *testing.M) {
 		os.Exit(m.Run())
 	}
 
-	os.Exit(playRuntime(script))
+	os.Exit(playRuntime(script, os.Getenv(declareVar)))
 }
 
 // The behaviors a scripted runtime plays, each named by what a migration written in it does.
@@ -53,6 +56,18 @@ const (
 	actLoadsExtra = "loads-extra"
 )
 
+// The declarations a scripted runtime reports, which compose with every act above.
+const (
+	// declaresNothing is what a migration that declares no dependency reports, and is the default.
+	declaresNothing = ""
+	// declaresNext has each migration declare the version after it, so the run order is reversed.
+	declaresNext = "next"
+	// declaresCycle closes that chain, so the last migration declares the first and no order exists.
+	declaresCycle = "cycle"
+	// declaresUnknown has each migration declare a version no file in the directory carries.
+	declaresUnknown = "unknown"
+)
+
 // strayVersion is the migration actLoadsExtra claims, which no file in any staged project carries.
 const strayVersion = "20991231T235959"
 
@@ -66,11 +81,12 @@ const askedOperation = `{"operation":{"op":"raw","driver":"fake","sql":"SELECT 1
 var firstVersion = versionAt(0)
 
 // playRuntime answers the engine until it stops asking, as the script it was given says to.
-func playRuntime(script string) int {
+func playRuntime(script, declares string) int {
 	r := &scriptedRuntime{
-		act: script,
-		in:  protocol.NewReader(os.Stdin),
-		out: protocol.NewWriter(os.Stdout),
+		act:      script,
+		declares: declares,
+		in:       protocol.NewReader(os.Stdin),
+		out:      protocol.NewWriter(os.Stdout),
 	}
 
 	return r.run()
@@ -86,6 +102,8 @@ type scriptedRuntime struct {
 	dir string
 	// lang is the language this process was started for, which decides which files are its own.
 	lang config.Language
+	// declares is what this process has each of its migrations declare it must follow.
+	declares string
 }
 
 // run reads the engine's requests and answers them until the pipe closes or shutdown arrives.
@@ -174,18 +192,76 @@ func (r *scriptedRuntime) loadable() ([]protocol.Discovered, error) {
 		return nil, err
 	}
 
+	found := migrationsIn(entries)
+
 	loaded := []protocol.Discovered{}
 
-	for _, entry := range entries {
-		parsed, err := migration.Parse(entry.Name())
-		if err != nil || !slices.Contains(extensions[r.lang], parsed.Ext) {
+	for _, m := range found {
+		if !slices.Contains(extensions[r.lang], m.Ext) {
 			continue
 		}
 
-		loaded = append(loaded, protocol.Discovered{Version: parsed.Version, File: parsed.Filename()})
+		loaded = append(loaded, protocol.Discovered{Version: m.Version, File: m.Filename(),
+			Dependencies: r.declaredBy(m, found)})
 	}
 
 	return loaded, nil
+}
+
+// migrationsIn returns every entry the grammar accepts, in version order, whatever language owns it.
+func migrationsIn(entries []os.DirEntry) []migration.Migration {
+	var found []migration.Migration
+
+	for _, entry := range entries {
+		if parsed, err := migration.Parse(entry.Name()); err == nil {
+			found = append(found, parsed)
+		}
+	}
+
+	slices.SortFunc(found, func(a, b migration.Migration) int {
+		return strings.Compare(a.Version, b.Version)
+	})
+
+	return found
+}
+
+// declaredBy renders what this script has one migration declare, which may name another language's.
+func (r *scriptedRuntime) declaredBy(m migration.Migration,
+	found []migration.Migration) []string {
+	switch r.declares {
+	case declaresNext, declaresCycle:
+		return r.chained(m, found)
+	case declaresUnknown:
+		return []string{strayVersion}
+	}
+
+	return []string{}
+}
+
+// chained declares the migration after this one, closing the loop for the last one only in a cycle.
+func (r *scriptedRuntime) chained(m migration.Migration, found []migration.Migration) []string {
+	if next := after(m, found); next != "" {
+		return []string{next}
+	}
+
+	if r.declares == declaresCycle && len(found) > 1 {
+		return []string{found[0].Version}
+	}
+
+	return []string{}
+}
+
+// after names the version that sorts directly after one, and is empty for the last migration.
+func after(m migration.Migration, found []migration.Migration) string {
+	at := slices.IndexFunc(found, func(other migration.Migration) bool {
+		return other.Version == m.Version
+	})
+
+	if at < 0 || at == len(found)-1 {
+		return ""
+	}
+
+	return found[at+1].Version
 }
 
 // describeProject reports a runtime told the wrong thing about where it is or what it runs.
@@ -289,6 +365,8 @@ type scriptedAdapter struct {
 	name string
 	// act is the behavior the spawned process plays.
 	act string
+	// declares is what that process has its migrations declare, which every act composes with.
+	declares string
 }
 
 // Name reports the language this adapter runs.
@@ -302,7 +380,7 @@ func (a *scriptedAdapter) Command(_ context.Context, p runtime.Project) (runtime
 	return runtime.Command{
 		Path: os.Args[0],
 		Args: []string{"-test.run=TestMain"},
-		Env:  append(os.Environ(), scriptVar+"="+a.act),
+		Env:  append(os.Environ(), scriptVar+"="+a.act, declareVar+"="+a.declares),
 		Dir:  p.Root,
 	}, nil
 }
@@ -318,13 +396,20 @@ var scripted = []config.Language{config.LanguageGo, config.LanguageTypeScript}
 func scriptedRegistry(t *testing.T, act string) *runtime.Registry {
 	t.Helper()
 
+	return declaringRegistry(t, act, declaresNothing)
+}
+
+// declaringRegistry returns the same registry over migrations that declare what they are told to.
+func declaringRegistry(t *testing.T, act, declares string) *runtime.Registry {
+	t.Helper()
+
 	registry := runtime.NewRegistry()
 
 	for _, lang := range scripted {
 		name := string(lang)
 
 		if err := registry.Register(name, func() (runtime.Runtime, error) {
-			return &scriptedAdapter{name: name, act: act}, nil
+			return &scriptedAdapter{name: name, act: act, declares: declares}, nil
 		}); err != nil {
 			t.Fatalf("registering the scripted %s adapter: %v", name, err)
 		}
@@ -371,4 +456,13 @@ func runScripted(t *testing.T, dir, act string, drivers *driver.Registry,
 
 	return runOptions(t, dir, &options{clock: ticking(noon), drivers: drivers,
 		runtimes: scriptedRegistry(t, act)}, args...)
+}
+
+// runDeclaring runs the CLI against a project whose migrations declare what they are told to.
+func runDeclaring(t *testing.T, dir, act, declares string, drivers *driver.Registry,
+	args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+
+	return runOptions(t, dir, &options{clock: ticking(noon), drivers: drivers,
+		runtimes: declaringRegistry(t, act, declares)}, args...)
 }

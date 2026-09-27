@@ -13,6 +13,7 @@ enum Tier {
 
 /** AddProfileColumns is the fixture for add_column, drop_column, and alter_column. */
 export default defineMigration({
+  dependencies: ["20260727T120001"],
   async up(s) {
     await s
       .table("users")

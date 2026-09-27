@@ -45,14 +45,19 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	source, stop, err := t.offlineSource(cmd.Context(), opts, found)
+	read, err := t.offlineSource(cmd.Context(), opts, found)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		err = errors.Join(err, stop(context.WithoutCancel(cmd.Context())))
+		err = errors.Join(err, read.stop(context.WithoutCancel(cmd.Context())))
 	}()
+
+	ordered, err := overlaid(opts, found, read.declared)
+	if err != nil {
+		return err
+	}
 
 	d, err := t.compiler(opts)
 	if err != nil {
@@ -60,8 +65,8 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 	}
 
 	report, err := validate.Run(cmd.Context(), validate.Options{
-		Migrations: found,
-		Source:     source,
+		Migrations: ordered,
+		Source:     read.source,
 		Planner:    plan.Planner{Compiler: d},
 	})
 	if err != nil {

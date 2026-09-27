@@ -11,6 +11,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
 )
 
 // digestPrefix is how much of a digest a table shows, since comparing 64 hex characters is --json's job.
@@ -38,7 +39,7 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	_, files, err := t.files(opts)
+	found, files, err := t.files(opts)
 	if err != nil {
 		return err
 	}
@@ -57,7 +58,7 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	return writeResult(cmd.OutOrStdout(), opts, statusOf(s.database, len(files), report))
+	return writeResult(cmd.OutOrStdout(), opts, statusOf(s.database, found, report))
 }
 
 // recordedRun is the run that left a migration in the state it is in, absent when none did.
@@ -96,6 +97,17 @@ type statusRow struct {
 	CurrentSource string `json:"current_source,omitempty"`
 }
 
+// orderBasis names what decided a report's sequence, since a report resolves only what needs no runtime.
+type orderBasis string
+
+// The two bases a report prints under. Only a command that starts a runtime resolves the overlay.
+const (
+	// orderResolved marks a sequence nothing here can reorder, which is the order a run will use.
+	orderResolved orderBasis = "resolved"
+	// orderVersion marks version order, which a declared dependency this report cannot read may move.
+	orderVersion orderBasis = "version"
+)
+
 // statusReport is what one database reconciled to, in the form --json reports it.
 type statusReport struct {
 	// Database is the name migr.yaml holds the target under.
@@ -104,14 +116,18 @@ type statusReport struct {
 	Recorded bool `json:"history_table"`
 	// Files is how many migration files are on disk, which is a fact about the directory.
 	Files int `json:"files"`
-	// Statuses is one entry per version that resolved to a state, in the order migr up would run them.
+	// Order names which sequence the statuses are in, which is a run's own only when nothing can move it.
+	Order orderBasis `json:"order"`
+	// Unread is how many migrations may declare an edge only a started runtime could have reported.
+	Unread int `json:"unread_declarations,omitempty"`
+	// Statuses is one entry per version that resolved to a state, in the order Order names.
 	Statuses []statusRow `json:"statuses"`
 	// Counts is how many versions resolved to each state, carrying every state so a script may read any.
 	Counts map[string]int `json:"counts"`
 }
 
 // statusOf renders a reconciliation report, which a database with no history table resolves to none of.
-func statusOf(database string, files int, report history.Report) statusReport {
+func statusOf(database string, found []migration.Migration, report history.Report) statusReport {
 	statuses, present := report.Resolved()
 
 	rows := make([]statusRow, 0, len(statuses))
@@ -119,13 +135,39 @@ func statusOf(database string, files int, report history.Report) statusReport {
 		rows = append(rows, rowOf(status))
 	}
 
+	unread := declarable(found)
+
 	return statusReport{
 		Database: database,
 		Recorded: present,
-		Files:    files,
+		Files:    len(found),
+		Order:    basisOf(unread),
+		Unread:   unread,
 		Statuses: rows,
 		Counts:   countStates(statuses),
 	}
+}
+
+// declarable counts the migrations whose declared dependencies only a started runtime reports.
+func declarable(found []migration.Migration) int {
+	total := 0
+
+	for _, m := range found {
+		if needsRuntime(languageOf(m.Ext)) {
+			total++
+		}
+	}
+
+	return total
+}
+
+// basisOf names what a sequence is, which is the run order exactly when no declaration went unread.
+func basisOf(unread int) orderBasis {
+	if unread == 0 {
+		return orderResolved
+	}
+
+	return orderVersion
 }
 
 // rowOf renders one version's state, the run that decided it, and the digests a drifted one moved between.
@@ -206,7 +248,20 @@ func (s statusReport) String() string {
 
 	fmt.Fprintf(&b, "\n%s: %s\n", describeMigrations(len(s.Statuses)), joinCounts(s.Counts))
 
+	s.writeOrderNote(&b)
+
 	return b.String()
+}
+
+// writeOrderNote says what this sequence is, for a project whose own order needs a runtime to read.
+func (s statusReport) writeOrderNote(b *strings.Builder) {
+	if s.Order != orderVersion {
+		return
+	}
+
+	fmt.Fprintf(b, "\nthe order above is version order: %s may declare a dependency that only a "+
+		"language runtime reports, and a report starts none. migr plan prints the order a run "+
+		"will use.\n", describeMigrations(s.Unread))
 }
 
 // writeRows renders one line per version, aligned on the widest of each column.

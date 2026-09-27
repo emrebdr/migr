@@ -104,7 +104,7 @@ func unreadable(err error) error {
 	return NewExitError(ExitValidation, err)
 }
 
-// files discovers the migrations directory, orders it, and hashes what each file currently holds.
+// files discovers the migrations directory in version order, hashing what each file currently holds.
 func (t *target) files(opts *options) ([]migration.Migration, []history.File, error) {
 	found, err := t.discovered(opts)
 	if err != nil {
@@ -151,11 +151,22 @@ func (m mux) Emit(ctx context.Context, mig migration.Migration, dir ir.Direction
 	return source.Emit(ctx, mig, dir, mode)
 }
 
-// sources returns what reads every language this directory holds, and what ends all of them.
+// reading is what reads this project's migrations: the source, what ends it, and what it declared.
+type reading struct {
+	// source is what a run or a question asks each migration through.
+	source engine.Source
+	// stop ends every runtime process this reading started, and reports nothing for a file source.
+	stop closer
+	// declared is what each migration says it must follow, which only a started runtime reports.
+	declared migration.Declared
+}
+
+// sources returns what reads every language this directory holds, what ends them, and what they declared.
 func (t *target) sources(ctx context.Context, opts *options, conn driver.Conn,
-	found []migration.Migration) (engine.Source, closer, error) {
+	found []migration.Migration) (reading, error) {
 	routed := routedByLanguage(found)
 	built := mux{byExt: make(map[string]engine.Source, len(routed))}
+	declared := make(migration.Declared, len(found))
 
 	var stops []closer
 
@@ -165,45 +176,60 @@ func (t *target) sources(ctx context.Context, opts *options, conn driver.Conn,
 			continue
 		}
 
-		source, stop, err := t.sourceFor(ctx, opts, conn, lang, mine)
+		read, err := t.sourceFor(ctx, opts, conn, lang, mine)
 		if err != nil {
-			return nil, nil, errors.Join(err, closeAll(ctx, stops))
+			return reading{}, errors.Join(err, closeAll(ctx, stops))
 		}
 
-		if stop != nil {
-			stops = append(stops, stop)
+		if read.stop != nil {
+			stops = append(stops, read.stop)
 		}
 
 		for _, ext := range extensions[lang] {
-			built.byExt[ext] = source
+			built.byExt[ext] = read.source
 		}
+
+		merge(declared, read.declared)
 	}
 
-	return built, allEnding(stops), nil
+	return reading{source: built, stop: allEnding(stops), declared: declared}, nil
+}
+
+// merge folds one language's declarations into the run's, which the routes keep from colliding.
+func merge(into, from migration.Declared) {
+	for version, deps := range from {
+		into[version] = deps
+	}
 }
 
 // sourceFor returns what reads one language's migrations, starting a runtime where it needs one.
 func (t *target) sourceFor(ctx context.Context, opts *options, conn driver.Conn,
-	lang config.Language, mine []migration.Migration) (engine.Source, closer, error) {
-	if lang == config.LanguageSQL {
-		return sql.New(t.fsys, t.db.Driver), nil, nil
+	lang config.Language, mine []migration.Migration) (reading, error) {
+	if !needsRuntime(lang) {
+		return reading{source: sql.New(t.fsys, t.db.Driver)}, nil
 	}
 
 	adapter, err := runnable(lang, opts.runtimes)
 	if err != nil {
-		return nil, nil, NewExitError(ExitValidation, err)
+		return reading{}, NewExitError(ExitValidation, err)
 	}
 
 	started, stop, err := t.start(ctx, opts, conn, lang, adapter)
 	if err != nil {
-		return nil, nil, err
+		return reading{}, err
 	}
 
-	if err := checkLoaded(ctx, started, lang, mine); err != nil {
-		return nil, nil, errors.Join(err, stop(context.WithoutCancel(ctx)))
+	declared, err := checkLoaded(ctx, started, lang, mine)
+	if err != nil {
+		return reading{}, errors.Join(err, stop(context.WithoutCancel(ctx)))
 	}
 
-	return started, stop, nil
+	return reading{source: started, stop: stop, declared: declared}, nil
+}
+
+// needsRuntime reports whether a language is read by a process rather than by reading a file here.
+func needsRuntime(lang config.Language) bool {
+	return lang != config.LanguageSQL
 }
 
 // routedByLanguage groups the discovered migrations by the language each one's extension names.
@@ -219,18 +245,22 @@ func routedByLanguage(found []migration.Migration) map[config.Language][]migrati
 	return routed
 }
 
-// checkLoaded holds what a runtime loaded to what was routed to it, so neither side carries a surplus.
+// checkLoaded holds what a runtime loaded to what was routed to it, and returns what it declared.
 func checkLoaded(ctx context.Context, started *runtime.Session, lang config.Language,
-	routed []migration.Migration) error {
-	loaded, err := started.Loaded(ctx)
+	routed []migration.Migration) (migration.Declared, error) {
+	loaded, declared, err := started.Loaded(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return errors.Join(
+	if err := errors.Join(
 		missingFrom(lang, routed, loaded),
 		surplusIn(lang, routed, loaded),
-	)
+	); err != nil {
+		return nil, err
+	}
+
+	return declared, nil
 }
 
 // missingFrom reports a migration routed to a runtime that the runtime did not load.
@@ -293,18 +323,20 @@ func allEnding(stops []closer) closer {
 
 // offlineSource returns what reads this project's migrations over sessions that open no database.
 func (t *target) offlineSource(ctx context.Context, opts *options,
-	found []migration.Migration) (engine.Source, closer, error) {
+	found []migration.Migration) (reading, error) {
 	conn, err := driver.Offline(t.db.Driver)
 	if err != nil {
-		return nil, nil, err
+		return reading{}, err
 	}
 
-	source, stop, err := t.sources(ctx, opts, conn, found)
+	read, err := t.sources(ctx, opts, conn, found)
 	if err != nil {
-		return nil, nil, err
+		return reading{}, err
 	}
 
-	return checking{source: source, conn: conn}, stop, nil
+	read.source = checking{source: read.source, conn: conn}
+
+	return read, nil
 }
 
 // checking is a source that reports a half whose answer a run with no database cannot trust.
@@ -396,7 +428,7 @@ func open(ctx context.Context, opts *options, scope engine.Scope) (*session, err
 		return nil, err
 	}
 
-	found, files, err := t.files(opts)
+	found, err := t.discovered(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -406,7 +438,7 @@ func open(ctx context.Context, opts *options, scope engine.Scope) (*session, err
 		return nil, err
 	}
 
-	if err := s.attach(ctx, t, opts, found, files, scope); err != nil {
+	if err := s.attach(ctx, t, opts, found, scope); err != nil {
 		return nil, errors.Join(err, s.close(context.WithoutCancel(ctx)))
 	}
 
@@ -415,20 +447,50 @@ func open(ctx context.Context, opts *options, scope engine.Scope) (*session, err
 
 // attach gives this session what reads the migrations, which needs the connection it reaches.
 func (s *session) attach(ctx context.Context, t *target, opts *options,
-	found []migration.Migration, files []history.File, scope engine.Scope) error {
-	source, stop, err := t.sources(ctx, opts, s.conn, found)
+	found []migration.Migration, scope engine.Scope) error {
+	read, err := t.sources(ctx, opts, s.conn, found)
 	if err != nil {
 		return err
 	}
 
-	s.stop = stop
-	s.options.Source = source
+	s.stop = read.stop
+
+	files, err := t.sequence(opts, found, read.declared)
+	if err != nil {
+		return err
+	}
+
+	s.options.Source = read.source
 	s.options.Migrations = files
 	s.options.Clock = opts.clock
 	s.options.Runtime = runtimeOf
 	s.options.Scope = scope
 
 	return nil
+}
+
+// sequence settles the order a run performs, which is what each migration declared over the timestamps.
+func (t *target) sequence(opts *options, found []migration.Migration,
+	declared migration.Declared) ([]history.File, error) {
+	ordered, err := overlaid(opts, found, declared)
+	if err != nil {
+		return nil, err
+	}
+
+	return hashed(t.fsys, ordered)
+}
+
+// overlaid puts the migrations in the order their declarations and their timestamps together name.
+func overlaid(opts *options, found []migration.Migration,
+	declared migration.Declared) ([]migration.Migration, error) {
+	ordered, err := migration.Order(found, declared)
+	if err != nil {
+		return nil, NewExitError(ExitValidation, err)
+	}
+
+	opts.log.Debug("resolved the run order", "migrations", len(ordered), "declared", len(declared))
+
+	return ordered, nil
 }
 
 // runtimeOf names the language one migration is written in, by the same map the mux routes on.
@@ -495,7 +557,7 @@ func reader(conn driver.Conn) history.Reader {
 	return conn.History()
 }
 
-// discover reads the migrations directory and puts it in the order a run would perform it.
+// discover reads the migrations directory and puts it in version order, which no declaration has moved yet.
 func discover(fsys fs.FS) ([]migration.Migration, error) {
 	found, err := migration.Discover(fsys)
 	if err != nil {

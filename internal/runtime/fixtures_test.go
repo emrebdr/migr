@@ -126,6 +126,9 @@ func (h *kept) messages() []string {
 // fixture is the migration every test here asks a runtime about.
 var fixture = migration.Migration{Version: "20260727T153000", Name: "add_users", Ext: ".go"}
 
+// dependent is the version of the second migration a fake reports, which declares the first.
+const dependent = "20260727T153100"
+
 // project is what a fake runtime is told about the run, which is a real path and nothing secret.
 func project(t *testing.T) Project {
 	t.Helper()

@@ -11,6 +11,11 @@ func init() { migr.Register(AddProfileColumns{}) }
 // AddProfileColumns is the fixture for add_column, drop_column, and alter_column.
 type AddProfileColumns struct{}
 
+// Dependencies declares the migration that creates the table this one changes.
+func (m AddProfileColumns) Dependencies() []string {
+	return []string{"20260727T120001"}
+}
+
 // Up adds two columns and widens a third, which is the one change that may lose data.
 func (m AddProfileColumns) Up(ctx context.Context, s *migr.Schema) error {
 	return s.Table("users").

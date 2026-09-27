@@ -165,6 +165,9 @@ than a restore.
 > down` reverts it, compared by a schema digest either side (M7-T8). One migrations directory may
 > hold **both**: each file is routed by its own extension, the two interleave in timestamp order
 > under a single `migr up`, and each history row records the language of its own migration (M7-T10).
+> A migration's declared `Dependencies()` now overlay those timestamps in the run itself, across
+> languages, so a merged branch whose files carry the wrong order applies in the right one — and a
+> report, which starts no runtime, prints version order and says which order it has (M7-T11).
 
 ```go
 package migrations
@@ -386,6 +389,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0046](docs/adr/0046-node-runtime-adapter.md) | The Node runtime adapter |
 | [0047](docs/adr/0047-line-separator-escaping.md) | U+2028 and U+2029 are emitted as UTF-8, and a scanner undoes Go's escape |
 | [0048](docs/adr/0048-multi-language-projects.md) | One directory, several languages: route each migration by its own extension |
+| [0049](docs/adr/0049-reading-a-declared-dependency.md) | A declared dependency is read once the runtimes are up, and a report names the order it has |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

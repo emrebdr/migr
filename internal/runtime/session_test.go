@@ -159,8 +159,33 @@ func TestARuntimeReportsWhatItCanRun(t *testing.T) {
 		t.Fatalf("Discovered: %v", err)
 	}
 
-	if len(found) != 1 || found[0].Version != fixture.Version {
+	if len(found) != 2 || found[0].Version != fixture.Version {
 		t.Fatalf("the runtime reported %v", found)
+	}
+}
+
+func TestWhatEachMigrationDeclaredComesBackWithWhatWasLoaded(t *testing.T) {
+	s, _ := start(t, actNormal)
+
+	loaded, declared, err := s.Loaded(t.Context())
+	if err != nil {
+		t.Fatalf("Loaded: %v", err)
+	}
+
+	if len(loaded) != 2 || loaded[0].Filename() != fixture.Filename() {
+		t.Fatalf("the runtime loaded %v", loaded)
+	}
+
+	if len(declared) != 1 || !slices.Equal(declared[dependent], []string{fixture.Version}) {
+		t.Errorf("the declarations came back as %v", declared)
+		t.Log("The engine already makes this call to reconcile what a runtime loaded against what it")
+		t.Log("routed there (ADR 0048), so the declarations it needs to order the run cost no second")
+		t.Log("round trip. M7-T10 parsed the filename here and dropped this field.")
+	}
+
+	if _, declaring := declared[fixture.Version]; declaring {
+		t.Errorf("a migration declaring nothing was recorded as declaring %v",
+			declared[fixture.Version])
 	}
 }
 

@@ -122,8 +122,32 @@ func (s Suite) reconcile(ctx context.Context, session *runtime.Session,
 	}
 
 	files, problems := parseDiscovered(loaded)
+	problems = append(problems, matchDiscovered(files, fixtures)...)
 
-	return files, append(problems, matchDiscovered(files, fixtures)...)
+	return files, append(problems, matchDeclared(loaded, fixtures)...)
+}
+
+// matchDeclared holds what each migration declared to what its fixture defines, list for list.
+func matchDeclared(loaded []protocol.Discovered, fixtures []Fixture) []string {
+	declared := make(map[string][]string, len(loaded))
+	for _, d := range loaded {
+		declared[d.Version] = d.Dependencies
+	}
+
+	var problems []string
+
+	for _, f := range fixtures {
+		deps, reported := declared[f.Version]
+		if !reported || slices.Equal(deps, f.Dependencies) {
+			continue
+		}
+
+		problems = append(problems, fmt.Sprintf("%s: this runtime declared %v and the fixture "+
+			"declares %v -- a declaration is read from the migration, so every language reports "+
+			"the same list (ADR 0018)", f.Stem(), deps, f.Dependencies))
+	}
+
+	return problems
 }
 
 // matchDiscovered holds what a runtime loaded to the fixture set, reporting each side's surplus.

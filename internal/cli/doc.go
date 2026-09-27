@@ -138,9 +138,11 @@
 //
 // # What a command reaches for
 //
-// open split into resolve (config and target), files (discovery and hashing),
-// and connect (driver and session), so what a command needs is visible in which
-// it calls. status skips the source, since it compiles nothing, and can
+// open split into resolve (config and target), discovery and hashing, and
+// connect (driver and session), so what a command needs is visible in which it
+// calls. status calls the pair as files, in version order, because its sequence
+// needs nothing started; a run hashes after its sessions are up, for the reason
+// two sections below. status skips the source, since it compiles nothing, and can
 // therefore report on a project whose runtime it never asked for. history skips
 // discovery too: the log is the database's, and refusing to print it because the
 // migrations directory is broken removes the tool somebody reached for to
@@ -182,7 +184,7 @@
 //
 // The source is built after connect and never before it (ADR 0040). A runtime
 // session needs the driver.Conn its callbacks reach, so before the connection
-// exists there is nothing to give one; t.source takes it as a parameter, and
+// exists there is nothing to give one; t.sources takes it as a parameter, and
 // building the source first is refused by runtime.Options.check rather than by
 // the compiler, since a nil interface is still spellable. Two consequences: a
 // source that fails to start leaves a connection open, so open closes it rather
@@ -195,6 +197,39 @@
 // history row records an extension, deliberately, since a run may outlive the
 // file it ran from -- and a status with no file carries a zero Migration, whose
 // Filename() is the string "_", so the renderer asks before it calls it.
+//
+// # Where the run order settles
+//
+// After every session is started, and before the digests are taken. A declared
+// dependency can only come from a started runtime, so nothing earlier could know
+// one: discovered puts the directory in version order, sources starts what reads
+// each language and brings back what each of its migrations declared, and attach
+// calls migration.Order over the union before hashing the sequence that came
+// back (ADR 0049). validate takes the same step between offlineSource and
+// validate.Run, so the gate reads the sequence it gates.
+//
+// The digests follow the order rather than the order following them:
+// history.File exposes no version, deliberately, so a hashed slice cannot be
+// permuted from here -- and an accessor that permitted it would invite exactly
+// the re-sorting history/doc.go warns against.
+//
+// An edge names a version, whoever loaded it, so a .ts migration may declare a
+// .go one; each session reports its own half and the run resolves one graph over
+// both. The merge cannot collide, since routes are disjoint by extension and the
+// reconciliation above has already refused a runtime claiming a migration routed
+// elsewhere. A cycle, and an edge naming a version nothing carries, are exit 2
+// wherever they surface: migration.Order reports every one of both in one pass,
+// each cycle as its path in filenames, and a migration is what an operator edits.
+//
+// status prints version order and names it. It starts no runtime by design
+// (ADR 0027), so it cannot read an edge at all; claiming the run order anyway
+// and caching the declarations where a report could read them were the
+// alternatives, and the second is a new record of what the migrations say with
+// its own invalidation. The basis is in --json as order, and the one-line note
+// is printed only for a directory holding migrations whose declarations a report
+// cannot read -- so a .sql project's output is unchanged, because that format
+// has no syntax to declare with. migr plan answers "what order exactly": it
+// starts the same runtimes a run does.
 //
 // # What a plan prints, and what it does not yet
 //

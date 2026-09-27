@@ -14,6 +14,7 @@ import {
   request,
   response,
 } from "./message.ts";
+import { HOST_SCHEMA_APPLY } from "./method.ts";
 
 // The envelope is closed and a payload is open, which is docs/protocol.md §2.6 and §10.2 together.
 // An unknown member at the top level is -32600; one inside params, result, or data is ignored,
@@ -21,6 +22,10 @@ import {
 //
 // And an id is three states. JSON.stringify writes them apart on its own -- it drops undefined and
 // keeps null -- but reading them apart takes `in`, which is the trap this file exists to hold shut.
+
+/** The two separators docs/ir.md §3.3 emits as UTF-8, by code point so this source stays readable. */
+const LINE_SEPARATOR = String.fromCodePoint(0x2028);
+const PARAGRAPH_SEPARATOR = String.fromCodePoint(0x2029);
 
 /** refused decodes a line expected not to be a message, returning what refused it. */
 function refused(line: string): ProtocolError {
@@ -177,5 +182,22 @@ test("a method is a string, and a message carrying another is not one", () => {
   assert.match(
     refused('{"jsonrpc":"2.0","id":1,"method":3,"params":{}}').message,
     /method is a string/,
+  );
+});
+
+test("the two separators docs/ir.md §3.3 emits as UTF-8 reach the line unescaped", () => {
+  const query = `SELECT id${LINE_SEPARATOR}FROM users${PARAGRAPH_SEPARATOR}WHERE active`;
+  const line = encode(
+    request(1, HOST_SCHEMA_APPLY, {
+      operations: [{ op: "create_view", view: "active_users", query }],
+    }),
+  );
+
+  assert.ok(line.includes(query), `the envelope escaped a separator: ${line}`);
+  assert.ok(
+    !line.includes("\\u202"),
+    "the operations array is the one payload whose bytes are a compatibility surface " +
+      "(docs/ir.md §4.2), and this is the encoder that writes them -- operation.ts's own " +
+      "encode is never the code path that runs",
   );
 });

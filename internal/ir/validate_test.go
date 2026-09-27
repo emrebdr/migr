@@ -1,6 +1,7 @@
 package ir
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -237,6 +238,73 @@ func TestMarshalDoesNotEscapeHTML(t *testing.T) {
 
 	if !strings.Contains(string(encoded), `total >= 0 AND note <> '&'`) {
 		t.Errorf("the expression should survive verbatim, got %s", encoded)
+	}
+}
+
+func TestMarshalEmitsTheTwoSeparatorsAsUTF8(t *testing.T) {
+	query := "SELECT id, 98 AS rank" + string(lineSeparator) + "FROM users" +
+		string(paragraphSeparator) + "WHERE active"
+
+	encoded, err := Marshal(CreateView{View: "active_users", Query: query})
+	if err != nil {
+		t.Fatalf("marshaling: %v", err)
+	}
+
+	if bytes.Contains(encoded, separatorEscape) {
+		t.Errorf("the separators were escaped: %s", encoded)
+		t.Log("encoding/json escapes U+2028 and U+2029 whatever SetEscapeHTML is told, and")
+		t.Log("JSON.stringify escapes neither. Escaping here makes the Go and TypeScript SDKs")
+		t.Log("emit different bytes for one migration -- docs/ir.md §3.3, ADR 0047.")
+	}
+
+	if !bytes.Contains(encoded, []byte(query)) {
+		t.Errorf("the query should survive verbatim, got %s", encoded)
+		t.Log("The digits are load-bearing: a scanner that reads an escape by its last byte")
+		t.Log("alone, rather than by the five before it, rewrites any string holding an 8 or")
+		t.Log("a 9 six bytes in -- and a query with neither would never notice.")
+	}
+}
+
+func TestMarshalLeavesAnAuthoredEscapeSequenceAlone(t *testing.T) {
+	written := "SELECT id\\u2028FROM users"
+
+	encoded, err := Marshal(CreateView{View: "active_users", Query: written})
+	if err != nil {
+		t.Fatalf("marshaling: %v", err)
+	}
+
+	decoded, err := UnmarshalOperation(encoded)
+	if err != nil {
+		t.Fatalf("decoding what Marshal emitted: %v", err)
+	}
+
+	if view, ok := decoded.(CreateView); !ok || view.Query != written {
+		t.Errorf("a query holding the escape as text did not round-trip: %s", encoded)
+		t.Log("Go writes an authored backslash doubled, so a ReplaceAll over the output would")
+		t.Log("match the tail of that and leave a stray backslash before a raw separator --")
+		t.Log("which is neither the document the author wrote nor valid JSON.")
+	}
+}
+
+func TestAnOperationsArrayCarriesTheSeparatorsRawAsWell(t *testing.T) {
+	op := CreateView{View: "active_users", Query: "SELECT id" + string(lineSeparator) + "FROM users"}
+
+	alone, err := Marshal(op)
+	if err != nil {
+		t.Fatalf("marshaling the operation: %v", err)
+	}
+
+	array, err := Marshal(Operations{op})
+	if err != nil {
+		t.Fatalf("marshaling the array: %v", err)
+	}
+
+	if !bytes.Contains(array, alone) {
+		t.Errorf("the array re-encoded the operation it was given\n got %s\nwant it to hold %s",
+			array, alone)
+		t.Log("An operation reaches the array as a json.RawMessage, which encoding/json compacts")
+		t.Log("rather than re-encodes -- and appendCompact escapes the separators only when it")
+		t.Log("is escaping HTML, which is what makes one rewrite at the leaf enough.")
 	}
 }
 

@@ -80,6 +80,19 @@
 // byte-identical-IR guarantee of ADR 0003, and changing the checksum with it. Marshal
 // turns escaping off; use it for anything that reaches the wire, a golden file, or a hash.
 //
+// It gets two things wrong, not one, and the second needs more than a flag. U+2028 and
+// U+2029 are escaped whatever SetEscapeHTML is told — the branch is outside every test of
+// that flag, because escaping them keeps JSONP evaluable — and docs/ir.md §3.3 emits them
+// as UTF-8 like any other non-ASCII character. So Marshal rewrites them afterwards, with a
+// scanner rather than a replacement: the same six bytes appear in the output when an author
+// wrote that escape as text, with the backslash doubled, and rewriting that leaves a stray
+// backslash in front of a raw separator. See ADR 0047.
+//
+// Nesting needs nothing further. An operation reaches an array as a json.RawMessage, which
+// encoding/json compacts rather than re-encodes, and that path escapes separators only when
+// it is also escaping HTML — so one rewrite at the leaf is enough and doing it twice is a
+// no-op.
+//
 // Unknown fields are rejected rather than ignored. ADR 0003 settled why: decoding what you
 // understand and skipping the rest turns a version mismatch into a migration that reports
 // success having done less than it said.

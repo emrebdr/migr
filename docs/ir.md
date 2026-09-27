@@ -127,13 +127,23 @@ Only what JSON requires: `"`, `\`, and U+0000–U+001F. In particular `<`, `>`, 
 escaped, because a check expression such as `total >= 0` must produce identical bytes from every
 SDK, and language defaults disagree here.
 
-Non-ASCII characters are emitted as UTF-8, not as `\u` escapes.
+Non-ASCII characters are emitted as UTF-8, not as `\u` escapes. **U+2028 (LINE SEPARATOR) and
+U+2029 (PARAGRAPH SEPARATOR) are ordinary non-ASCII characters here**, emitted as UTF-8 like any
+other. They are not line terminators on any stream migr reads: a frame ends at U+000A and nowhere
+else ([protocol.md §2.2](protocol.md#22-one-message-per-line)).
 
-> **Known divergence.** The Go implementation additionally escapes U+2028 (LINE SEPARATOR) and
-> U+2029 (PARAGRAPH SEPARATOR) unconditionally; JavaScript's `JSON.stringify` does not. A check
-> expression or view query containing either character therefore produces different bytes — and a
-> different checksum — from the two SDKs. Today's behavior is normative because the committed
-> checksum vectors pin it. Resolving it is tracked, and will be an announced change.
+That rule costs some implementers work, so what it asks is stated plainly. Go's `encoding/json`
+escapes both whatever it is told — `SetEscapeHTML(false)` does not reach them — where JavaScript's
+`JSON.stringify` escapes neither. An implementation on the wrong side of that must undo it, and must
+do so with a scanner that tells an escape from the text of one: a blind replacement over the encoder's
+output also matches the tail of a doubled backslash, which is how a string whose author wrote that
+escape as six literal characters is encoded. The `create_view` section carries a checked vector, and
+[ADR 0047](adr/0047-line-separator-escaping.md) records the decision.
+
+An IR string is well-formed UTF-8 — Unicode scalar values only. A lone surrogate is not expressible,
+and an implementation that emits one has it replaced with U+FFFD by any decoder that reads scalar
+values, which changes the document. The wire refuses the worse half outright: a line that is not
+valid UTF-8 ends the session rather than being decoded.
 
 ### 3.4 Unknown fields are rejected
 
@@ -919,6 +929,20 @@ would destroy a definition the migration never created, so it inverts to a resto
   "query": "SELECT id FROM users WHERE active",
   "or_replace": true,
   "from": { "query": "SELECT id FROM users" }
+}
+```
+
+A view query is engine SQL and may carry any character the engine accepts. This second vector is the
+one [§3.3](#33-escaping) exists for: the query below holds a **raw U+2028 after `id`** and a **raw
+U+2029 after `users`**, invisibly, because that is what an emitted document looks like. It is the
+byte-exact case every copy of the IR is held to, and an editor that normalises either character away
+turns it into a vector that proves nothing — so a test asserts this file still carries them.
+
+```json
+{
+  "op": "create_view",
+  "view": "active_users",
+  "query": "SELECT id FROM users WHERE active"
 }
 ```
 

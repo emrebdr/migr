@@ -95,6 +95,12 @@
 // both halves are held to docs/protocol.md and docs/ir.md rather than to each other,
 // and each has a test that reads its document and checks every vector in it.
 //
+// One consequence is a scanner this copy owns as the engine's does: encoding/json
+// escapes U+2028 and U+2029 whatever SetEscapeHTML is told, and docs/ir.md §3.3 emits
+// them as UTF-8, so marshal rewrites them and must tell an escape from the text of one
+// (ADR 0047). A fix applied to one copy and not the other passes on that side, which is
+// the standing cost of writing the IR three times.
+//
 // # One thing stdout cannot be protected from
 //
 // Run points the language's default print target at stderr before the first message,

@@ -100,6 +100,16 @@
 // two inputs moved. They are a contract, not a convenience — regenerating one from this
 // package's own output silently blesses whatever changed.
 //
+// One vector has moved, once, and the circumstances are what a later reader needs. In M7-T9
+// ir.Marshal stopped escaping U+2028 and U+2029, which docs/ir.md §3.3 had always said were
+// emitted as UTF-8 (ADR 0047), so the lineSeparators vector's IR half changed while its source
+// half and every other vector stayed put. Its new value was derived by hashing the expected
+// bytes outside this package, and hashing the old bytes the same way reproduced the old value —
+// which is the difference between deriving a vector and accepting one. A decision recorded in an
+// ADR is the only thing that may move another, and v1 having never been released is the
+// condition that made it payable at all: after a release, the same change reads as every applied
+// migration in every installation having drifted.
+//
 // Two things on the hash path look wrong and are not. Operations() clones each operation
 // through a map[string]json.RawMessage, which is a Go map on a path invariant #8 requires to be
 // deterministic; encoding/json sorts map keys, and the result is decoded back into a struct

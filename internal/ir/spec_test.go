@@ -103,6 +103,35 @@ func assertCanonical(t *testing.T, e example, op Operation) {
 	t.Log("fields, escaping, and type spelling all have to match exactly.")
 }
 
+func TestACheckedVectorStillCarriesBothSeparatorsRaw(t *testing.T) {
+	sections := readSpec(t)
+
+	for _, separator := range []rune{lineSeparator, paragraphSeparator} {
+		if vectorCarries(sections, separator) {
+			continue
+		}
+
+		t.Errorf("%s: no checked example carries U+%04X any more", specPath, separator)
+		t.Log("One vector holds both characters raw, which is the only form that is a")
+		t.Log("byte-exact vector -- and an invisible one, so an editor or a reformatter can")
+		t.Log("normalize it away. All three copies of the IR would then agree on a document")
+		t.Log("that no longer states the rule they are being held to (§3.3, ADR 0047).")
+	}
+}
+
+// vectorCarries reports whether any checked example in the specification holds a rune.
+func vectorCarries(sections []section, separator rune) bool {
+	for _, s := range sections {
+		for _, e := range s.examples {
+			if strings.ContainsRune(e.body, separator) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func TestSpecDestructivenessMatchesTheCode(t *testing.T) {
 	stated := make(map[Kind]string, len(Kinds()))
 

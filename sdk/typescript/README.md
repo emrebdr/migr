@@ -111,6 +111,13 @@ emit different bytes for the same schema change:
 The operations are exported too, and `s.apply(...ops)` takes them — a chain and a hand-written
 literal emit the same bytes, which is asserted for all twenty.
 
+`JSON.stringify` happens to escape exactly what
+[`docs/ir.md` §3.3](../../docs/ir.md) asks for, including U+2028 and U+2029, which Go's encoder
+escapes whatever it is told — so this SDK is the conforming one there and the Go copies undo their
+own encoder ([ADR 0047](../../docs/adr/0047-line-separator-escaping.md)). A test holds the line
+`host.schema.apply` writes to that, because the bytes on the wire come from the envelope's
+`stringify` rather than from the operation codec the spec test exercises.
+
 ### Logical types
 
 `t` holds the eighteen types [`docs/ir.md` §5.2](../../docs/ir.md) defines, and a type **is** its

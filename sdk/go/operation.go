@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 )
 
 // Operation is one schema change a migration emits, which the engine compiles for its driver.
@@ -45,7 +46,16 @@ func labelOf(op Operation) string {
 	return " (" + op.Kind().String() + ")"
 }
 
-// marshal encodes IR without HTML escaping, which docs/ir.md §3.3 requires of every producer.
+// The two runes encoding/json escapes whatever it is told, which docs/ir.md §3.3 emits as UTF-8.
+const (
+	lineSeparator      = rune(0x2028)
+	paragraphSeparator = rune(0x2029)
+)
+
+// separatorEscape is the five bytes both of those escapes begin with, as encoding/json writes them.
+var separatorEscape = []byte{'\\', 'u', '2', '0', '2'}
+
+// marshal encodes IR escaping only what docs/ir.md §3.3 does, which every producer owes.
 func marshal(v any) ([]byte, error) {
 	var buf bytes.Buffer
 
@@ -56,7 +66,65 @@ func marshal(v any) ([]byte, error) {
 		return nil, fmt.Errorf("encoding IR: %w", err)
 	}
 
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+	return unescapeSeparators(bytes.TrimRight(buf.Bytes(), "\n")), nil
+}
+
+// unescapeSeparators rewrites the two escapes encoding/json emits however it is configured.
+func unescapeSeparators(encoded []byte) []byte {
+	if !bytes.Contains(encoded, separatorEscape) {
+		return encoded
+	}
+
+	out := make([]byte, 0, len(encoded))
+	inString := false
+
+	for i := 0; i < len(encoded); {
+		if !inString {
+			inString = encoded[i] == '"'
+			out = append(out, encoded[i])
+			i++
+
+			continue
+		}
+
+		if separator, ok := separatorAt(encoded, i); ok {
+			out = utf8.AppendRune(out, separator)
+			i += len(separatorEscape) + 1
+
+			continue
+		}
+
+		if encoded[i] == '\\' {
+			out = append(out, encoded[i:min(i+2, len(encoded))]...)
+			i += 2
+
+			continue
+		}
+
+		inString = encoded[i] != '"'
+		out = append(out, encoded[i])
+		i++
+	}
+
+	return out
+}
+
+// separatorAt reports which separator an escape beginning at this offset names, if one does.
+func separatorAt(encoded []byte, at int) (rune, bool) {
+	rest := encoded[at:]
+
+	if len(rest) <= len(separatorEscape) || !bytes.HasPrefix(rest, separatorEscape) {
+		return 0, false
+	}
+
+	switch rest[len(separatorEscape)] {
+	case '8':
+		return lineSeparator, true
+	case '9':
+		return paragraphSeparator, true
+	default:
+		return 0, false
+	}
 }
 
 // marshalOp renders an operation with its discriminator first, ahead of the type's own fields.

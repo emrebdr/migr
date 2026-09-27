@@ -1,6 +1,7 @@
 package migr
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -420,6 +421,51 @@ func TestTheOperationCodecLeavesAloneTheCharactersTheDocumentDoes(t *testing.T) 
 		if !strings.Contains(string(document), unescaped) {
 			t.Errorf("the codec escaped %s: %s", unescaped, document)
 		}
+	}
+}
+
+func TestTheOperationCodecEmitsTheTwoSeparatorsAsUTF8(t *testing.T) {
+	query := "SELECT id, 98 AS rank" + string(lineSeparator) + "FROM users" +
+		string(paragraphSeparator) + "WHERE active"
+
+	document, err := documentOf(CreateView{View: "active_users", Query: query})
+	if err != nil {
+		t.Fatalf("encoding: %v", err)
+	}
+
+	if bytes.Contains(document, separatorEscape) {
+		t.Errorf("the codec escaped the separators: %s", document)
+		t.Log("docs/ir.md §3.3: U+2028 and U+2029 are emitted as UTF-8 like any other")
+		t.Log("non-ASCII character. encoding/json escapes both whatever SetEscapeHTML is")
+		t.Log("told, and JSON.stringify escapes neither, so this SDK undoes it (ADR 0047).")
+	}
+
+	if !bytes.Contains(document, []byte(query)) {
+		t.Errorf("the query should survive verbatim, got %s", document)
+		t.Log("The digits are load-bearing: a scanner that reads an escape by its last byte")
+		t.Log("alone, rather than by the five before it, rewrites any string holding an 8 or")
+		t.Log("a 9 six bytes in -- and a query with neither would never notice.")
+	}
+}
+
+func TestTheOperationCodecLeavesAnAuthoredEscapeSequenceAlone(t *testing.T) {
+	written := "SELECT id\\u2028FROM users"
+
+	document, err := documentOf(CreateView{View: "active_users", Query: written})
+	if err != nil {
+		t.Fatalf("encoding: %v", err)
+	}
+
+	decoded, err := decodeOp[CreateView](document)
+	if err != nil {
+		t.Fatalf("decoding what the codec emitted: %v", err)
+	}
+
+	if view, ok := decoded.(CreateView); !ok || view.Query != written {
+		t.Errorf("a query holding the escape as text did not round-trip: %s", document)
+		t.Log("Go writes an authored backslash doubled, so a ReplaceAll over the output would")
+		t.Log("match the tail of that and leave a stray backslash before a raw separator --")
+		t.Log("which is neither the document the author wrote nor valid JSON.")
 	}
 }
 

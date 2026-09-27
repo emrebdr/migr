@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -27,6 +28,36 @@ func TestTheCodecDoesNotEscapeHTMLTheDocumentLeavesAlone(t *testing.T) {
 		if !strings.Contains(string(line), unescaped) {
 			t.Errorf("the codec escaped %s: %s", unescaped, line)
 		}
+	}
+}
+
+// The two separators docs/ir.md §3.3 emits as UTF-8, by code point so this source stays readable.
+const (
+	lineSeparator      = string(rune(0x2028))
+	paragraphSeparator = string(rune(0x2029))
+)
+
+func TestAnOperationsArrayReachesTheLineWithItsSeparatorsRaw(t *testing.T) {
+	document := json.RawMessage(`{"op":"create_view","view":"active_users","query":"SELECT id` +
+		lineSeparator + `FROM users` + paragraphSeparator + `WHERE active"}`)
+
+	params, err := MarshalPayload(SchemaApplyParams{Operations: []json.RawMessage{document}})
+	if err != nil {
+		t.Fatalf("encoding the payload: %v", err)
+	}
+
+	line, err := Encode(NewRequest(1, HostSchemaApply, params))
+	if err != nil {
+		t.Fatalf("encoding the message: %v", err)
+	}
+
+	t.Log("The operations array is the one payload whose bytes are a compatibility surface")
+	t.Log("(docs/ir.md §4.2), and it crosses as a json.RawMessage this package must not touch.")
+	t.Log("encoding/json re-escapes a raw message's separators when it is escaping HTML, so")
+	t.Log("SetEscapeHTML(false) here is load-bearing and this is what says so (ADR 0047).")
+
+	if !bytes.Contains(line, document) {
+		t.Errorf("the codec rewrote the operation it was handed: %s", line)
 	}
 }
 

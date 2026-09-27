@@ -24,6 +24,12 @@ func ptrBool(v bool) *bool {
 // asciiSource is shared by the baseline vector and its CRLF twin.
 const asciiSource = "export function up(s: Schema) {\n  s.dropTable(\"users\");\n}\n"
 
+// The two separators docs/ir.md §3.3 emits as UTF-8, by code point so this source stays readable.
+const (
+	lineSeparator      = string(rune(0x2028))
+	paragraphSeparator = string(rune(0x2029))
+)
+
 // vector is one committed known-answer case: two inputs and every byte they produce.
 type vector struct {
 	name       string
@@ -66,14 +72,16 @@ func vectors(t *testing.T) []vector {
 			name:   "lineSeparators",
 			source: "// a view query carrying U+2028 and U+2029\n",
 			ops: ir.Operations{ir.CreateView{
-				View:  "active_users",
-				Query: "SELECT id\u2028FROM users\u2029WHERE active",
+				View: "active_users",
+				Query: "SELECT id" + lineSeparator + "FROM users" +
+					paragraphSeparator + "WHERE active",
 			}},
 			normalized: "// a view query carrying U+2028 and U+2029\n",
 			encoded: `[{"op":"create_view","view":"active_users",` +
-				`"query":"SELECT id\u2028FROM users\u2029WHERE active"}]`,
+				`"query":"SELECT id` + lineSeparator + `FROM users` + paragraphSeparator +
+				`WHERE active"}]`,
 			checksum: "migr1:ead95624e0fd5a5230c23451754ec41fbf20bb629b761db6bd924163e4fd5b4c" +
-				":6834c688a5e98219f2ee71967b6fdd82384d53da67c12283150e737f3409f6cc",
+				":6182bc8567542e93bcbcbcc38472bbd024f28b5323931ce3e1faa504ad0a1a9f",
 		},
 		{
 			name:   "nonASCII",
@@ -248,6 +256,10 @@ func explainVector(t *testing.T) {
 	t.Log("invariant #6 offers no flag that repairs it.")
 	t.Log("Do not regenerate this constant. Find out what moved: the normalized-source and")
 	t.Log("emitted-IR assertions above say which of the two inputs it was.")
+	t.Log("One vector has moved, once: lineSeparators, in M7-T9, when ir.Marshal stopped")
+	t.Log("escaping U+2028 and U+2029 (ADR 0047). Its new value was derived by hashing the")
+	t.Log("bytes by hand rather than by running this package. Nothing else has moved, and a")
+	t.Log("decision recorded in an ADR is the only thing that may move one again.")
 }
 
 func TestTheCRLFVectorAgreesWithItsLineFeedTwin(t *testing.T) {

@@ -384,6 +384,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0044](docs/adr/0044-typescript-protocol-client.md) | The TypeScript protocol client |
 | [0045](docs/adr/0045-node-runtime-binary.md) | The Node runtime binary |
 | [0046](docs/adr/0046-node-runtime-adapter.md) | The Node runtime adapter |
+| [0047](docs/adr/0047-line-separator-escaping.md) | U+2028 and U+2029 are emitted as UTF-8, and a scanner undoes Go's escape |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -27,11 +27,6 @@ var errNoDrivers = errors.New("this build registered no database drivers")
 // errNoRuntimes marks a build that reached a language command with no runtimes registered at all.
 var errNoRuntimes = errors.New("this build registered no language runtimes")
 
-// executable names the task that first runs each language end to end, for the ones nothing runs yet.
-var executable = map[config.Language]string{
-	config.LanguageTypeScript: "M7-T8",
-}
-
 // target is the one database a command reaches, resolved from the config and reaching nothing yet.
 type target struct {
 	// cfg is the whole resolved configuration, defaults applied and secrets expanded.
@@ -91,6 +86,10 @@ func (t *target) discovered(opts *options) ([]migration.Migration, error) {
 		return nil, unreadable(err)
 	}
 
+	if err := t.checkOneLanguage(found); err != nil {
+		return nil, err
+	}
+
 	opts.log.Debug("discovered migrations", "dir", t.cfg.Migrations.Dir, "migrations", len(found))
 
 	return found, nil
@@ -113,6 +112,30 @@ func (t *target) files(opts *options) ([]history.File, error) {
 	}
 
 	return hashed(t.fsys, found)
+}
+
+// checkOneLanguage reports a migration written in a language this project does not run.
+func (t *target) checkOneLanguage(found []migration.Migration) error {
+	lang := t.cfg.Migrations.Language
+	runs := extensionOf(lang)
+
+	for _, m := range found {
+		if m.Ext == runs {
+			continue
+		}
+
+		return NewExitError(ExitValidation, fmt.Errorf("%s: a %s project runs %s files, and this "+
+			"is a %s one -- migrations.language names one language for the whole directory, so "+
+			"rename the file, move it into its own project, or wait for M7-T10, which is where "+
+			"one directory holding two languages arrives", m.Filename(), lang, runs, m.Ext))
+	}
+
+	return nil
+}
+
+// extensionOf returns the file a project in one language holds, which is the file create writes.
+func extensionOf(lang config.Language) string {
+	return templates[lang].ext
 }
 
 // source returns what reads this project's migrations, and what ends it when the command is done.
@@ -379,12 +402,6 @@ func runnable(lang config.Language, runtimes *runtime.Registry) (runtime.Runtime
 	adapter, err := runtimes.New(string(lang))
 	if err != nil {
 		return nil, fmt.Errorf("migrations.language: %s: %w", lang, err)
-	}
-
-	if task, waiting := executable[lang]; waiting {
-		return nil, fmt.Errorf("migr has a %s runtime adapter and the SDK it runs, and nothing has "+
-			"run one end to end yet: that is %s. migrations.language: %s and %s are the formats "+
-			"migr runs today", lang, task, config.LanguageSQL, config.LanguageGo)
 	}
 
 	return adapter, nil

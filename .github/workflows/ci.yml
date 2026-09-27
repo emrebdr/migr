@@ -116,7 +116,8 @@ jobs:
   # `make test-integration` brings the databases up itself, with `up -d --wait` on the
   # healthchecks, so there is no services: block here and no wait loop. It does not
   # need `make tools` either -- that target installs golangci-lint, and this job lints
-  # nothing.
+  # nothing. It does need Node from M7-T8 on: the suite runs a TypeScript project, and
+  # the target builds the SDK it starts.
   integration:
     name: integration (postgres 16, 17)
     runs-on: ubuntu-latest
@@ -132,6 +133,17 @@ jobs:
           cache-dependency-path: |
             **/go.mod
             **/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: sdk/typescript/.nvmrc
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: sdk/typescript
 
       - name: Integration tests
         run: make test-integration

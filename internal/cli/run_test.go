@@ -371,29 +371,60 @@ func TestUpJSONIsValidAndOnStdout(t *testing.T) {
 	}
 }
 
-func TestALanguageWithNoRuntimeIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
-	dir, _, drivers := project(t, twoTables()...)
-	write(t, filepath.Join(dir, config.DefaultFilename),
-		strings.Replace(projectConfig, "language: sql", "language: typescript", 1))
+// staging is how each language needing a runtime gets a project, so the loop below covers them all.
+var staging = map[config.Language]func(*testing.T, ...string) (string, *fake, *driver.Registry){
+	config.LanguageGo:         goProject,
+	config.LanguageTypeScript: tsProject,
+}
 
-	_, _, err := runWith(t, dir, noon, drivers, "up")
+func TestEveryLanguageMigrRegistersReachesItsRuntime(t *testing.T) {
+	t.Log("Both SDK languages were refused by name while their adapters already existed -- go")
+	t.Log("between M6-T8 and M6-T10, typescript between M7-T6 and M7-T8. Nothing is waiting now,")
+	t.Log("so the gate that named a task is gone and this is what took its place.")
+
+	for _, lang := range scripted {
+		stage, staged := staging[lang]
+		if !staged {
+			t.Fatalf("%s needs a runtime and this test stages no project for it", lang)
+		}
+
+		dir, f, drivers := stage(t, "add_scripted")
+
+		if _, _, err := runScripted(t, dir, actEmits, drivers, "up"); err != nil {
+			t.Errorf("up on a %s project: %v", lang, err)
+
+			continue
+		}
+
+		if !slices.Contains(f.statements, "CREATE TABLE scripted (id bigint)") {
+			t.Errorf("a %s project ran %v, and the runtime emitted a create_table", lang, f.statements)
+		}
+	}
+}
+
+func TestADirectoryHoldingTwoLanguagesIsRefusedBeforeAnythingRuns(t *testing.T) {
+	dir, f, drivers := goProject(t, "add_scripted")
+	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.sql"),
+		"-- migr:up\nCREATE TABLE other (id bigint);\n\n-- migr:down\nDROP TABLE other;\n")
+
+	_, _, err := runScripted(t, dir, actEmits, drivers, "up")
 	if err == nil {
-		t.Fatal("up ran migrations in a language nothing can execute")
+		t.Fatal("up ran a directory holding two languages")
 	}
 
-	t.Log("M7-T6 landed the adapter, so nothing is missing: the SDK, the process it spawns, and")
-	t.Log("the adapter that starts one all exist. What has not happened is a run, which is M7-T8")
-	t.Log("-- and Go was refused on exactly this ground between M6-T8 and M6-T10.")
+	t.Log("Before this refusal, up applied every file its one runtime recognized and then failed")
+	t.Log("on the first it did not -- leaving the project half applied and blaming the migration.")
+	t.Log("A half-applied database is the worst failure this tool has, so the whole set is read")
+	t.Log("before any of it runs.")
 
-	if !strings.Contains(err.Error(), "M7-T8") {
-		t.Errorf("the refusal does not name the task that first runs this language: %v", err)
+	if len(f.statements) != 0 {
+		t.Errorf("up ran %v before refusing", f.statements)
 	}
 
-	t.Log("Go is no longer in this refusal's company: M6-T10 wired it up, so the message names")
-	t.Log("both formats migr runs today rather than sql alone.")
-
-	if !strings.Contains(err.Error(), string(config.LanguageGo)) {
-		t.Errorf("the refusal does not name go as a format migr runs: %v", err)
+	for _, want := range []string{"_add_other.sql", "go project", ".go", "M7-T10"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
 	}
 
 	if got := ExitCode(err); got != ExitValidation {
@@ -401,10 +432,25 @@ func TestALanguageWithNoRuntimeIsRefusedNamingTheTaskThatAddsIt(t *testing.T) {
 	}
 }
 
+func TestEveryCommandThatRunsOrChecksMigrationsRefusesTwoLanguages(t *testing.T) {
+	t.Log("status and history are reports and take no lock (ADR 0027), but a directory nothing can")
+	t.Log("execute is not one of the five states either -- discovery already fails both for a")
+	t.Log("filename the grammar refuses, and this is the same class of malformed project.")
+
+	for _, command := range []string{"up", "down", "plan", "validate", "status"} {
+		dir, _, drivers := goProject(t, "add_scripted")
+		write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.sql"), "-- migr:up\nSELECT 1;\n")
+
+		_, _, err := runScripted(t, dir, actEmits, drivers, command)
+		if got := ExitCode(err); got != ExitValidation {
+			t.Errorf("migr %s over a mixed directory exited %d, want %d (%v)", command, got,
+				ExitValidation, err)
+		}
+	}
+}
+
 func TestARuntimeThatWillNotStartIsTheWorldNotBeingReady(t *testing.T) {
-	dir, _, drivers := project(t, twoTables()...)
-	write(t, filepath.Join(dir, config.DefaultFilename),
-		strings.Replace(projectConfig, "language: sql", "language: go", 1))
+	dir, _, drivers := goProject(t, "add_users")
 
 	_, _, err := runWith(t, dir, noon, drivers, "up")
 	if err == nil {
@@ -420,9 +466,7 @@ func TestARuntimeThatWillNotStartIsTheWorldNotBeingReady(t *testing.T) {
 }
 
 func TestALanguageThisBuildRegisteredNoAdapterForSaysSo(t *testing.T) {
-	dir, _, drivers := project(t, twoTables()...)
-	write(t, filepath.Join(dir, config.DefaultFilename),
-		strings.Replace(projectConfig, "language: sql", "language: go", 1))
+	dir, _, drivers := goProject(t, "add_users")
 
 	opts := &options{clock: ticking(noon), drivers: drivers, runtimes: runtimeRegistry(t)}
 

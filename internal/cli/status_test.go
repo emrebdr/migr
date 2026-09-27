@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/checksum"
-	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/runtime"
 )
 
 // lineFor returns the status line for one migration, so a test asserts a row rather than a substring.
@@ -317,19 +317,21 @@ func TestStatusJSONReportsBothDigestsOfADriftedMigrationAndNoOthers(t *testing.T
 	}
 }
 
-func TestStatusReportsAProjectWhoseLanguageNothingCanRunYet(t *testing.T) {
-	dir, _, drivers := project(t, twoTables()...)
+func TestStatusReportsAProjectWithoutAskingForItsRuntime(t *testing.T) {
+	dir, _, drivers := tsProject(t, "add_users")
 
-	swapLanguage(t, dir, "typescript")
+	opts := &options{clock: ticking(noon), drivers: drivers, runtimes: runtime.NewRegistry()}
 
-	if _, _, err := runWith(t, dir, noon, drivers, "status"); err != nil {
-		t.Log("A status compiles nothing and reads no migration body, so the source no build can")
-		t.Log("start yet is one it never needed to build (ADR 0027).")
-		t.Fatalf("status over a TypeScript project: %v", err)
+	t.Log("A status compiles nothing and reads no migration body, so it never needs the runtime")
+	t.Log("its migrations are written for (ADR 0027). An empty registry is what proves it: up")
+	t.Log("against the same project cannot find an adapter and fails.")
+
+	if _, _, err := runOptions(t, dir, opts, "status"); err != nil {
+		t.Fatalf("status over a TypeScript project with no adapter registered: %v", err)
 	}
 
-	if _, _, err := runWith(t, dir, noon, drivers, "up"); err == nil {
-		t.Errorf("up over a TypeScript project succeeded, though its SDK does not exist")
+	if _, _, err := runOptions(t, dir, opts, "up"); err == nil {
+		t.Error("up found a runtime in an empty registry")
 	}
 }
 
@@ -403,18 +405,4 @@ func remove(t *testing.T, dir, name string) {
 	if err := os.Remove(filepath.Join(dir, scaffoldDir, name)); err != nil {
 		t.Fatalf("removing %s: %v", name, err)
 	}
-}
-
-// swapLanguage repoints a staged project at a language whose runtime does not exist yet.
-func swapLanguage(t *testing.T, dir, lang string) {
-	t.Helper()
-
-	path := filepath.Join(dir, config.DefaultFilename)
-
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("reading the staged config: %v", err)
-	}
-
-	write(t, path, strings.Replace(string(body), "language: sql", "language: "+lang, 1))
 }

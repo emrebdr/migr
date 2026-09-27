@@ -141,10 +141,31 @@
 // open split into resolve (config and target), files (discovery and hashing),
 // and connect (driver and session), so what a command needs is visible in which
 // it calls. status skips the source, since it compiles nothing, and can
-// therefore report on a project whose language it could not start. history skips
+// therefore report on a project whose runtime it never asked for. history skips
 // discovery too: the log is the database's, and refusing to print it because the
 // migrations directory is broken removes the tool somebody reached for to
 // diagnose that.
+//
+// # One language, for the whole directory
+//
+// migrations.language names one, so discovered refuses a file whose extension
+// belongs to another -- naming the file, both languages, and M7-T10, where one
+// directory holding two of them arrives. It is in discovery rather than beside
+// the source, so it covers every command that reads the directory, reports
+// included.
+//
+// That is the strictness §9 already asks for, applied one level up: a .go file
+// in a TypeScript project would otherwise be printed as pending by status and
+// then fail the run. Before the check, migr up applied every migration its one
+// runtime recognized and failed on the first it did not, leaving the project
+// half applied and blaming the migration -- and the reason it blamed the
+// migration is that the refusal came back from the SDK, as unknown_migration,
+// which is true and useless. A half-applied database is the worst failure this
+// tool has.
+//
+// migr create --lang still writes a file for another language on purpose. That
+// is how a project being moved to one starts, and the refusal above says what to
+// do next.
 //
 // The source is built after connect and never before it (ADR 0040). A runtime
 // session needs the driver.Conn its callbacks reach, so before the connection

@@ -16,6 +16,7 @@ import (
 	"github.com/emrebdr/migr/internal/cli"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/driver/postgres"
+	"github.com/emrebdr/migr/internal/driver/postgres/pgtest"
 	"github.com/emrebdr/migr/internal/history"
 )
 
@@ -202,11 +203,14 @@ const migrationField = 2
 // directions are what a run's direction column may hold, which is what marks a line as a run.
 var directions = []string{"up", "down"}
 
-// recorded returns every run this suite's history table holds, through the store contract alone.
-func recorded(t *testing.T) []history.Record {
+// targetSchema is the schema every suite here builds in, which is also what the digest describes.
+const targetSchema = "public"
+
+// opened dials the server this suite runs against, closing the session when the test is done.
+func opened(t *testing.T, table string) driver.Conn {
 	t.Helper()
 
-	d, err := postgres.New(driver.Options{HistoryTable: historyTable})
+	d, err := postgres.New(driver.Options{HistoryTable: table})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -216,18 +220,37 @@ func recorded(t *testing.T) []history.Record {
 		t.Fatalf("Open: %v\n\nRun `make test-integration`, which brings the server up first.", err)
 	}
 
-	defer func() {
+	t.Cleanup(func() {
 		if err := conn.Close(context.WithoutCancel(t.Context())); err != nil {
 			t.Errorf("Close: %v", err)
 		}
-	}()
+	})
 
-	runs, err := conn.History().List(t.Context())
+	return conn
+}
+
+// recorded returns every run one history table holds, through the store contract alone.
+func recorded(t *testing.T, table string) []history.Record {
+	t.Helper()
+
+	runs, err := opened(t, table).History().List(t.Context())
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 
 	return runs
+}
+
+// digest renders what the target schema holds, through the driver's own session and nothing else.
+func digest(t *testing.T) string {
+	t.Helper()
+
+	described, err := pgtest.Digest(pgtest.Over(t.Context(), opened(t, ""), targetSchema))
+	if err != nil {
+		t.Fatalf("describing the schema: %v", err)
+	}
+
+	return described
 }
 
 // applied counts the completed runs in one direction, which is what a round trip is measured in.
@@ -250,9 +273,9 @@ func TestTheWholeStackAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {
 		t.Logf("clearing what an earlier run left behind: %v", err)
 	}
 
-	rows := len(recorded(t))
-	ups := applied(recorded(t), "up")
-	downs := applied(recorded(t), "down")
+	rows := len(recorded(t, historyTable))
+	ups := applied(recorded(t, historyTable), "up")
+	downs := applied(recorded(t, historyTable), "down")
 
 	t.Cleanup(func() {
 		if err := migr(t, config, "down"); err != nil {
@@ -264,7 +287,7 @@ func TestTheWholeStackAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {
 		t.Fatalf("up --dry-run: %v", err)
 	}
 
-	if got := len(recorded(t)); got != rows {
+	if got := len(recorded(t, historyTable)); got != rows {
 		t.Fatalf("a dry run wrote %d history rows", got-rows)
 	}
 
@@ -272,7 +295,7 @@ func TestTheWholeStackAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 
-	if got := applied(recorded(t), "up"); got != ups+2 {
+	if got := applied(recorded(t, historyTable), "up"); got != ups+2 {
 		t.Fatalf("the history holds %d applied runs, want %d", got, ups+2)
 	}
 
@@ -280,7 +303,7 @@ func TestTheWholeStackAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {
 		t.Fatalf("down: %v", err)
 	}
 
-	if got := applied(recorded(t), "down"); got != downs+2 {
+	if got := applied(recorded(t, historyTable), "down"); got != downs+2 {
 		t.Fatalf("the history holds %d rollbacks, want %d", got, downs+2)
 	}
 
@@ -362,14 +385,14 @@ func TestValidatePassesWhatTheWholeStackThenRuns(t *testing.T) {
 		}
 	})
 
-	rows := len(recorded(t))
+	rows := len(recorded(t, historyTable))
 
 	out := migrOut(t, config, "validate")
 	if !strings.Contains(out, "no problems found") {
 		t.Fatalf("validate found something in this suite's own migrations:\n%s", out)
 	}
 
-	if got := len(recorded(t)); got != rows {
+	if got := len(recorded(t, historyTable)); got != rows {
 		t.Errorf("validate wrote %d history rows", got-rows)
 	}
 
@@ -393,7 +416,7 @@ func TestPlanPrintsTheStatementsARealServerWouldRun(t *testing.T) {
 		}
 	})
 
-	rows := len(recorded(t))
+	rows := len(recorded(t, historyTable))
 	planned := migrOut(t, config, "plan")
 
 	for _, want := range []string{
@@ -407,7 +430,7 @@ func TestPlanPrintsTheStatementsARealServerWouldRun(t *testing.T) {
 		}
 	}
 
-	if got := len(recorded(t)); got != rows {
+	if got := len(recorded(t, historyTable)); got != rows {
 		t.Fatalf("a plan wrote %d history rows", got-rows)
 	}
 
@@ -438,13 +461,13 @@ func TestNarrowingWorksAgainstARealServer(t *testing.T) {
 		}
 	})
 
-	before := applied(recorded(t), "up")
+	before := applied(recorded(t, historyTable), "up")
 
 	if err := migr(t, config, "up", "--step", "1"); err != nil {
 		t.Fatalf("up --step 1: %v", err)
 	}
 
-	if got := applied(recorded(t), "up"); got != before+1 {
+	if got := applied(recorded(t, historyTable), "up"); got != before+1 {
 		t.Fatalf("--step 1 applied %d migrations", got-before)
 	}
 
@@ -452,7 +475,7 @@ func TestNarrowingWorksAgainstARealServer(t *testing.T) {
 		t.Fatalf("up --to: %v", err)
 	}
 
-	if got := applied(recorded(t), "up"); got != before+2 {
+	if got := applied(recorded(t, historyTable), "up"); got != before+2 {
 		t.Errorf("--to left %d migrations applied, want the database at that version", got-before)
 	}
 }

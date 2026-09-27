@@ -62,9 +62,9 @@ var codes = []coded{
 		args: []string{"--to", "20990101T000000"}, stage: staged, want: ExitValidation},
 	{name: "--step with --to", command: "up", args: []string{"--step", "1", "--to", versionAt(0)},
 		stage: staged, want: ExitValidation},
-	{name: "a language whose SDK has not landed", command: "up", stage: stagedTypeScript,
-		want: ExitValidation},
 	{name: "a runtime that will not start", command: "up", stage: stagedGo, want: ExitRuntime},
+	{name: "a directory holding two languages", command: "up", stage: stagedMixed,
+		want: ExitValidation},
 	{name: "a filename the grammar refuses", command: "up", stage: stagedUnnamed,
 		want: ExitValidation},
 	{name: "a migrations directory that is not there", command: "up", stage: stagedNoDirectory,
@@ -604,18 +604,15 @@ func stagedUnreadable(t *testing.T) (string, *fake, *driver.Registry) {
 func stagedGo(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
-	dir, f, drivers := project(t, twoTables()...)
-	swapLanguage(t, dir, "go")
-
-	return dir, f, drivers
+	return goProject(t, "add_users", "add_teams")
 }
 
-// stagedTypeScript is a project written in a language whose SDK has not landed yet.
-func stagedTypeScript(t *testing.T) (string, *fake, *driver.Registry) {
+// stagedMixed is a project holding a file its one language cannot execute, which M7-T10 is about.
+func stagedMixed(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
-	dir, f, drivers := project(t, twoTables()...)
-	swapLanguage(t, dir, "typescript")
+	dir, f, drivers := goProject(t, "add_users")
+	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.sql"), "-- migr:up\nSELECT 1;\n")
 
 	return dir, f, drivers
 }

@@ -63,5 +63,6 @@
 // failure, where this package's untagged tests skip: asking for that run is a statement that the
 // toolchain is present, and a green run that proved nothing is worse than a red one.
 //
-// Implemented in M7-T6, and held to the fixture set in M7-T7 (see TASKS.md).
+// Implemented in M7-T6, held to the fixture set in M7-T7, and driven by the CLI
+// against a real PostgreSQL in M7-T8 (see TASKS.md).
 package node

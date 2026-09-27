@@ -93,7 +93,9 @@ run against a real database.
 **Now — M7, TypeScript**, where "identical IR from two languages" stopped being a claim. The same
 twelve fixtures, asked for both directions in both modes, are answered byte for byte by the Go SDK
 and by the TypeScript one; neither was compared to the other, and the file they are both compared to
-belongs to no language. What is left in the milestone is the run against a real database.
+belongs to no language. Both languages then apply and roll back against a real PostgreSQL — and a
+TypeScript migration is the first in any language to read the live database and branch on the
+answer, and the first to send a statement of its own outside the transaction its operations run in.
 
 **Later.** The SQLite and MySQL drivers (M8, M9), validation and safety (M10), introspection
 and schema diffing (M11), seeds and data transformations (M12), and the zero-downtime milestone
@@ -158,10 +160,11 @@ than a restore.
 > that runs it and the adapter that starts one — the same builder emitting the same IR, the
 > `migr-runtime-node` executable that loads `.ts`, `.js`, and `.mjs` migrations with no build step,
 > and an engine that finds Node and this project's `@migr/sdk` for itself (M7-T2 through M7-T6).
-> Both are now held to the **same** fixtures, and emit the same operations for every one of them
-> (M7-T7) — which is the whole of the language-independence claim, measured.
-> What has not happened yet is a run: `migr up` against a TypeScript project is M7-T8, and until it
-> lands the CLI says so rather than being the first thing to try it.
+> Both are held to the **same** fixtures and emit the same operations for every one of them (M7-T7),
+> and both now run against a real PostgreSQL: `migr up` applies a TypeScript migration and `migr
+> down` reverts it, compared by a schema digest either side (M7-T8). One migrations directory
+> holding **both** languages is the part that does not work yet, and is refused rather than
+> half-applied (M7-T10).
 
 ```go
 package migrations

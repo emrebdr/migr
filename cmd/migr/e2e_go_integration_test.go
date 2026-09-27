@@ -3,23 +3,15 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/emrebdr/migr/internal/driver"
-	"github.com/emrebdr/migr/internal/driver/postgres"
-	"github.com/emrebdr/migr/internal/driver/postgres/pgtest"
 )
 
 // goHistoryTable keeps this suite's runs out of the tables the .sql suite and the driver use.
 const goHistoryTable = "migr_e2e_go_migrations"
-
-// goSchema is the schema the Go round trip builds in, which is also what the digest describes.
-const goSchema = "public"
 
 // goModule is the module the Go migrations are built inside, written rather than kept in the tree.
 const goModule = `module example.com/e2e
@@ -157,34 +149,6 @@ func writeGoMigrations(t *testing.T, dir string) {
 			t.Fatalf("staging %s: %v", m.name, err)
 		}
 	}
-}
-
-// digest renders what the target schema holds, through the driver's own session and nothing else.
-func digest(t *testing.T) string {
-	t.Helper()
-
-	d, err := postgres.New(driver.Options{HistoryTable: goHistoryTable})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	conn, err := d.Open(t.Context(), dsn())
-	if err != nil {
-		t.Fatalf("Open: %v\n\nRun `make test-integration`, which brings the server up first.", err)
-	}
-
-	defer func() {
-		if err := conn.Close(context.WithoutCancel(t.Context())); err != nil {
-			t.Errorf("Close: %v", err)
-		}
-	}()
-
-	described, err := pgtest.Digest(pgtest.Over(t.Context(), conn, goSchema))
-	if err != nil {
-		t.Fatalf("describing the schema: %v", err)
-	}
-
-	return described
 }
 
 func TestAGoMigrationAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {

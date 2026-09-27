@@ -125,9 +125,13 @@ fuzz:
 	    done ) || exit 1; \
 	done
 
+# The SDK is built here for the same reason the databases are started here: since M7-T8
+# the end-to-end suite runs a TypeScript project, and the runtime it starts is the file
+# `npm run build` writes. A target that cannot run itself is a target nobody runs.
 test-integration:
 	@echo "==> docker compose up  ($(COMPOSE))"
 	@docker compose -f $(COMPOSE) up -d --wait
+	$(call ts_run,npm run build)
 	$(call go_each,go test -tags=integration ./...)
 	@echo "    containers left running; 'make clean' tears them down"
 

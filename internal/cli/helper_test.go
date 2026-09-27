@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/emrebdr/migr/internal/runtime"
 	"github.com/emrebdr/migr/internal/runtime/protocol"
 	"github.com/emrebdr/migr/internal/source/golang"
+	"github.com/emrebdr/migr/internal/source/typescript"
 )
 
 // scriptVar names the behavior this binary plays when it is re-executed as a runtime.
@@ -119,7 +121,7 @@ func (r *scriptedRuntime) initialize(m *protocol.Message) bool {
 
 // describeProject reports a runtime told the wrong thing about where it is or what it runs.
 func describeProject(p protocol.InitializeParams) string {
-	if p.Migrations.Language != string(config.LanguageGo) {
+	if !slices.Contains(scripted, config.Language(p.Migrations.Language)) {
 		return fmt.Sprintf("this runtime was started for %q", p.Migrations.Language)
 	}
 
@@ -235,17 +237,24 @@ func (a *scriptedAdapter) Command(_ context.Context, p runtime.Project) (runtime
 // compile-time proof that the scripted adapter is held to the contract every adapter is.
 var _ runtime.Runtime = (*scriptedAdapter)(nil)
 
-// scriptedRegistry returns a registry whose go adapter starts a process playing one script.
+// scripted are the languages a registry of scripted adapters answers for, which is every one
+// migr.yaml can name that needs a runtime at all.
+var scripted = []config.Language{config.LanguageGo, config.LanguageTypeScript}
+
+// scriptedRegistry returns a registry whose adapters start a process playing one script.
 func scriptedRegistry(t *testing.T, act string) *runtime.Registry {
 	t.Helper()
 
 	registry := runtime.NewRegistry()
 
-	err := registry.Register(string(config.LanguageGo), func() (runtime.Runtime, error) {
-		return &scriptedAdapter{name: string(config.LanguageGo), act: act}, nil
-	})
-	if err != nil {
-		t.Fatalf("registering the scripted adapter: %v", err)
+	for _, lang := range scripted {
+		name := string(lang)
+
+		if err := registry.Register(name, func() (runtime.Runtime, error) {
+			return &scriptedAdapter{name: name, act: act}, nil
+		}); err != nil {
+			t.Fatalf("registering the scripted %s adapter: %v", name, err)
+		}
 	}
 
 	return registry
@@ -255,13 +264,28 @@ func scriptedRegistry(t *testing.T, act string) *runtime.Registry {
 func goProject(t *testing.T, names ...string) (string, *fake, *driver.Registry) {
 	t.Helper()
 
+	return runtimeProject(t, config.LanguageGo, golang.Ext, "package migrations\n", names...)
+}
+
+// tsProject stages a project whose migrations are TypeScript files, which a runtime also reads.
+func tsProject(t *testing.T, names ...string) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	return runtimeProject(t, config.LanguageTypeScript, typescript.Ext, "export const up = 0;\n",
+		names...)
+}
+
+// runtimeProject stages a project in one language, whose files no command here ever reads.
+func runtimeProject(t *testing.T, lang config.Language, ext, body string,
+	names ...string) (string, *fake, *driver.Registry) {
+	t.Helper()
+
 	dir, f, drivers := project(t)
 	write(t, filepath.Join(dir, config.DefaultFilename),
-		strings.Replace(projectConfig, "language: sql", "language: go", 1))
+		strings.Replace(projectConfig, "language: sql", "language: "+string(lang), 1))
 
 	for i, name := range names {
-		write(t, filepath.Join(dir, scaffoldDir, versionAt(i)+"_"+name+golang.Ext),
-			"package migrations\n")
+		write(t, filepath.Join(dir, scaffoldDir, versionAt(i)+"_"+name+ext), body)
 	}
 
 	return dir, f, drivers

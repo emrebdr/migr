@@ -119,23 +119,98 @@
 // fails with SQLITE_BUSY leaves SQLite's own transaction open while database/sql considers it done;
 // the run fails loudly, and closing the session -- which every command does -- is what discards it.
 //
-// # What this task ships, and what refuses by name
+// # Identifiers are always quoted, and there is no length to check
 //
-// M8-T1 ships the driver complete and honestly unsupported, which is M3-T1's shape. All twenty
-// operations are declared Unsupported naming M8-T2, Compile refuses identically because the
-// declaration is derived from it, and test/golden/sqlite/ records twenty refusals -- so M8-T2
-// arrives as a diff turning each into SQL rather than as twenty new files.
+// Double quotes, with an embedded quote doubled, unconditionally -- PostgreSQL's rule unchanged,
+// and for the same two reasons: "order" is not a keyword and "userID" does not fold. String
+// literals are single-quoted with an embedded quote doubled, which keeps them clear of SQLite's
+// double-quoted-string-literal misfeature, where a double-quoted name that resolves to nothing is
+// reinterpreted as a string rather than reported.
+//
+// SQLite has no identifier length limit, so checkIdentifier here refuses a NUL byte and nothing
+// else. That makes this driver's predicate shorter than PostgreSQL's by exactly the case that does
+// not exist, rather than by an omission.
+//
+// # Logical types
+//
+//	string(n)   varchar(n)    int16/32/64   integer      uuid        uuid
+//	text        text          float32/64    real         json        text
+//	bool        boolean       decimal(p,s)  decimal(p,s) binary      blob
+//	date        date          timestamp     timestamp    enum(...)   text + CHECK
+//	time        time          timestamptz   timestamptz  array(of)   refused
+//
+// SQLite does not have types. A declared name sets an affinity -- a preference applied when a value
+// is stored -- and enforces nothing: a varchar(255) column holds a megabyte and a smallint holds
+// 2^62. The names above are chosen so the affinity is right and the logical type survives into
+// sqlite_master, which is what M11's introspection reads back. Three rows are not what they look
+// like:
+//
+// One integer carries all three widths, and one real carries both floats, because SQLite has one of
+// each and enforces neither width. Declaring bigint would also cost the rowid alias: INTEGER PRIMARY
+// KEY is the only spelling SQLite treats as one, and a bigint primary key is an ordinary indexed
+// column that assigns nothing and will hold text.
+//
+// json declares text rather than json, which is the one place affinity beats preserving the name: a
+// type named json carries no affinity marker, so it would be NUMERIC, and a JSON document that is a
+// bare number would be converted on the way in.
+//
+// decimal(p,s) is declared and enforced by nothing, and this one can change a value. Measured on
+// 3.53.4: a decimal column given '1.10' stores the REAL 1.1. It is declared anyway because it is
+// what every SQLite consumer expects to read back and because arithmetic and ORDER BY work; a
+// column that must keep its cents belongs in int64 of minor units. See ADR 0051.
+//
+// An enum is text plus an inline CHECK holding the column to its labels, so this engine supports a
+// type PostgreSQL refuses: there is no CREATE TYPE object to leak, the check dies with the column,
+// and no IR operation needs to name it. What is lost is declared label ordering, which docs/ir.md
+// 5.3 says is part of the type -- ORDER BY here is lexicographic. A literal default that is not one
+// of the labels is refused, because it can never satisfy the constraint whatever the table holds.
+//
+// The default functions map to CURRENT_TIMESTAMP, CURRENT_DATE and CURRENT_TIME. uuid() is refused:
+// SQLite links no UUID function, and the hex(randomblob()) idiom would write a generator into the
+// operator's schema rather than name one.
+//
+// # What needs a table rebuild, and what only looks like it does
+//
+// SQLite's ALTER TABLE renames a table, renames a column, adds a column, and drops one. Seven
+// operations are therefore refused with a reason naming M8-T4: alter_column, add_foreign_key,
+// drop_foreign_key, add_check, drop_check, add_primary_key and drop_primary_key. Three more sit on
+// the boundary and are compiled here:
+//
+// add_unique is CREATE UNIQUE INDEX and drop_unique is DROP INDEX, because a UNIQUE constraint is a
+// unique index in SQLite and the IR gives create_table no way to declare one inline -- so every
+// unique in a migr-managed database came from add_unique, which is what makes the drop find it.
+//
+// create_view with or_replace is two statements, DROP VIEW IF EXISTS then CREATE VIEW, since SQLite
+// has no OR REPLACE. Both run inside the migration's one transaction and the DDL is transactional,
+// so the replacement is atomic; unlike PostgreSQL's, it does not refuse a changed column list.
+//
+// drop_column is the native statement. SQLite refuses it for a primary key, a unique, an indexed
+// column, or one a check, view or foreign key names -- and Compile is pure by contract, so it can
+// see none of that. The refusal is SQLite's, it is loud, and covering those cases is the rebuild.
+//
+// Two ADD COLUMN restrictions are deliberately not refused here. A NOT NULL column with no default,
+// and a column with a function default, are both accepted against an empty table and refused only
+// once the table holds a row -- measured. The condition is on the data, which neither Compile nor a
+// capability Rule can see, and the engine's refusal is inside the migration's transaction.
+//
+// # What this driver does not emit
+//
+// No CREATE INDEX CONCURRENTLY, because SQLite has none: one writer means an index build holds the
+// write lock for its duration, and saying so is the lock axis M8-T3 owes. So nothing here sets
+// Statement.NoTransaction, and a migration this driver compiles is always exactly one transactional
+// run. Every composed statement ends in a semicolon; a raw operation does not, because run verbatim
+// is the whole contract and its author may already have written one.
+//
+// # What refuses by name
 //
 // Lock refuses, naming M8-T5: lock.strategy's file half is the one this engine can implement, and a
 // lock file does not vanish when its owner dies, so it owes a staleness rule before anything may
-// depend on it. History() returns a store whose every method refuses, naming M8-T6: the history
-// table is itself created through driver-compiled operations (invariant #3), so it cannot precede
-// the compiler. Both are values rather than nils, because the engine calls Conn.History() without
-// being able to check for one.
+// depend on it. History() returns a store whose every method refuses, naming M8-T6. Both are values
+// rather than nils, because the engine calls Conn.History() without being able to check for one.
 //
 // A configured schema is refused rather than ignored. A SQLite database is one file, and the only
 // other namespaces are the ones ATTACH creates, which nothing here opens.
 //
-// Status: connection handling. The rest of M8 fills in the compiler, the capability declaration,
+// Status: connection handling and the compiler. The rest of M8 fills in the capability declaration,
 // the table-rebuild emulation, the file lock, and the history store (see TASKS.md).
 package sqlite

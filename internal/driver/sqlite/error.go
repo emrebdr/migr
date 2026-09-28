@@ -190,11 +190,18 @@ type HistoryError struct {
 	Table string
 	// Detail states what is wrong with it.
 	Detail string
+	// Err is the refusal underneath, where a compiler produced one.
+	Err error
 }
 
 // Error names the table and what is wrong with the name.
 func (e *HistoryError) Error() string {
 	return fmt.Sprintf("history.table %q: %s", e.Table, e.Detail)
+}
+
+// Unwrap reports the refusal underneath, so errors.Is reaches the compiler's own sentinel.
+func (e *HistoryError) Unwrap() error {
+	return e.Err
 }
 
 // describeValue names a value's Go type for a refusal, since its bytes are what cannot be rendered.

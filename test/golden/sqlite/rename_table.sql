@@ -1,1 +1,2 @@
--- migr:unsupported rename_table: this driver does not compile any operation yet: M8-T2 is where SQLite's SQL is written, and until then the declaration and the compiler refuse together rather than one of them pretending
+-- migr:statement 1
+ALTER TABLE "users" RENAME TO "accounts";

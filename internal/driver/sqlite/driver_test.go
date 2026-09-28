@@ -31,7 +31,18 @@ func TestTheDriverAnswersToTheNameItIsRegisteredUnder(t *testing.T) {
 	}
 }
 
-func TestEveryOperationIsRefusedByBothTheCompilerAndTheDeclaration(t *testing.T) {
+// needsRebuild lists the operations SQLite performs only by rebuilding the table, which is M8-T4's.
+var needsRebuild = map[ir.Kind]bool{
+	ir.KindAlterColumn:    true,
+	ir.KindAddForeignKey:  true,
+	ir.KindDropForeignKey: true,
+	ir.KindAddCheck:       true,
+	ir.KindDropCheck:      true,
+	ir.KindAddPrimaryKey:  true,
+	ir.KindDropPrimaryKey: true,
+}
+
+func TestEveryOperationIsCompiledOrRefusedByBothTheCompilerAndTheDeclaration(t *testing.T) {
 	d, err := New(driver.Options{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -39,28 +50,58 @@ func TestEveryOperationIsRefusedByBothTheCompilerAndTheDeclaration(t *testing.T)
 
 	for _, kind := range ir.Kinds() {
 		op := representative(t, kind)
-
 		stmts, err := d.Compile(op)
-		if !errors.Is(err, driver.ErrUnsupported) {
-			t.Errorf("Compile(%s) returned %v, want %v", kind, err, driver.ErrUnsupported)
+
+		if allowed := verdict(op).Allowed(); allowed != (err == nil) {
+			t.Errorf("the declaration allows %s (%t) and the compiler %v", kind, allowed, err)
 		}
 
-		if len(stmts) != 0 {
-			t.Errorf("Compile(%s) returned %d statements as well as a refusal", kind, len(stmts))
+		if !needsRebuild[kind] {
+			checkCompiled(t, kind, stmts, err)
+
+			continue
 		}
 
-		if verdict := verdict(op); verdict.Allowed() {
-			t.Errorf("the declaration allows %s while the compiler refuses it", kind)
-		}
-
-		if reason := verdict(op).Reason(); !strings.Contains(reason, "M8-T2") {
-			t.Errorf("the refusal of %s does not name the task that lifts it: %q", kind, reason)
-		}
+		checkRebuildRefusal(t, kind, stmts, err, verdict(op).Reason())
 	}
 
 	t.Log("The declaration is derived from the compiler, so the biconditional the conformance")
-	t.Log("suite proves holds by construction rather than by coincidence -- and M8-T2 arrives as")
-	t.Log("a diff turning each refusal into SQL (M3-T1's shape).")
+	t.Log("suite proves holds by construction rather than by coincidence. Seven operations still")
+	t.Log("refuse, and they refuse for SQLite's reason rather than for a missing compiler.")
+}
+
+// checkCompiled reports an operation this driver was meant to compile and did not.
+func checkCompiled(t *testing.T, kind ir.Kind, stmts []driver.Statement, err error) {
+	t.Helper()
+
+	if err != nil {
+		t.Errorf("Compile(%s) refused: %v", kind, err)
+
+		return
+	}
+
+	if len(stmts) == 0 {
+		t.Errorf("Compile(%s) reported success and produced no statement", kind)
+	}
+}
+
+// checkRebuildRefusal reports a rebuild operation that compiled, or refused without naming M8-T4.
+func checkRebuildRefusal(t *testing.T, kind ir.Kind, stmts []driver.Statement,
+	err error, reason string,
+) {
+	t.Helper()
+
+	if !errors.Is(err, driver.ErrUnsupported) {
+		t.Errorf("Compile(%s) returned %v, want %v", kind, err, driver.ErrUnsupported)
+	}
+
+	if len(stmts) != 0 {
+		t.Errorf("Compile(%s) returned %d statements as well as a refusal", kind, len(stmts))
+	}
+
+	if !strings.Contains(reason, "M8-T4") {
+		t.Errorf("the refusal of %s does not name the task that lifts it: %q", kind, reason)
+	}
 }
 
 func TestAConfiguredSchemaIsRefusedRatherThanIgnored(t *testing.T) {
@@ -111,6 +152,17 @@ func TestAHistoryTableNameThisDriverCannotCarryIsRefused(t *testing.T) {
 	if _, err := New(driver.Options{HistoryTable: "migr_migrations"}); err != nil {
 		t.Errorf("New refused an ordinary table name: %v", err)
 	}
+
+	_, err := New(driver.Options{HistoryTable: "migr\x00migrations"})
+	if !errors.Is(err, driver.ErrUnsupported) {
+		t.Errorf("the refusal is %v, and not one the compiler produced", err)
+	}
+
+	t.Log("Compiling history.Schema(table) is the whole check here, where PostgreSQL also measures")
+	t.Log("the name: SQLite has no identifier length, so there is nothing about a name this driver")
+	t.Log("refuses that the operations carrying it do not. It is also what keeps M8-T6 honest --")
+	t.Log("the history table is itself driver-compiled IR (invariant #3), so a schema this driver")
+	t.Log("could not build is refused at New rather than at the first Ensure.")
 }
 
 func TestAWaitLongerThanSQLiteCanHoldIsRefused(t *testing.T) {

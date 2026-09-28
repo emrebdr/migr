@@ -14,6 +14,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -62,18 +63,31 @@ func checkSchema(schema string) error {
 	return &SchemaError{Schema: schema}
 }
 
-// checkHistoryTable refuses a history table name this driver cannot carry into a statement.
+// checkHistoryTable refuses a history table name this driver cannot compile its own schema for.
 func checkHistoryTable(table string) error {
 	if strings.TrimSpace(table) == "" {
 		return &HistoryError{Table: table, Detail: "a table name is required"}
 	}
 
-	if strings.ContainsRune(table, 0) {
-		return &HistoryError{Table: table, Detail: "it holds a NUL byte, which ends the statement " +
-			"where it appears: a query reaches SQLite as a C string"}
+	for _, op := range history.Schema(table) {
+		if err := op.Validate(); err != nil {
+			return &HistoryError{Table: table, Detail: err.Error(), Err: err}
+		}
+
+		if _, err := compile(op); err != nil {
+			return &HistoryError{Table: table, Detail: describeDerived(table, err), Err: err}
+		}
 	}
 
 	return nil
+}
+
+// describeDerived names the history schema as what could not be compiled, rather than the name alone.
+func describeDerived(table string, err error) string {
+	return fmt.Sprintf("the history schema cannot be compiled for a table named %q: %v. The schema "+
+		"is itself a set of operations (invariant #3), so compiling it is the whole check: there "+
+		"is nothing about a name this driver refuses that the operations carrying it do not",
+		table, err)
 }
 
 // checkStrategy refuses a lock strategy this engine has no implementation of, rather than ignoring it.

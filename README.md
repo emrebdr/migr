@@ -392,6 +392,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0048](docs/adr/0048-multi-language-projects.md) | One directory, several languages: route each migration by its own extension |
 | [0049](docs/adr/0049-reading-a-declared-dependency.md) | A declared dependency is read once the runtimes are up, and a report names the order it has |
 | [0050](docs/adr/0050-sqlite-session-and-pragmas.md) | The SQLite session: one pinned connection, three pragmas, and what an in-process engine changes |
+| [0051](docs/adr/0051-sqlite-type-map-and-the-rebuild-boundary.md) | SQLite's type map, and where the table rebuild begins |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

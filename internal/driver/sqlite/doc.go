@@ -184,9 +184,18 @@
 // has no OR REPLACE. Both run inside the migration's one transaction and the DDL is transactional,
 // so the replacement is atomic; unlike PostgreSQL's, it does not refuse a changed column list.
 //
-// drop_column is the native statement. SQLite refuses it for a primary key, a unique, an indexed
-// column, or one a check, view or foreign key names -- and Compile is pure by contract, so it can
-// see none of that. The refusal is SQLite's, it is loud, and covering those cases is the rebuild.
+// drop_column is the native statement, which SQLite gained in 3.35 -- so the declaration refuses it
+// below that release, since the compiler emits the same statement either way and has no session to
+// ask. SQLite also refuses it for a primary key, a unique, an indexed column, or one a check, view
+// or foreign key names, and Compile can see none of that either. The refusal is SQLite's, it is
+// loud, and covering those cases is the rebuild.
+//
+// The seven are refused rather than declared Emulated, and the two are not the same statement.
+// capability.Emulated is an *allowed* verdict, and the conformance suite holds Resolve(op).Allowed()
+// to being true exactly when Compile succeeds -- so declaring an emulation before anything can
+// produce its statements would break the one check that keeps a driver's two answers together.
+// M8-T4 flips them in the commit that can keep the promise; the refusals name the strategy string
+// it will carry, so an operator reads the same three words before and after.
 //
 // Two ADD COLUMN restrictions are deliberately not refused here. A NOT NULL column with no default,
 // and a column with a function default, are both accepted against an empty table and refused only
@@ -201,6 +210,39 @@
 // run. Every composed statement ends in a semicolon; a raw operation does not, because run verbatim
 // is the whole contract and its author may already have written one.
 //
+// # What an operation costs a live database
+//
+//	create_table  brief_exclusive   drop_table   long_exclusive   drop_column  table_rewrite
+//	create_view   brief_exclusive   add_index    long_exclusive   the seven    table_rewrite
+//	drop_view     brief_exclusive   drop_index   long_exclusive   raw          unknown
+//	add_column    brief_exclusive   add_unique   long_exclusive
+//	rename_table  brief_exclusive   drop_unique  long_exclusive
+//	rename_column brief_exclusive
+//
+// Nothing here is lock_free, and that is the declaration rather than a gap. SQLite takes one
+// database-wide write lock and has no per-table locking at all, so even CREATE TABLE stops every
+// other writer for as long as it runs -- and in the default rollback-journal mode, which this
+// driver does not change, it stops readers too. PostgreSQL calls create_table lock_free because it
+// blocks nothing that already exists; the same verdict here would pass --require-safe for an
+// operation that halts the database.
+//
+// drop_column is the least obvious row. SQLite's native DROP COLUMN is not a metadata change: it
+// rewrites the whole table content to omit the column, so the operation that compiles to one short
+// statement is the most expensive thing above.
+//
+// Every row is measured rather than read out of documentation, which invariant #13 asks for and
+// which only an in-process engine makes cheap. Two instruments, neither of them a clock: the
+// rollback journal counts the pages a statement rewrote in place, and page_count and
+// freelist_count count the pages it allocated and released. Run at two table sizes, that separates
+// constant work from work proportional to the table, and a rewrite of rows already there from a
+// read of them -- with an UPDATE over every row and an UPDATE over one row as the two controls.
+// What it does not measure is duration, so brief and long are told apart by how much they touch
+// rather than by how long they hold; separating those by time needs load, which is M13-T12's.
+//
+// Lock impact does not vary by version here, and that is worth stating because the support axis
+// does. The operations whose cost changed across SQLite releases are the ones this driver refuses,
+// and drop_column's *support* moves with the version while what it costs does not.
+//
 // # What refuses by name
 //
 // Lock refuses, naming M8-T5: lock.strategy's file half is the one this engine can implement, and a
@@ -211,6 +253,6 @@
 // A configured schema is refused rather than ignored. A SQLite database is one file, and the only
 // other namespaces are the ones ATTACH creates, which nothing here opens.
 //
-// Status: connection handling and the compiler. The rest of M8 fills in the capability declaration,
-// the table-rebuild emulation, the file lock, and the history store (see TASKS.md).
+// Status: connection handling, the compiler, and the capability declaration. The rest of M8 fills
+// in the table-rebuild emulation, the file lock, and the history store (see TASKS.md).
 package sqlite

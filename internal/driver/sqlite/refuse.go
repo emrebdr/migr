@@ -10,10 +10,17 @@ import (
 	"github.com/emrebdr/migr/internal/schema"
 )
 
+// rebuildStrategy is the strategy the seven refused operations name, and the one M8-T4's Emulated
+// verdicts will carry -- so an operator reads the same three words in a refusal today and beside
+// the operation in migr plan afterwards.
+const rebuildStrategy = "table rebuild"
+
 // rebuild names what M8-T4 implements, and ends every refusal an ALTER TABLE cannot carry.
-const rebuild = "performing it means the 12-step table rebuild -- create a shadow table, copy the " +
-	"rows, drop the original, rename, and restore every index, trigger, view and foreign key -- " +
-	"which M8-T4 implements"
+const rebuild = "This needs a " + rebuildStrategy + ": create a shadow table, copy the rows, drop " +
+	"the original, rename, and restore every index, trigger, view and foreign key. M8-T4 " +
+	"implements it and is where this verdict becomes Emulated -- the rebuild needs the table's " +
+	"current definition, which Compile has no session to ask for, so until then this driver " +
+	"refuses rather than declaring an emulation it cannot perform"
 
 // refuse builds this driver's refusal to compile an operation, for a reason found in its payload.
 func refuse(op ir.Operation, reason string) error {
@@ -23,7 +30,7 @@ func refuse(op ir.Operation, reason string) error {
 // rebuildPending refuses an operation SQLite can perform only by rebuilding the whole table.
 func rebuildPending(op ir.Operation, cannot string) error {
 	return refuse(op, fmt.Sprintf("SQLite's ALTER TABLE cannot %s -- it renames a table, renames a "+
-		"column, adds a column and drops one, and does nothing else. So %s", cannot, rebuild))
+		"column, adds a column and drops one, and does nothing else. %s", cannot, rebuild))
 }
 
 // checkIdentifier reports why SQLite cannot carry a name, and nothing when it can.

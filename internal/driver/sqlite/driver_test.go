@@ -52,7 +52,7 @@ func TestEveryOperationIsCompiledOrRefusedByBothTheCompilerAndTheDeclaration(t *
 		op := representative(t, kind)
 		stmts, err := d.Compile(op)
 
-		if allowed := verdict(op).Allowed(); allowed != (err == nil) {
+		if allowed := linked(t).verdict(op).Allowed(); allowed != (err == nil) {
 			t.Errorf("the declaration allows %s (%t) and the compiler %v", kind, allowed, err)
 		}
 
@@ -62,7 +62,7 @@ func TestEveryOperationIsCompiledOrRefusedByBothTheCompilerAndTheDeclaration(t *
 			continue
 		}
 
-		checkRebuildRefusal(t, kind, stmts, err, verdict(op).Reason())
+		checkRebuildRefusal(t, kind, stmts, err, linked(t).verdict(op).Reason())
 	}
 
 	t.Log("The declaration is derived from the compiler, so the biconditional the conformance")

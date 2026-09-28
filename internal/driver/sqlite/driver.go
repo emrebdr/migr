@@ -177,7 +177,7 @@ func (d *sqliteDriver) establish(ctx context.Context, db *sql.DB) (*sqliteConn, 
 		return nil, errors.Join(err, closeConn(conn))
 	}
 
-	caps, err := capability.NewSet(facts(version), rules())
+	caps, err := capability.NewSet(facts(version), rules(version))
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("%w: declaring capabilities: %w", ErrConnect, err),
 			closeConn(conn))

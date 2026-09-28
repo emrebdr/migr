@@ -15,7 +15,7 @@ func TestGolden(t *testing.T) {
 
 	drivertest.Suite{Driver: Name, Compiler: d}.Run(t)
 
-	t.Log("Every operation is a recorded refusal naming M8-T2, so that task arrives as a diff")
-	t.Log("turning each one into SQL rather than as twenty new files -- and an operation that")
-	t.Log("silently stopped being refused would be a diff here rather than an edited test.")
+	t.Log("Thirteen operations record their SQL and seven record a refusal naming the table")
+	t.Log("rebuild, so an operation that started or stopped being refused -- and M8-T4 turning a")
+	t.Log("refusal into statements -- arrives as a diff here rather than as an edited test.")
 }

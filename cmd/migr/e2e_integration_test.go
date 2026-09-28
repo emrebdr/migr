@@ -117,6 +117,8 @@ func migrOut(t *testing.T, config string, args ...string) string {
 		t.Fatalf("opening a pipe: %v", err)
 	}
 
+	captured := drained(t, r, args[0])
+
 	stdout := os.Stdout
 	os.Stdout = w
 	runErr := migr(t, config, args...)
@@ -126,16 +128,31 @@ func migrOut(t *testing.T, config string, args ...string) string {
 		t.Fatalf("closing the pipe: %v", err)
 	}
 
-	out, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatalf("reading what migr %s printed: %v", args[0], err)
-	}
+	out := <-captured
 
 	if runErr != nil {
 		t.Fatalf("migr %s: %v\n%s", args[0], runErr, out)
 	}
 
-	return string(out)
+	return out
+}
+
+// drained reads the pipe while the command is still writing to it, rather than after it returns.
+func drained(t *testing.T, r *os.File, command string) <-chan string {
+	t.Helper()
+
+	captured := make(chan string, 1)
+
+	go func() {
+		out, err := io.ReadAll(r)
+		if err != nil {
+			t.Errorf("reading what migr %s printed: %v", command, err)
+		}
+
+		captured <- string(out)
+	}()
+
+	return captured
 }
 
 // migrFailure runs the CLI expecting it to fail, and returns what it wrote to stderr.

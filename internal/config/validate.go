@@ -132,10 +132,11 @@ func validateDatabases(v *validator, dbs map[string]Database) {
 	}
 }
 
-// validateLock checks the migration lock block.
+// validateLock checks the migration lock block, where naming no strategy leaves it to the driver.
 func validateLock(v *validator, l Lock) {
-	if !contains(lockStrategies, l.Strategy) {
-		v.add("lock.strategy", "%q is not valid (expected: %s)", l.Strategy, join(lockStrategies))
+	if l.Strategy != "" && !contains(lockStrategies, l.Strategy) {
+		v.add("lock.strategy", "%q is not valid (expected: %s, or nothing to leave it to the driver)",
+			l.Strategy, join(lockStrategies))
 	}
 
 	if l.Timeout <= 0 {

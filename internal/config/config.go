@@ -41,8 +41,10 @@ type History struct {
 
 // Lock configures the migration lock that prevents concurrent runs.
 type Lock struct {
-	Strategy LockStrategy `yaml:"strategy" json:"strategy"`
-	Timeout  Duration     `yaml:"timeout"  json:"timeout"`
+	// Strategy is how the lock is taken, and nothing means whichever one the driver implements.
+	Strategy LockStrategy `yaml:"strategy" json:"strategy,omitempty"`
+	// Timeout bounds the wait for it, which every engine has some way of spelling.
+	Timeout Duration `yaml:"timeout"  json:"timeout"`
 }
 
 // Runtime bounds the conversation with a language runtime, which docs/protocol.md §8.2 tabulates.

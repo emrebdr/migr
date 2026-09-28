@@ -209,7 +209,7 @@ databases:
 	}{
 		{field: "migrations.dir", got: cfg.Migrations.Dir, want: "migrations"},
 		{field: "history.table", got: cfg.History.Table, want: "migr_migrations"},
-		{field: "lock.strategy", got: cfg.Lock.Strategy, want: LockAdvisory},
+		{field: "lock.strategy", got: cfg.Lock.Strategy, want: LockStrategy("")},
 		{field: "lock.timeout", got: cfg.Lock.Timeout.Duration(), want: 30 * time.Second},
 		{field: "safety.lock_timeout", got: cfg.Safety.LockTimeout.Duration(), want: 3 * time.Second},
 		{field: "safety.lock_retries", got: cfg.Safety.LockRetries, want: 5},
@@ -235,6 +235,50 @@ databases:
 	t.Log("§8.2: these defaults are the protocol's, so this reads them from there rather than")
 	t.Log("restating them. A second copy in migr.yaml's defaults is a second definition of a")
 	t.Log("value the specification owns.")
+	t.Log("lock.strategy has no default on purpose (M8-T1). Choosing advisory here chose one")
+	t.Log("engine's lock for every project, and this package may not know an engine: a SQLite")
+	t.Log("project -- which this fixture is -- was refused by its own driver for a value nobody")
+	t.Log("set. Empty means the driver's own, which driver.Options has said all along.")
+}
+
+func TestNamingNoLockStrategyLeavesItToTheDriver(t *testing.T) {
+	src := []byte(`
+version: 1
+migrations:
+  language: sql
+databases:
+  default:
+    driver: sqlite
+    dsn: file:test.db
+`)
+
+	cfg, err := parse(src, "test.yaml", env(nil))
+	if err != nil {
+		t.Fatalf("a config naming no lock strategy must load: %v", err)
+	}
+
+	if got := cfg.DriverOptions(cfg.Databases["default"]).LockStrategy; got != "" {
+		t.Errorf("lock.strategy reached the driver as %q, want it to name nothing", got)
+	}
+
+	bogus := []byte(`
+version: 1
+migrations:
+  language: sql
+databases:
+  default:
+    driver: sqlite
+    dsn: file:test.db
+lock:
+  strategy: advisor
+`)
+
+	if _, err := parse(bogus, "test.yaml", env(nil)); err == nil {
+		t.Error("a strategy that is not a word migr knows was accepted")
+		t.Log("Two checks answer two questions (ADR 0020): this package asks whether the value is a")
+		t.Log("word, and the driver asks whether the engine can do it. Dropping the default must")
+		t.Log("not drop the first question.")
+	}
 }
 
 func TestARuntimeBoundIsRefusedWhenItCouldNotBeOne(t *testing.T) {

@@ -102,11 +102,6 @@ func decode(file *ast.File, cfg *Config) error {
 func applyDefaults(cfg *Config) {
 	setString(&cfg.Migrations.Dir, "./migrations")
 	setString(&cfg.History.Table, driver.DefaultHistoryTable)
-
-	if cfg.Lock.Strategy == "" {
-		cfg.Lock.Strategy = LockAdvisory
-	}
-
 	setDuration(&cfg.Lock.Timeout, driver.DefaultLockWait)
 	setDuration(&cfg.Runtime.HandshakeTimeout, protocol.DefaultHandshake)
 	setDuration(&cfg.Runtime.RequestTimeout, protocol.DefaultRequest)

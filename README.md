@@ -21,7 +21,8 @@ operator discipline.
 ## Status
 
 > **Pre-alpha.** migr applies and rolls back migrations against PostgreSQL today, written as
-> `.sql` files or in Go. SQLite, MySQL, TypeScript, schema diffing, and the zero-downtime
+> `.sql` files, in Go, or in TypeScript. The SQLite driver connects, reads, and refuses every
+> schema operation by name until M8-T2 compiles them. MySQL, schema diffing, and the zero-downtime
 > guarantees are not built yet. Do not depend on it.
 
 Two of the ten subcommands, since they need no database:
@@ -97,7 +98,7 @@ belongs to no language. Both languages then apply and roll back against a real P
 TypeScript migration is the first in any language to read the live database and branch on the
 answer, and the first to send a statement of its own outside the transaction its operations run in.
 
-**Later.** The SQLite and MySQL drivers (M8, M9), validation and safety (M10), introspection
+**Later.** The rest of the SQLite driver and all of the MySQL one (M8, M9), validation and safety (M10), introspection
 and schema diffing (M11), seeds and data transformations (M12), and the zero-downtime milestone
 (M13) — where "safe against a live production database" becomes something a test suite proves
 rather than something the README asserts.
@@ -390,6 +391,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0047](docs/adr/0047-line-separator-escaping.md) | U+2028 and U+2029 are emitted as UTF-8, and a scanner undoes Go's escape |
 | [0048](docs/adr/0048-multi-language-projects.md) | One directory, several languages: route each migration by its own extension |
 | [0049](docs/adr/0049-reading-a-declared-dependency.md) | A declared dependency is read once the runtimes are up, and a report names the order it has |
+| [0050](docs/adr/0050-sqlite-session-and-pragmas.md) | The SQLite session: one pinned connection, three pragmas, and what an in-process engine changes |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

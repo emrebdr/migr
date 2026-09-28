@@ -90,11 +90,12 @@ func TestTheDeclarationAndTheCompilerAgreeAtEveryVersion(t *testing.T) {
 				op := representative(t, kind)
 				_, err := compile(op)
 
-				if err != nil && !errors.Is(err, driver.ErrUnsupported) {
-					t.Errorf("%s: the compiler failed rather than refusing: %v", kind, err)
+				if err != nil && !errors.Is(err, driver.ErrUnsupported) &&
+					!errors.Is(err, driver.ErrNeedsSession) {
+					t.Errorf("%s: the compiler failed rather than answering: %v", kind, err)
 				}
 
-				want := err == nil
+				want := err == nil || errors.Is(err, driver.ErrNeedsSession)
 				if kind == ir.KindDropColumn {
 					want = version.AtLeast(dropColumnMajor, dropColumnMinor)
 				}

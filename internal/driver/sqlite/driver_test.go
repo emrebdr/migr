@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/driver/drivertest"
 	"github.com/emrebdr/migr/internal/ir"
@@ -31,7 +32,7 @@ func TestTheDriverAnswersToTheNameItIsRegisteredUnder(t *testing.T) {
 	}
 }
 
-// needsRebuild lists the operations SQLite performs only by rebuilding the table, which is M8-T4's.
+// needsRebuild lists the operations SQLite performs only by rebuilding the whole table.
 var needsRebuild = map[ir.Kind]bool{
 	ir.KindAlterColumn:    true,
 	ir.KindAddForeignKey:  true,
@@ -52,7 +53,8 @@ func TestEveryOperationIsCompiledOrRefusedByBothTheCompilerAndTheDeclaration(t *
 		op := representative(t, kind)
 		stmts, err := d.Compile(op)
 
-		if allowed := linked(t).verdict(op).Allowed(); allowed != (err == nil) {
+		compilable := err == nil || errors.Is(err, driver.ErrNeedsSession)
+		if allowed := linked(t).verdict(op).Allowed(); allowed != compilable {
 			t.Errorf("the declaration allows %s (%t) and the compiler %v", kind, allowed, err)
 		}
 
@@ -62,12 +64,12 @@ func TestEveryOperationIsCompiledOrRefusedByBothTheCompilerAndTheDeclaration(t *
 			continue
 		}
 
-		checkRebuildRefusal(t, kind, stmts, err, linked(t).verdict(op).Reason())
+		checkEmulated(t, kind, stmts, err, linked(t).verdict(op))
 	}
 
 	t.Log("The declaration is derived from the compiler, so the biconditional the conformance")
-	t.Log("suite proves holds by construction rather than by coincidence. Seven operations still")
-	t.Log("refuse, and they refuse for SQLite's reason rather than for a missing compiler.")
+	t.Log("suite proves holds by construction rather than by coincidence. Seven operations are")
+	t.Log("compiled against the session instead, and say so rather than refusing.")
 }
 
 // checkCompiled reports an operation this driver was meant to compile and did not.
@@ -85,22 +87,34 @@ func checkCompiled(t *testing.T, kind ir.Kind, stmts []driver.Statement, err err
 	}
 }
 
-// checkRebuildRefusal reports a rebuild operation that compiled, or refused without naming M8-T4.
-func checkRebuildRefusal(t *testing.T, kind ir.Kind, stmts []driver.Statement,
-	err error, reason string,
+// checkEmulated reports a rebuild operation that compiled, or one the declaration disagrees about.
+func checkEmulated(t *testing.T, kind ir.Kind, stmts []driver.Statement,
+	err error, verdict capability.Verdict,
 ) {
 	t.Helper()
 
-	if !errors.Is(err, driver.ErrUnsupported) {
-		t.Errorf("Compile(%s) returned %v, want %v", kind, err, driver.ErrUnsupported)
+	if !errors.Is(err, driver.ErrNeedsSession) {
+		t.Errorf("Compile(%s) returned %v, want %v", kind, err, driver.ErrNeedsSession)
+
+		return
 	}
 
 	if len(stmts) != 0 {
-		t.Errorf("Compile(%s) returned %d statements as well as a refusal", kind, len(stmts))
+		t.Errorf("Compile(%s) returned %d statements as well as asking for a session",
+			kind, len(stmts))
 	}
 
-	if !strings.Contains(reason, "M8-T4") {
-		t.Errorf("the refusal of %s does not name the task that lifts it: %q", kind, reason)
+	if !strings.Contains(err.Error(), rebuildStrategy) {
+		t.Errorf("Compile(%s) does not name the strategy: %v", kind, err)
+	}
+
+	if verdict.Support() != capability.SupportEmulated || verdict.Strategy() != rebuildStrategy {
+		t.Errorf("the declaration of %s is %q, want an emulation by %q", kind, verdict,
+			rebuildStrategy)
+	}
+
+	if verdict.Lock() != rebuildImpact {
+		t.Errorf("the declaration of %s costs %s, want %s", kind, verdict.Lock(), rebuildImpact)
 	}
 }
 

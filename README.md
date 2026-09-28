@@ -394,6 +394,8 @@ The reasoning behind each contract — including the options that were rejected 
 | [0050](docs/adr/0050-sqlite-session-and-pragmas.md) | The SQLite session: one pinned connection, three pragmas, and what an in-process engine changes |
 | [0051](docs/adr/0051-sqlite-type-map-and-the-rebuild-boundary.md) | SQLite's type map, and where the table rebuild begins |
 | [0052](docs/adr/0052-sqlite-lock-verdicts.md) | SQLite's lock verdicts, and why an emulation cannot be declared before it can be compiled |
+| [0053](docs/adr/0053-expanding-an-operation-against-a-session.md) | An operation a driver compiles against the database, rather than against nothing |
+| [0054](docs/adr/0054-the-sqlite-table-rebuild.md) | The SQLite table rebuild, as the measurements made it |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

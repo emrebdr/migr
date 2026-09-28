@@ -46,6 +46,24 @@ func nativeType(t schema.Type) string {
 	}
 }
 
+// nativeAction returns SQLite's spelling of a referential action, and nothing when unset.
+func nativeAction(a ir.ReferentialAction) string {
+	switch a {
+	case ir.ActionNoAction:
+		return "NO ACTION"
+	case ir.ActionRestrict:
+		return "RESTRICT"
+	case ir.ActionCascade:
+		return "CASCADE"
+	case ir.ActionSetNull:
+		return "SET NULL"
+	case ir.ActionSetDefault:
+		return "SET DEFAULT"
+	default:
+		return ""
+	}
+}
+
 // nativeFunction returns SQLite's spelling of a neutral default function.
 func nativeFunction(f ir.Function) string {
 	switch f {

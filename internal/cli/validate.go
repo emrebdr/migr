@@ -115,6 +115,10 @@ type unchecked struct {
 	File string `json:"file"`
 	// Direction is which of the migration's two halves went unchecked.
 	Direction ir.Direction `json:"direction"`
+	// Operation is the one operation this names, counting from one, and absent for a whole half.
+	Operation int32 `json:"operation,omitempty"`
+	// Kind is that operation, and is absent where a whole half went unchecked.
+	Kind ir.Kind `json:"kind,omitempty"`
 	// Reason states what stopped the check, in terms an operator can act on.
 	Reason string `json:"reason"`
 }
@@ -167,6 +171,8 @@ func uncheckedOf(skipped []validate.Unchecked) []unchecked {
 			Version:   s.Migration.Version,
 			File:      s.Migration.Filename(),
 			Direction: s.Direction,
+			Operation: s.Operation,
+			Kind:      s.Kind,
 			Reason:    s.Reason,
 		})
 	}
@@ -220,8 +226,8 @@ func (v validation) describeDatabase() string {
 		return noDatabase + "."
 	}
 
-	return fmt.Sprintf("%s, so %s could not be checked.", noDatabase,
-		describeHalves(len(v.Unchecked)))
+	return fmt.Sprintf("%s, so %s could not be made.", noDatabase,
+		describeUnchecked(len(v.Unchecked)))
 }
 
 // writeUnchecked lists every half nothing could judge, above the problems, since it qualifies them.
@@ -230,20 +236,29 @@ func (v validation) writeUnchecked(b *strings.Builder) {
 		return
 	}
 
-	fmt.Fprintf(b, "\n  not checked — %s\n", describeHalves(len(v.Unchecked)))
+	fmt.Fprintf(b, "\n  not checked — %s\n", describeUnchecked(len(v.Unchecked)))
 
 	for _, skipped := range v.Unchecked {
-		fmt.Fprintf(b, "    %s %s: %s\n", skipped.File, skipped.Direction, skipped.Reason)
+		fmt.Fprintf(b, "    %s %s: %s\n", skipped.File, skipped.where(), skipped.Reason)
 	}
 }
 
-// describeHalves counts unchecked halves with the right noun.
-func describeHalves(n int) string {
-	if n == 1 {
-		return "1 migration half"
+// where names the half this entry covers, and the one operation within it where it covers only one.
+func (u unchecked) where() string {
+	if u.Operation == 0 {
+		return string(u.Direction)
 	}
 
-	return fmt.Sprintf("%d migration halves", n)
+	return fmt.Sprintf("%s operation %d (%s)", u.Direction, u.Operation, u.Kind)
+}
+
+// describeUnchecked counts the checks a run could not make, which is halves and operations both.
+func describeUnchecked(n int) string {
+	if n == 1 {
+		return "1 check"
+	}
+
+	return fmt.Sprintf("%d checks", n)
 }
 
 // describeRemedy says how this project's own format answers a problem, since a check cannot know.

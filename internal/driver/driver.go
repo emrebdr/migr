@@ -57,6 +57,12 @@ type Compiler interface {
 	Compile(op ir.Operation) ([]Statement, error)
 }
 
+// Expander is a session that produces statements for an operation its Compiler cannot.
+type Expander interface {
+	// Expand returns the statements one operation becomes on this database, or refuses with a reason.
+	Expand(ctx context.Context, op ir.Operation) ([]Statement, error)
+}
+
 // Driver is one database engine: what it is called, what it compiles to, how to reach it.
 type Driver interface {
 	Compiler

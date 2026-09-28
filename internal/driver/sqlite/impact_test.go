@@ -66,25 +66,31 @@ func TestNothingOnThisEngineIsLockFree(t *testing.T) {
 	t.Log("exists; here that would pass --require-safe for an operation that halts the database.")
 }
 
-func TestTheSevenRefusedOperationsAlreadyCostWhatTheRebuildCosts(t *testing.T) {
+func TestTheSevenEmulatedOperationsCostWhatTheRebuildCosts(t *testing.T) {
 	for _, kind := range ir.Kinds() {
 		if !needsRebuild[kind] {
 			continue
 		}
 
-		if got := lockImpact(representative(t, kind)); got != rebuildImpact {
+		op := representative(t, kind)
+
+		if got := lockImpact(op); got != rebuildImpact {
 			t.Errorf("%s is declared %s, want %s", kind, got, rebuildImpact)
 		}
 
-		if verdict := linked(t).verdict(representative(t, kind)); verdict.Lock() != capability.LockUnknown {
-			t.Errorf("%s is refused and still reports lock %s", kind, verdict.Lock())
+		verdict := linked(t).verdict(op)
+		if verdict.Lock() != rebuildImpact {
+			t.Errorf("%s resolves to lock %s, want %s", kind, verdict.Lock(), rebuildImpact)
+		}
+
+		if verdict.Strategy() != rebuildStrategy {
+			t.Errorf("%s names strategy %q, want %q", kind, verdict.Strategy(), rebuildStrategy)
 		}
 	}
 
-	t.Log("A refusal carries LockUnknown by construction -- capability.Unsupported sets it -- so")
-	t.Log("the value above is not reachable through Resolve today. It is written and tested now so")
-	t.Log("that M8-T4 flips the verdict to Emulated(rebuildStrategy, rebuildImpact) without having")
-	t.Log("to decide what a rebuild costs while it is busy implementing one.")
+	t.Log("M8-T3 wrote these verdicts while the seven still refused, so nothing could reach them")
+	t.Log("through Resolve: a refusal carries LockUnknown by construction. They are reachable now,")
+	t.Log("and the value the declaration reports is the one that was measured a task ago.")
 }
 
 func TestAnOperationThisDriverCannotPlaceCostsTheWorst(t *testing.T) {

@@ -48,6 +48,27 @@ var ErrQuery = errors.New("reading on behalf of a migration")
 // ErrPerform marks a migration's own statement this driver could not run, for errors.Is.
 var ErrPerform = errors.New("running a statement on behalf of a migration")
 
+// ErrRebuild marks a table rebuild this driver could not build the statements for, for errors.Is.
+var ErrRebuild = errors.New("cannot rebuild this table")
+
+// RebuildError reports a table this driver will not rebuild, and what stopped it.
+type RebuildError struct {
+	// Table is the table the rebuild was for.
+	Table string
+	// Detail states what stopped it, in terms an operator can act on.
+	Detail string
+}
+
+// Error names the table and what stopped the rebuild.
+func (e *RebuildError) Error() string {
+	return fmt.Sprintf("%v %q: %s", ErrRebuild, e.Table, e.Detail)
+}
+
+// Unwrap reports the sentinel so errors.Is reaches it.
+func (e *RebuildError) Unwrap() error {
+	return ErrRebuild
+}
+
 // ErrNotText marks a value no JSON string can carry, which a read cannot report as text.
 var ErrNotText = errors.New("this value is not text and host.db.query carries text")
 

@@ -417,7 +417,7 @@ func (t *target) connect(ctx context.Context, opts *options) (*session, error) {
 		"server", conn.ServerVersion())
 
 	return &session{conn: conn, database: t.name, options: engine.Options{
-		Planner: plan.Planner{Compiler: d},
+		Planner: plan.Planner{Compiler: d, Expander: expanderOf(conn)},
 	}}, nil
 }
 
@@ -629,4 +629,14 @@ func dial(ctx context.Context, opts *options, t *target) (driver.Driver, driver.
 	}
 
 	return d, conn, nil
+}
+
+// expanderOf returns the session an emulated operation compiles against, where the engine has one.
+func expanderOf(conn driver.Conn) driver.Expander {
+	expander, emulates := conn.(driver.Expander)
+	if !emulates {
+		return nil
+	}
+
+	return expander
 }

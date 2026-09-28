@@ -73,7 +73,7 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 		return
 	}
 
-	r.compile(m, ir.Up, up.Operations)
+	r.compile(ctx, m, ir.Up, up.Operations)
 	r.undo(ctx, m, up)
 }
 
@@ -95,18 +95,18 @@ func (r *runner) undo(ctx context.Context, m migration.Migration, up engine.Emit
 
 	switch {
 	case err == nil:
-		r.compile(m, ir.Down, down.Operations)
+		r.compile(ctx, m, ir.Down, down.Operations)
 	case errors.Is(err, engine.ErrDeclaredIrreversible):
 		return
 	case errors.Is(err, engine.ErrNoDownAuthored):
-		r.derive(m, up)
+		r.derive(ctx, m, up)
 	default:
 		r.unanswered(m, ir.Down, err)
 	}
 }
 
 // derive inverts what a migration does, reporting every operation nothing can undo rather than the first.
-func (r *runner) derive(m migration.Migration, up engine.Emitted) {
+func (r *runner) derive(ctx context.Context, m migration.Migration, up engine.Emitted) {
 	if len(up.Direct) > 0 {
 		r.report.add(directProblem(m, up.Direct))
 
@@ -135,20 +135,58 @@ func (r *runner) derive(m migration.Migration, up engine.Emitted) {
 	}
 
 	slices.Reverse(inverse)
-	r.compile(m, ir.Down, inverse)
+	r.compile(ctx, m, ir.Down, inverse)
 }
 
 // compile turns one half's operations into statements, reporting every one the driver refuses.
-func (r *runner) compile(m migration.Migration, dir ir.Direction, ops ir.Operations) {
+func (r *runner) compile(ctx context.Context, m migration.Migration, dir ir.Direction,
+	ops ir.Operations,
+) {
 	var index int32
 
 	for _, op := range ops {
 		index++
 
-		if _, err := r.opts.Planner.Step(m, index, op); err != nil {
-			r.report.add(compileProblem(m, dir, err))
+		err := r.errorFrom(ctx, m, index, op)
+		if err == nil {
+			continue
 		}
+
+		if errors.Is(err, driver.ErrNeedsSession) {
+			r.report.skip(uncheckedOperation(m, dir, index, op, err))
+
+			continue
+		}
+
+		r.report.add(compileProblem(m, dir, err))
 	}
+}
+
+// errorFrom compiles one operation and reports what stopped it, discarding the statements.
+func (r *runner) errorFrom(ctx context.Context, m migration.Migration, index int32,
+	op ir.Operation,
+) error {
+	_, err := r.opts.Planner.Step(ctx, m, index, op)
+
+	return err
+}
+
+// uncheckedOperation reports an operation this run could not judge because it opened no database.
+func uncheckedOperation(m migration.Migration, dir ir.Direction, index int32, op ir.Operation,
+	err error,
+) Unchecked {
+	return Unchecked{Migration: m, Direction: dir, Operation: index, Kind: op.Kind(),
+		Reason: detailOf(m, causeOf(err))}
+}
+
+// causeOf unwraps a plan's own framing, since an unchecked operation already names its position.
+func causeOf(err error) error {
+	var failed *plan.CompileError
+	if errors.As(err, &failed) {
+		return failed.Err
+	}
+
+	return err
 }
 
 // directProblem reports a migration that reaches the database itself and authors nothing to undo it.

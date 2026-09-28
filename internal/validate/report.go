@@ -13,6 +13,10 @@ type Unchecked struct {
 	Migration migration.Migration
 	// Direction is which of its two halves went unchecked.
 	Direction ir.Direction
+	// Operation is the one operation this names, counting from one, and zero for a whole half.
+	Operation int32
+	// Kind is that operation, and is blank where a whole half went unchecked.
+	Kind ir.Kind
 	// Reason states what stopped the check, in terms an operator can act on.
 	Reason string
 }

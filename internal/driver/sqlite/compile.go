@@ -34,27 +34,27 @@ func compile(op ir.Operation) ([]driver.Statement, error) {
 	case ir.RenameColumn:
 		return compileRenameColumn(o)
 	case ir.AlterColumn:
-		return nil, rebuildPending(o, "change a column's type, nullability, or default")
+		return nil, rebuildNeeded(o, "change a column's type, nullability, or default")
 	case ir.AddIndex:
 		return compileAddIndex(o)
 	case ir.DropIndex:
 		return compileDropIndex(o)
 	case ir.AddForeignKey:
-		return nil, rebuildPending(o, "add a foreign key to a table that already exists")
+		return nil, rebuildNeeded(o, "add a foreign key to a table that already exists")
 	case ir.DropForeignKey:
-		return nil, rebuildPending(o, "drop a foreign key")
+		return nil, rebuildNeeded(o, "drop a foreign key")
 	case ir.AddUnique:
 		return compileAddUnique(o)
 	case ir.DropUnique:
 		return compileDropUnique(o)
 	case ir.AddCheck:
-		return nil, rebuildPending(o, "add a check constraint to a table that already exists")
+		return nil, rebuildNeeded(o, "add a check constraint to a table that already exists")
 	case ir.DropCheck:
-		return nil, rebuildPending(o, "drop a check constraint")
+		return nil, rebuildNeeded(o, "drop a check constraint")
 	case ir.AddPrimaryKey:
-		return nil, rebuildPending(o, "add a primary key to a table that already exists")
+		return nil, rebuildNeeded(o, "add a primary key to a table that already exists")
 	case ir.DropPrimaryKey:
-		return nil, rebuildPending(o, "drop a primary key")
+		return nil, rebuildNeeded(o, "drop a primary key")
 	case ir.CreateView:
 		return compileCreateView(o)
 	case ir.DropView:

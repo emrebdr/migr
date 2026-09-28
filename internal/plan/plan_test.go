@@ -68,7 +68,7 @@ func TestEachOperationKeepsItsOwnStatementsInItsOwnStep(t *testing.T) {
 		ir.KindDropView:    "d",
 	})}
 
-	compiled, err := p.Compile(added(t), ir.Up, three())
+	compiled, err := p.Compile(t.Context(), added(t), ir.Up, three())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestAStepIsNumberedFromOneAndCarriesTheOperationItWasGiven(t *testing.T) {
 
 	ops := three()
 
-	compiled, err := p.Compile(added(t), ir.Up, ops)
+	compiled, err := p.Compile(t.Context(), added(t), ir.Up, ops)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestStatementsFlattenInTheOrderTheyMustRun(t *testing.T) {
 		ir.KindDropView:    "de",
 	})}
 
-	compiled, err := p.Compile(added(t), ir.Up, three())
+	compiled, err := p.Compile(t.Context(), added(t), ir.Up, three())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestAStatementPositionResolvesToTheOperationItCameFrom(t *testing.T) {
 		ir.KindDropView:    "de",
 	})}
 
-	compiled, err := p.Compile(added(t), ir.Up, three())
+	compiled, err := p.Compile(t.Context(), added(t), ir.Up, three())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestAStatementPositionResolvesToTheOperationItCameFrom(t *testing.T) {
 func TestAPositionOutsideThePlanResolvesToNothing(t *testing.T) {
 	p := Planner{Compiler: byKind(map[ir.Kind]string{ir.KindDropTable: "a"})}
 
-	compiled, err := p.Compile(added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}})
+	compiled, err := p.Compile(t.Context(), added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}})
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestAnOperationThatCompilesToNoStatementsIsRefused(t *testing.T) {
 		return nil, nil
 	}}}
 
-	_, err := p.Compile(added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}})
+	_, err := p.Compile(t.Context(), added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}})
 	if !errors.Is(err, ErrNothingCompiled) {
 		t.Fatalf("compiling to no statements returned %v, want ErrNothingCompiled", err)
 	}
@@ -227,7 +227,7 @@ func TestAnOperationThatCompilesToBlankSQLIsRefused(t *testing.T) {
 		return []driver.Statement{{SQL: "DROP TABLE users"}, {SQL: "   \n\t "}}, nil
 	}}}
 
-	_, err := p.Compile(added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}})
+	_, err := p.Compile(t.Context(), added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}})
 	if !errors.Is(err, ErrNothingCompiled) {
 		t.Fatalf("compiling to a blank statement returned %v, want ErrNothingCompiled", err)
 	}
@@ -245,7 +245,7 @@ func TestARefusedOperationIsNamedWithItsMigrationAndItsPosition(t *testing.T) {
 		return []driver.Statement{{SQL: "SELECT 1"}}, nil
 	}}}
 
-	_, err := p.Compile(added(t), ir.Up, three())
+	_, err := p.Compile(t.Context(), added(t), ir.Up, three())
 
 	var failure *CompileError
 	if !errors.As(err, &failure) {
@@ -281,7 +281,7 @@ func TestAMalformedOperationIsRefusedBeforeTheDriverSeesIt(t *testing.T) {
 		return []driver.Statement{{SQL: "SELECT 1"}}, nil
 	}}}
 
-	_, err := p.Compile(added(t), ir.Up, ir.Operations{ir.DropTable{Table: ""}})
+	_, err := p.Compile(t.Context(), added(t), ir.Up, ir.Operations{ir.DropTable{Table: ""}})
 	if err == nil {
 		t.Fatalf("an operation naming no table compiled cleanly")
 	}
@@ -295,7 +295,7 @@ func TestAMalformedOperationIsRefusedBeforeTheDriverSeesIt(t *testing.T) {
 }
 
 func TestAPlannerWithNoCompilerIsRefusedRatherThanPanicking(t *testing.T) {
-	_, err := Planner{}.Compile(added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}})
+	_, err := Planner{}.Compile(t.Context(), added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}})
 	if !errors.Is(err, ErrNoCompiler) {
 		t.Fatalf("a planner with no compiler returned %v, want ErrNoCompiler", err)
 	}
@@ -307,7 +307,7 @@ func TestAPlannerWithNoCompilerIsRefusedRatherThanPanicking(t *testing.T) {
 func TestAHoleInTheOperationListIsRefusedRatherThanPanicking(t *testing.T) {
 	p := Planner{Compiler: byKind(map[ir.Kind]string{ir.KindDropTable: "a"})}
 
-	_, err := p.Compile(added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}, nil})
+	_, err := p.Compile(t.Context(), added(t), ir.Up, ir.Operations{ir.DropTable{Table: "users"}, nil})
 	if !errors.Is(err, ErrNoOperation) {
 		t.Fatalf("a nil operation returned %v, want ErrNoOperation", err)
 	}
@@ -323,12 +323,12 @@ func TestCompilingTheSameMigrationTwiceProducesTheSamePlan(t *testing.T) {
 		ir.KindDropView:    "de",
 	})}
 
-	first, err := p.Compile(added(t), ir.Up, three())
+	first, err := p.Compile(t.Context(), added(t), ir.Up, three())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
 
-	second, err := p.Compile(added(t), ir.Up, three())
+	second, err := p.Compile(t.Context(), added(t), ir.Up, three())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}

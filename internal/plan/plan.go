@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,10 +11,12 @@ import (
 	"github.com/emrebdr/migr/internal/migration"
 )
 
-// Planner compiles a migration's operations to statements for one driver, without a database.
+// Planner compiles a migration's operations to statements for one driver.
 type Planner struct {
 	// Compiler is the driver that turns operations into statements, which is not the session.
 	Compiler driver.Compiler
+	// Expander is the session an emulated operation is compiled against, and is nil where none is.
+	Expander driver.Expander
 }
 
 // Plan is one migration compiled to statements, in the order they must run.
@@ -36,7 +40,9 @@ type Step struct {
 }
 
 // Compile turns one migration's operations into an ordered plan, naming any it cannot compile.
-func (p Planner) Compile(m migration.Migration, dir ir.Direction, ops ir.Operations) (Plan, error) {
+func (p Planner) Compile(ctx context.Context, m migration.Migration, dir ir.Direction,
+	ops ir.Operations,
+) (Plan, error) {
 	if p.Compiler == nil {
 		return Plan{}, fmt.Errorf("%w to compile %s through", ErrNoCompiler, m.Filename())
 	}
@@ -48,7 +54,7 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction, ops ir.Operati
 	for _, op := range ops {
 		index++
 
-		step, err := p.Step(m, index, op)
+		step, err := p.Step(ctx, m, index, op)
 		if err != nil {
 			return Plan{}, err
 		}
@@ -60,7 +66,9 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction, ops ir.Operati
 }
 
 // Step compiles one operation, holding the driver to statements that would actually run.
-func (p Planner) Step(m migration.Migration, index int32, op ir.Operation) (Step, error) {
+func (p Planner) Step(ctx context.Context, m migration.Migration, index int32,
+	op ir.Operation,
+) (Step, error) {
 	if op == nil {
 		return Step{}, &CompileError{Migration: m, Index: index, Err: ErrNoOperation}
 	}
@@ -69,7 +77,7 @@ func (p Planner) Step(m migration.Migration, index int32, op ir.Operation) (Step
 		return Step{}, &CompileError{Migration: m, Index: index, Kind: op.Kind(), Err: err}
 	}
 
-	stmts, err := p.Compiler.Compile(op)
+	stmts, err := p.statements(ctx, op)
 	if err == nil {
 		err = checkCompiled(stmts)
 	}
@@ -79,6 +87,16 @@ func (p Planner) Step(m migration.Migration, index int32, op ir.Operation) (Step
 	}
 
 	return Step{Index: index, Op: op, Statements: stmts}, nil
+}
+
+// statements compiles one operation, asking the session for the ones the compiler cannot produce.
+func (p Planner) statements(ctx context.Context, op ir.Operation) ([]driver.Statement, error) {
+	stmts, err := p.Compiler.Compile(op)
+	if !errors.Is(err, driver.ErrNeedsSession) || p.Expander == nil {
+		return stmts, err
+	}
+
+	return p.Expander.Expand(ctx, op)
 }
 
 // checkCompiled refuses a compilation that reports success while changing nothing.

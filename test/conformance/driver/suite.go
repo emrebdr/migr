@@ -110,11 +110,70 @@ func (s Suite) checkOperation(caps capability.Set, op ir.Operation, label string
 	verdict := caps.Resolve(op)
 
 	stmts, err := s.Driver.Compile(op)
-	if err != nil {
+
+	switch {
+	case errors.Is(err, driver.ErrNeedsSession):
+		return s.checkEmulated(op, label, verdict, err)
+	case err != nil:
 		return s.checkRefused(op, label, verdict, err)
+	default:
+		return checkCompiled(label, verdict, stmts)
+	}
+}
+
+// checkEmulated reports a driver that asks for a session for an operation it did not declare emulated.
+func (s Suite) checkEmulated(op ir.Operation, label string, verdict capability.Verdict,
+	err error,
+) []string {
+	var needs *driver.NeedsSessionError
+	if !errors.As(err, &needs) {
+		return []string{describeFailure(label, err)}
 	}
 
-	return checkCompiled(label, verdict, stmts)
+	problems := s.checkNeedsSession(op, label, needs)
+
+	if verdict.Support() != capability.SupportEmulated {
+		problems = append(problems, fmt.Sprintf("%s: Compile asks for a session, which is what an "+
+			"emulation needs, but the driver declares it %q; the two are one statement of one fact",
+			label, verdict))
+	}
+
+	if _, expands := s.Conn.(driver.Expander); !expands {
+		problems = append(problems, label+": the driver compiles this operation against a session "+
+			"and its session is no driver.Expander, so nothing can produce the statements the "+
+			"declaration promises")
+	}
+
+	if verdict.Allowed() && !verdict.Lock().Valid() {
+		problems = append(problems, fmt.Sprintf("%s: the driver declares lock impact %q, which "+
+			"names no verdict this build recognizes, so it satisfies no safety ceiling at all",
+			label, verdict.Lock()))
+	}
+
+	return problems
+}
+
+// checkNeedsSession reports a request for a session naming no reason, the wrong op, or another driver.
+func (s Suite) checkNeedsSession(op ir.Operation, label string,
+	needs *driver.NeedsSessionError,
+) []string {
+	var problems []string
+
+	if strings.TrimSpace(needs.Reason) == "" {
+		problems = append(problems, label+": it asks for a session without saying what for")
+	}
+
+	if needs.Kind != op.Kind() {
+		problems = append(problems, fmt.Sprintf("%s: it names %s, which is not the operation it "+
+			"was asked about", label, needs.Kind))
+	}
+
+	if needs.Driver != s.Driver.Name() {
+		problems = append(problems, fmt.Sprintf("%s: it names driver %q, and this suite is "+
+			"compiling for %q", label, needs.Driver, s.Driver.Name()))
+	}
+
+	return problems
 }
 
 // checkCompiled reports an operation that compiled but disagrees with what the driver declared.

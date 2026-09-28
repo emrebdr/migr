@@ -15,22 +15,23 @@ import (
 // the operation in migr plan afterwards.
 const rebuildStrategy = "table rebuild"
 
-// rebuild names what M8-T4 implements, and ends every refusal an ALTER TABLE cannot carry.
-const rebuild = "This needs a " + rebuildStrategy + ": create a shadow table, copy the rows, drop " +
-	"the original, rename, and restore every index, trigger, view and foreign key. M8-T4 " +
-	"implements it and is where this verdict becomes Emulated -- the rebuild needs the table's " +
-	"current definition, which Compile has no session to ask for, so until then this driver " +
-	"refuses rather than declaring an emulation it cannot perform"
+// rebuildReason names the strategy and what it has to read, and ends every emulated answer.
+const rebuildReason = "This is performed by a " + rebuildStrategy + ": copy the rows into a " +
+	"table carrying the new definition, drop the original, put the new one in its place, copy " +
+	"back, and restore every index and trigger. Building those statements means reading the " +
+	"table's current definition out of sqlite_schema, which is why it is compiled against the " +
+	"database rather than by Compile alone"
 
 // refuse builds this driver's refusal to compile an operation, for a reason found in its payload.
 func refuse(op ir.Operation, reason string) error {
 	return driver.Unsupported(Name, op.Kind(), reason)
 }
 
-// rebuildPending refuses an operation SQLite can perform only by rebuilding the whole table.
-func rebuildPending(op ir.Operation, cannot string) error {
-	return refuse(op, fmt.Sprintf("SQLite's ALTER TABLE cannot %s -- it renames a table, renames a "+
-		"column, adds a column and drops one, and does nothing else. %s", cannot, rebuild))
+// rebuildNeeded reports an operation SQLite performs only by rebuilding the whole table.
+func rebuildNeeded(op ir.Operation, cannot string) error {
+	return driver.NeedsSession(Name, op.Kind(), fmt.Sprintf("SQLite's ALTER TABLE cannot %s -- it "+
+		"renames a table, renames a column, adds a column and drops one, and does nothing else. %s",
+		cannot, rebuildReason))
 }
 
 // checkIdentifier reports why SQLite cannot carry a name, and nothing when it can.

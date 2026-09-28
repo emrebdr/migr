@@ -30,6 +30,7 @@ const (
 	statementHeader = marker + "statement "
 	noTransaction   = " no-transaction"
 	unsupported     = marker + "unsupported "
+	needsSession    = marker + "needs-session "
 )
 
 // compileRuns is how often each operation compiles, since a map-order bug is intermittent.
@@ -188,6 +189,10 @@ func (s Suite) compile(op ir.Operation) (string, error) {
 // render turns one operation into a golden file body, recording a declared refusal as one.
 func (s Suite) render(op ir.Operation) (string, error) {
 	stmts, err := s.Compiler.Compile(op)
+	if errors.Is(err, driver.ErrNeedsSession) {
+		return s.renderNeedsSession(op, err)
+	}
+
 	if err != nil {
 		return s.renderRefusal(op, err)
 	}
@@ -213,6 +218,20 @@ func (s Suite) renderRefusal(op ir.Operation, err error) (string, error) {
 	return fmt.Sprintf("%s%s: %s\n", unsupported, op.Kind(), refusal.Reason), nil
 }
 
+// renderNeedsSession records an operation this driver compiles against a live database instead.
+func (s Suite) renderNeedsSession(op ir.Operation, err error) (string, error) {
+	var needs *driver.NeedsSessionError
+	if !errors.As(err, &needs) {
+		return "", describeFailure(err)
+	}
+
+	if problem := s.checkAnswer(op, needs.Kind, needs.Driver, needs.Reason); problem != "" {
+		return "", errors.New(problem)
+	}
+
+	return fmt.Sprintf("%s%s: %s\n", needsSession, op.Kind(), needs.Reason), nil
+}
+
 // describeFailure separates a refusal carrying no reason from an ordinary compiler failure.
 func describeFailure(err error) error {
 	if errors.Is(err, driver.ErrUnsupported) {
@@ -224,17 +243,22 @@ func describeFailure(err error) error {
 
 // checkRefusal reports a refusal naming no reason, the wrong operation, or another driver.
 func (s Suite) checkRefusal(op ir.Operation, refusal *driver.UnsupportedError) string {
-	if strings.TrimSpace(refusal.Reason) == "" {
-		return "refused without a reason an operator can act on"
+	return s.checkAnswer(op, refusal.Kind, refusal.Driver, refusal.Reason)
+}
+
+// checkAnswer reports an answer naming no reason, the wrong operation, or another driver.
+func (s Suite) checkAnswer(op ir.Operation, kind ir.Kind, name, reason string) string {
+	if strings.TrimSpace(reason) == "" {
+		return "answered without a reason an operator can act on"
 	}
 
-	if refusal.Kind != op.Kind() {
-		return fmt.Sprintf("refused %s while being asked about %s", refusal.Kind, op.Kind())
+	if kind != op.Kind() {
+		return fmt.Sprintf("answered about %s while being asked about %s", kind, op.Kind())
 	}
 
-	if refusal.Driver != s.Driver {
-		return fmt.Sprintf("the refusal names driver %q, but this suite compiles for %q",
-			refusal.Driver, s.Driver)
+	if name != s.Driver {
+		return fmt.Sprintf("the answer names driver %q, but this suite compiles for %q",
+			name, s.Driver)
 	}
 
 	return ""

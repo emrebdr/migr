@@ -40,6 +40,8 @@ type fake struct {
 	unsupported string
 	// emulates names the strategy this driver achieves every operation by, empty when it is native.
 	emulates string
+	// expands makes the compiler ask for a session, the way a driver that reads a schema does.
+	expands bool
 	// outsideTx is the SQL that compiles to a statement which cannot share a transaction.
 	outsideTx string
 	// lockErr is what acquiring the migration lock reports, nil when it succeeds.
@@ -239,6 +241,10 @@ func (d *fakeDriver) Compile(op ir.Operation) ([]driver.Statement, error) {
 		return nil, driver.Unsupported(fakeName, op.Kind(), refusalReason)
 	}
 
+	if d.fake.expands {
+		return nil, driver.NeedsSession(fakeName, op.Kind(), "it reads the schema first")
+	}
+
 	first := driver.Statement{SQL: raw.SQL, NoTransaction: raw.SQL == d.fake.outsideTx}
 	if d.fake.emulates == "" {
 		return []driver.Statement{first}, nil
@@ -276,6 +282,21 @@ func (c *fakeConn) Exec(_ context.Context, stmt driver.Statement) error {
 	}
 
 	return nil
+}
+
+// Expand produces what only a session could, which is what makes this fake a driver.Expander.
+func (c *fakeConn) Expand(_ context.Context, op ir.Operation) ([]driver.Statement, error) {
+	c.fake.note("expand")
+
+	raw, ok := op.(ir.Raw)
+	if !ok {
+		return nil, fmt.Errorf("the fake session was given %s", op.Kind())
+	}
+
+	return []driver.Statement{
+		{SQL: "-- read the schema"},
+		{SQL: raw.SQL},
+	}, nil
 }
 
 // Query refuses: no command drives a migration's own SQL, since every .sql migration is ir.Raw.

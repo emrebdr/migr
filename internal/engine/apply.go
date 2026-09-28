@@ -81,7 +81,7 @@ func (e *executor) forward(ctx context.Context, item queued) (prepared, error) {
 			fmt.Errorf("asking what this migration does: %w", err))
 	}
 
-	ready, err := e.prepare(item, ir.Up, emitted)
+	ready, err := e.prepare(ctx, item, ir.Up, emitted)
 	if err != nil {
 		return prepared{}, e.fail(item, plan.Plan{}, err)
 	}

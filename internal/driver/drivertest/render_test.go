@@ -72,7 +72,7 @@ func TestARefusalMustNameItselfCorrectly(t *testing.T) {
 		{
 			name: "another operation",
 			err:  driver.Unsupported("fake", ir.KindAddIndex, "a reason"),
-			want: "refused add_index while being asked about drop_table",
+			want: "answered about add_index while being asked about drop_table",
 		},
 		{
 			name: "another driver",

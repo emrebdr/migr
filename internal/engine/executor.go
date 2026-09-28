@@ -109,13 +109,15 @@ type prepared struct {
 }
 
 // prepare hashes what a migration emitted, compiles it, and refuses what cannot run atomically.
-func (e *executor) prepare(item queued, dir ir.Direction, emitted Emitted) (prepared, error) {
+func (e *executor) prepare(ctx context.Context, item queued, dir ir.Direction,
+	emitted Emitted,
+) (prepared, error) {
 	sum, err := checksum.OfOperations(emitted.Operations)
 	if err != nil {
 		return prepared{}, fmt.Errorf("hashing the emitted operations: %w", err)
 	}
 
-	compiled, err := e.opts.Planner.Compile(item.migration, dir, emitted.Operations)
+	compiled, err := e.opts.Planner.Compile(ctx, item.migration, dir, emitted.Operations)
 	if err != nil {
 		return prepared{}, err
 	}

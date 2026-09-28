@@ -97,7 +97,7 @@ func TestValidateReportsAHalfItCouldNotCheckRatherThanPassingIt(t *testing.T) {
 	for _, want := range []string{
 		"not checked",
 		"20260727T153000_add_scripted.go",
-		noDatabase + ", so 1 migration half could not be checked.",
+		noDatabase + ", so 1 check could not be made.",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("validate does not report %q:\n%s", want, stdout)
@@ -216,7 +216,7 @@ func TestOneMigrationReachingTheDatabaseDoesNotMakeTheNextUncheckable(t *testing
 	t.Log("What the offline session remembers is per question, not per run. Forgetting nothing")
 	t.Log("would spread the first migration's read over every migration after it.")
 
-	if !strings.Contains(stdout, "1 migration half") {
+	if !strings.Contains(stdout, "1 check") {
 		t.Errorf("validate reports more than the one half that reached a database:\n%s", stdout)
 	}
 

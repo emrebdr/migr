@@ -49,10 +49,10 @@
 // that proves it is foreign_keys inside a transaction: SQLite accepts the statement, applies
 // nothing, and reads back the old value. A test drives exactly that.
 //
-// That no-op is also why M8-T4's table rebuild cannot turn foreign keys off: the engine runs a
+// That no-op is also why the table rebuild below cannot turn foreign keys off: the engine runs a
 // migration inside one transaction (ADR 0017). What does work inside one is defer_foreign_keys,
-// which holds enforcement until COMMIT, with PRAGMA foreign_key_check before it -- measured here,
-// so that task inherits the answer rather than rediscovering it.
+// which holds the enforcement until COMMIT -- and holds nothing else, which is the measurement the
+// rebuild was designed around rather than the one it expected (ADR 0054).
 //
 // A connection string that sets one of the three through modernc's _pragma= is refused, naming the
 // pragma. PostgreSQL pins lock_timeout after parsing, overriding a DSN that set it; foreign_keys(0)
@@ -190,12 +190,65 @@
 // or foreign key names, and Compile can see none of that either. The refusal is SQLite's, it is
 // loud, and covering those cases is the rebuild.
 //
-// The seven are refused rather than declared Emulated, and the two are not the same statement.
-// capability.Emulated is an *allowed* verdict, and the conformance suite holds Resolve(op).Allowed()
-// to being true exactly when Compile succeeds -- so declaring an emulation before anything can
-// produce its statements would break the one check that keeps a driver's two answers together.
-// M8-T4 flips them in the commit that can keep the promise; the refusals name the strategy string
-// it will carry, so an operator reads the same three words before and after.
+// The seven are declared Emulated by a table rebuild, and Compile asks for a session rather than
+// refusing: the statements depend on the table's current definition, which Compile has no
+// connection to read (ADR 0053). The session's Expand is what produces them.
+//
+// # What a rebuild is, and why it is not SQLite's documented one
+//
+// SQLite documents a 12-step procedure built around ALTER TABLE ... RENAME. Three measurements
+// took that apart, and each one is in ADR 0054 with what it showed:
+//
+// A rename at 3.25+ rewrites references to the table throughout the schema and re-parses the whole
+// schema while doing it. Renaming the shadow into place fails outright when a view names the table,
+// because the view is dangling at that moment; renaming the original out of the way rewrites the
+// children's REFERENCES to point at the shadow, which the rebuild then drops. PRAGMA
+// legacy_alter_table takes inside a transaction -- unlike foreign_keys -- and does not stop the
+// foreign-key half.
+//
+// So this rebuild renames nothing:
+//
+//	PRAGMA defer_foreign_keys = 1;
+//	CREATE TABLE "migr_rebuild_users" ( the changed definition );
+//	INSERT INTO "migr_rebuild_users" (cols) SELECT cols FROM "users";
+//	DROP TABLE "users";
+//	CREATE TABLE "users" ( the changed definition );
+//	CREATE INDEX ...;    -- every index, before the rows come back
+//	INSERT INTO "users" (cols) SELECT cols FROM "migr_rebuild_users";
+//	DROP TABLE "migr_rebuild_users";
+//	CREATE TRIGGER ...;  -- every trigger, after
+//
+// Nothing re-parses the schema, so views survive untouched and need no dropping and recreating, and
+// the children's REFERENCES still name the table they always named. It costs a second copy of the
+// rows, which is already what table_rewrite means.
+//
+// The order of the restorations is measured too. Indexes go back before the rows, because a foreign
+// key pointing at this table needs its unique index to exist or the copy fails with `foreign key
+// mismatch`. Triggers go back after, or an AFTER INSERT trigger fires once per row for rows that
+// were already there.
+//
+// defer_foreign_keys is load-bearing: while the table is gone every key pointing at it is violated,
+// and deferral postpones the check to a commit by which time it is back with the same rows. What it
+// does not postpone is a referential *action* -- measured: DROP TABLE fires ON DELETE CASCADE and
+// SET NULL on the children, and the transaction then commits with their rows gone or nulled. So a
+// rebuild is refused when any table references this one with an action that mutates, naming the
+// child and telling the operator to drop the key, rebuild, and add it back.
+//
+// # What the rebuild reads, and what it never has to understand
+//
+// The definition comes from sqlite_schema.sql, which is the only source that carries CHECK
+// constraints at all -- no pragma reports them. Its body is split on the commas that separate its
+// items, respecting quotes, brackets, backticks, string literals, comments and nesting, and each
+// item is classified only far enough to answer whether it is the one the operation names.
+//
+// Everything else is copied byte for byte. GENERATED ALWAYS AS, COLLATE, a column-level REFERENCES
+// with DEFERRABLE, AUTOINCREMENT and the WITHOUT ROWID or STRICT suffix all survive a rebuild
+// without this driver knowing what any of them are. alter_column is the only operation that edits
+// inside an item, and it edits the clauses it was asked about rather than re-rendering the column.
+//
+// A rebuild refuses rather than guessing when the table is not there, when its definition cannot be
+// split, when the operation names a constraint or column the definition does not carry, when
+// add_primary_key meets a table that already declares one, and when the shadow name is taken.
 //
 // Two ADD COLUMN restrictions are deliberately not refused here. A NOT NULL column with no default,
 // and a column with a function default, are both accepted against an empty table and refused only
@@ -253,6 +306,6 @@
 // A configured schema is refused rather than ignored. A SQLite database is one file, and the only
 // other namespaces are the ones ATTACH creates, which nothing here opens.
 //
-// Status: connection handling, the compiler, and the capability declaration. The rest of M8 fills
-// in the table-rebuild emulation, the file lock, and the history store (see TASKS.md).
+// Status: connection handling, the compiler, the capability declaration, and the table rebuild.
+// The rest of M8 fills in the file lock and the history store (see TASKS.md).
 package sqlite

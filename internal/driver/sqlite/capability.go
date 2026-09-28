@@ -40,7 +40,13 @@ func rules(version serverVersion) map[ir.Kind]capability.Rule {
 
 // verdict answers both axes for one operation, on the library this declaration was built against.
 func (v serverVersion) verdict(op ir.Operation) capability.Verdict {
-	if _, err := compile(op); err != nil {
+	_, err := compile(op)
+
+	if errors.Is(err, driver.ErrNeedsSession) {
+		return capability.Emulated(rebuildStrategy, lockImpact(op))
+	}
+
+	if err != nil {
 		return capability.Unsupported(describeRefusal(err))
 	}
 

@@ -81,6 +81,16 @@ func (c *sqliteConn) readText(ctx context.Context, q driver.Query) (driver.Rows,
 
 	defer rows.Close()
 
+	out, err := collect(rows)
+	if err != nil {
+		return driver.Rows{}, err
+	}
+
+	return out, nil
+}
+
+// collect renders every row a result carries as text, which is the only shape this driver returns.
+func collect(rows *sql.Rows) (driver.Rows, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return driver.Rows{}, fmt.Errorf("%w: naming the columns: %w", ErrQuery, err)

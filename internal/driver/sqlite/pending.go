@@ -4,31 +4,21 @@ import (
 	"context"
 	"errors"
 
-	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 )
 
-// The two halves of the contract a later M8 task fills, each refusing by name rather than by nil.
+// The half of the contract a later M8 task fills, refusing by name rather than by nil.
 //
-// A nil Unlock or a nil history.Store would reach a caller that cannot check for one -- the engine
-// reads Conn.History() and calls it -- so both are values that refuse, and each names the task that
-// makes it real. That is M3-T1's shape: the driver ships complete and honestly unimplemented, so the
-// conformance suite passes from this commit and every later task arrives as a diff.
-
-// errLockPending marks the migration lock this driver has not implemented yet.
-var errLockPending = errors.New("the SQLite migration lock is M8-T5: lock.strategy file is the one " +
-	"this engine can implement, and a lock file does not vanish when its owner dies, so it owes a " +
-	"staleness rule before anything may depend on it")
+// A nil history.Store would reach a caller that cannot check for one -- the engine reads
+// Conn.History() and calls it -- so it is a value that refuses, and it names the task that makes it
+// real. That is M3-T1's shape: the driver ships complete and honestly unimplemented, so the
+// conformance suite passes from this commit and every later task arrives as a diff. M8-T5 took the
+// migration lock out of here, which leaves this file the history store's alone.
 
 // errHistoryPending marks the migration history store this driver has not implemented yet.
 var errHistoryPending = errors.New("the SQLite migration history store is M8-T6: the history table " +
 	"is itself created through driver-compiled operations (invariant #3), so it cannot precede the " +
 	"compiler in M8-T2")
-
-// Lock refuses: the migration lock is M8-T5.
-func (c *sqliteConn) Lock(context.Context) (driver.Unlock, error) {
-	return nil, errLockPending
-}
 
 // pendingHistory is a store that refuses every call, naming the task that implements it.
 type pendingHistory struct{}

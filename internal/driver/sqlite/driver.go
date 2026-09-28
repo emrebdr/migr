@@ -166,9 +166,14 @@ func (d *sqliteDriver) establish(ctx context.Context, db *sql.DB) (*sqliteConn, 
 		return nil, fmt.Errorf("%w: pinning a connection: %w", ErrConnect, err)
 	}
 
-	session := &sqliteConn{db: db, conn: conn}
+	session := &sqliteConn{db: db, conn: conn, lockWait: d.lockWait}
 
 	if err := applyPragmas(ctx, session, d.statementLockWait); err != nil {
+		return nil, errors.Join(err, closeConn(conn))
+	}
+
+	path, err := detectPath(ctx, session)
+	if err != nil {
 		return nil, errors.Join(err, closeConn(conn))
 	}
 
@@ -183,7 +188,7 @@ func (d *sqliteDriver) establish(ctx context.Context, db *sql.DB) (*sqliteConn, 
 			closeConn(conn))
 	}
 
-	session.version, session.caps = version, caps
+	session.path, session.version, session.caps = path, version, caps
 
 	return session, nil
 }

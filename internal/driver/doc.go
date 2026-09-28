@@ -162,7 +162,10 @@
 //
 // What "recoverable" means is a property of the strategy rather than of the driver. PostgreSQL's
 // advisory lock dies with its backend and needs no recovery code; a lock file does not vanish when
-// its owner does, so the file strategy owes a staleness rule this one has no use for. See ADR 0020.
+// its owner does, so the file strategy owes a staleness rule this one has no use for. See ADR 0020,
+// and ADR 0055 for how SQLite pays it: the lock is an flock the kernel reclaims on death, the file
+// beside it is only where that lock and its holder's record live, and the record is what a failed
+// wait reports rather than what decides.
 //
 // # Refusing an operation
 //

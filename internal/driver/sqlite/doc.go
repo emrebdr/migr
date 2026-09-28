@@ -296,16 +296,72 @@
 // does. The operations whose cost changed across SQLite releases are the ones this driver refuses,
 // and drop_column's *support* moves with the version while what it costs does not.
 //
+// # The migration lock is a file, and the file is not the lock
+//
+// lock.strategy's file half is the only migration lock this engine has, and New refuses any other
+// word rather than substituting one. What holds the lock is an flock on <database file>-migr.lock,
+// beside the database and named the way SQLite names its own -journal, -wal and -shm. What is written
+// inside it -- pid, host, application, and when the lock was taken -- is what a failed wait reports,
+// and a second opinion where flock cannot be trusted. It is never what decides.
+//
+// That split is the whole recovery story, and it is what invariant #11 needs from this strategy. The
+// kernel drops an flock when the process holding it dies, whatever killed it, so a crashed run leaves
+// a database the next run can migrate with no operator step -- measured, with a real SIGKILLed child,
+// which left the file and its record behind and the lock available. The file is therefore never
+// unlinked: release truncates the record and drops the lock, and a blank lock file beside a database
+// is the normal state rather than something to diagnose.
+//
+// The path is the engine's answer, not the connection string's. PRAGMA database_list is asked once at
+// Open, and what comes back is absolute and symlink-resolved -- so ./app.db, the absolute path, a
+// file: URI and a path with .. in it are one lock file rather than four. An empty answer is every
+// in-memory and temporary spelling at once, which is why it is asked for rather than matched on: such
+// a database belongs to the connection that opened it, so there is nobody to exclude, the lock is the
+// session's own flag, and no file is written anywhere. A second acquire on one session is still
+// refused.
+//
+// It is one lock per database file, whatever history.table is called. PostgreSQL keys its advisory
+// lock to schema and table because two installations in one database do not contend; SQLite takes one
+// write lock for the whole file, so they do.
+//
+// The acquire is four rungs. A refused flock waits. A granted flock whose record names a process that
+// is running on this host and is not ours is given straight back and waited on again -- because that
+// combination cannot happen where flock is enforced, so it is evidence that it is not, which is the
+// network filesystem this strategy owes a story about. Anything else granted is the lock, and the
+// record is written. A spent lock.timeout is driver.ErrLockTimeout carrying whoever the file names.
+//
+// The staleness rung is narrow deliberately. A pid means nothing on another host, so a record from
+// one is taken rather than waited on -- refusing there would wedge a container that crashed and came
+// back under a new hostname against its own corpse. Our own pid is exempt, since a leftover record of
+// ours is ours to overwrite. And liveness is kill(pid, 0) where EPERM means alive: measured on pid 1,
+// which is root's and running, and reading a refused signal as gone is the one mistake this check
+// exists not to make.
+//
+// The wait is a poll on a fixed interval inside one total budget, because flock has no form that
+// takes a deadline and abandoning the blocking form leaks a descriptor that may acquire afterwards.
+// It is not ADR 0020's rejected retry: that was rejected because PostgreSQL's lock manager queues
+// fairly and re-acquiring loses your place, and a non-blocking flock never enters a queue. A canceled
+// context and a lock file that cannot be created are both reported as themselves rather than as
+// contention, since exit code 3 means another run holds the lock.
+//
+// The holder's age comes from SQLite. The record carries strftime('now') and reading a holder has
+// julianday subtract it, which is ADR 0020's "the server subtracts" with the in-process library as
+// the server -- forbidigo leaves this driver no clock, and none had to be added to the contract. A
+// stamp SQLite cannot read comes back NULL and one from the future comes back negative; both render
+// as an age this connection could not determine. For PostgreSQL that field is the holder's session
+// age and here it is the hold itself, which is never longer. See ADR 0055.
+//
+// On a filesystem where flock is advisory rather than enforced, the second rung is a heuristic and
+// not a guarantee. SQLite's own locking is unsafe there for the same reason, so the limit is
+// inherited rather than introduced -- but it is a limit.
+//
 // # What refuses by name
 //
-// Lock refuses, naming M8-T5: lock.strategy's file half is the one this engine can implement, and a
-// lock file does not vanish when its owner dies, so it owes a staleness rule before anything may
-// depend on it. History() returns a store whose every method refuses, naming M8-T6. Both are values
-// rather than nils, because the engine calls Conn.History() without being able to check for one.
+// History() returns a store whose every method refuses, naming M8-T6. It is a value rather than a
+// nil, because the engine calls Conn.History() without being able to check for one.
 //
 // A configured schema is refused rather than ignored. A SQLite database is one file, and the only
 // other namespaces are the ones ATTACH creates, which nothing here opens.
 //
-// Status: connection handling, the compiler, the capability declaration, and the table rebuild.
-// The rest of M8 fills in the file lock and the history store (see TASKS.md).
+// Status: connection handling, the compiler, the capability declaration, the table rebuild, and the
+// file lock. The rest of M8 fills in the history store (see TASKS.md).
 package sqlite

@@ -25,6 +25,49 @@ var ErrSchema = errors.New("SQLite has no schemas")
 // ErrLockStrategy marks a migration lock strategy this driver does not implement, for errors.Is.
 var ErrLockStrategy = errors.New("this driver does not implement that migration lock strategy")
 
+// ErrLock marks a migration lock this driver could not take or give back, for errors.Is.
+var ErrLock = errors.New("migration lock")
+
+// ErrLockHeld marks a second acquire on a session that already holds the lock.
+var ErrLockHeld = errors.New("this session already holds the migration lock")
+
+// ErrLockFile marks the file this strategy locks, which is where every such failure happens.
+var ErrLockFile = errors.New("the lock file beside the database")
+
+// ErrLockRelease marks a release that failed, leaving the lock held until the session ends.
+var ErrLockRelease = errors.New("releasing the migration lock failed")
+
+// LockError reports a migration lock this driver could not take or give back, naming the file.
+type LockError struct {
+	// Path is the lock file, and is empty for a database that has no file to put one beside.
+	Path string
+	// Err is what went wrong, unwrapped so errors.Is finds the sentinel underneath it.
+	Err error
+}
+
+// Error names the lock file and what went wrong with it.
+func (e *LockError) Error() string {
+	return fmt.Sprintf("%v %s: %v", ErrLock, e.describePath(), e.Err)
+}
+
+// describePath names the file, or says there is none, which is the in-memory database's answer.
+func (e *LockError) describePath() string {
+	if e.Path == "" {
+		return "for a database with no file"
+	}
+
+	return strconv.Quote(e.Path)
+}
+
+// Unwrap reports the sentinel and what went wrong, so errors.Is finds either.
+func (e *LockError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrLock}
+	}
+
+	return []error{ErrLock, e.Err}
+}
+
 // ErrWaitTooLong marks a configured wait longer than this engine can store, for errors.Is.
 var ErrWaitTooLong = errors.New("the configured wait is longer than SQLite can store")
 

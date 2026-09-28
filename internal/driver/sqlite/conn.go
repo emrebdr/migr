@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
@@ -23,6 +25,14 @@ type sqliteConn struct {
 	caps capability.Set
 	// tx is the transaction Transact opened, and is nil whenever this session is not inside one.
 	tx *sql.Tx
+	// path is where the engine says the database is, and is empty for an in-memory one.
+	path string
+	// lockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
+	lockWait time.Duration
+	// lock is the lock file this session holds the migration lock through, nil when it holds none.
+	lock *os.File
+	// locked records that this session holds the lock, since an in-memory database holds no file.
+	locked bool
 }
 
 // Exec runs one compiled statement, inside this session's transaction when it has one open.

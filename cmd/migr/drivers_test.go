@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/driver/mysql"
 	"github.com/emrebdr/migr/internal/driver/postgres"
 	"github.com/emrebdr/migr/internal/driver/sqlite"
 )
@@ -15,7 +16,7 @@ func TestEveryDriverThisBinaryRegistersCanBeBuilt(t *testing.T) {
 		t.Fatalf("drivers: %v", err)
 	}
 
-	want := []string{postgres.Name, sqlite.Name}
+	want := []string{mysql.Name, postgres.Name, sqlite.Name}
 	if got := registry.Names(); !slices.Equal(got, want) {
 		t.Fatalf("this binary registers %v, want %v", got, want)
 	}

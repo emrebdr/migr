@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/driver/mysql"
 	"github.com/emrebdr/migr/internal/driver/postgres"
 	"github.com/emrebdr/migr/internal/driver/sqlite"
 )
@@ -15,6 +16,10 @@ func drivers() (*driver.Registry, error) {
 	}
 
 	if err := registry.Register(sqlite.Name, sqlite.New); err != nil {
+		return nil, err
+	}
+
+	if err := registry.Register(mysql.Name, mysql.New); err != nil {
 		return nil, err
 	}
 

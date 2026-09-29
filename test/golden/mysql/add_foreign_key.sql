@@ -1,0 +1,1 @@
+-- migr:unsupported add_foreign_key: this driver does not compile this operation yet: M9-T2 is where MySQL's SQL is written, and until then the declaration and the compiler refuse together rather than one of them pretending. create_table and add_index are the two exceptions, because the history table is itself created through compiled operations (invariant #4 and invariant #3)

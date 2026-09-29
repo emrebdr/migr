@@ -10,10 +10,11 @@ import (
 	"github.com/emrebdr/migr/internal/schema"
 )
 
-// rebuildStrategy is the strategy the seven refused operations name, and the one M8-T4's Emulated
-// verdicts will carry -- so an operator reads the same three words in a refusal today and beside
-// the operation in migr plan afterwards.
+// rebuildStrategy is the strategy the seven emulated operations name, in a refusal and in migr plan.
 const rebuildStrategy = "table rebuild"
+
+// RebuildStrategy is what migr plan prints beside an emulated operation, exported so a test can ask.
+const RebuildStrategy = rebuildStrategy
 
 // rebuildReason names the strategy and what it has to read, and ends every emulated answer.
 const rebuildReason = "This is performed by a " + rebuildStrategy + ": copy the rows into a " +

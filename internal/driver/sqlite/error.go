@@ -112,6 +112,21 @@ func (e *RebuildError) Unwrap() error {
 	return ErrRebuild
 }
 
+// ErrHistory marks a migration history operation this driver could not perform, for errors.Is.
+var ErrHistory = errors.New("migration history")
+
+// ErrHistoryShape marks a history table whose columns are not the ones this build writes.
+var ErrHistoryShape = errors.New("the migration history table is not the shape this build writes")
+
+// ErrHistoryNotATable marks a history name held by a view or some other object.
+var ErrHistoryNotATable = errors.New("the configured history name is not a table")
+
+// ErrHistoryRace marks a history table another process created between the check and the create.
+var ErrHistoryRace = errors.New("another process created the migration history table first")
+
+// ErrAlreadyRecorded marks a run already written under the batch and ordinal it claims.
+var ErrAlreadyRecorded = errors.New("this run is already recorded")
+
 // ErrNotText marks a value no JSON string can carry, which a read cannot report as text.
 var ErrNotText = errors.New("this value is not text and host.db.query carries text")
 
@@ -248,24 +263,28 @@ func (e *NotTextError) Unwrap() error {
 	return ErrNotText
 }
 
-// HistoryError reports a migration history table name this driver cannot carry.
+// HistoryError reports a migration history this driver could not carry, create, read, or write.
 type HistoryError struct {
 	// Table is the name history.table was set to.
 	Table string
-	// Detail states what is wrong with it.
+	// Detail states what is wrong, in terms an operator can act on.
 	Detail string
-	// Err is the refusal underneath, where a compiler produced one.
+	// Err is the failure underneath, where there was one.
 	Err error
 }
 
-// Error names the table and what is wrong with the name.
+// Error names the history table and what went wrong with it.
 func (e *HistoryError) Error() string {
-	return fmt.Sprintf("history.table %q: %s", e.Table, e.Detail)
+	return fmt.Sprintf("%v %q: %s", ErrHistory, e.Table, e.Detail)
 }
 
-// Unwrap reports the refusal underneath, so errors.Is reaches the compiler's own sentinel.
-func (e *HistoryError) Unwrap() error {
-	return e.Err
+// Unwrap reports the sentinel and the failure underneath, so errors.Is finds either.
+func (e *HistoryError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrHistory}
+	}
+
+	return []error{ErrHistory, e.Err}
 }
 
 // describeValue names a value's Go type for a refusal, since its bytes are what cannot be rendered.

@@ -106,7 +106,8 @@ linters:
     # its own child, so that driver needs a negated files entry here and a rule set of
     # its own to be held by instead. postgres is the first, at M6-T10: pgtest holds the
     # catalog digest cmd/migr's end-to-end suite compares schemas with, which invariant
-    # #3 will not let that suite compose for itself (ADR 0040).
+    # #3 will not let that suite compose for itself (ADR 0040). sqlite is the second, at
+    # M8-T6, for the same reason and with the same pair.
     depguard:
       rules:
         implementations:
@@ -115,6 +116,7 @@ linters:
             - "**/*.go"
             - "!**/cmd/migr/**"
             - "!**/internal/driver/postgres/**"
+            - "!**/internal/driver/sqlite/**"
           allow:
             - github.com/emrebdr/migr/internal/runtime/protocol
             - github.com/emrebdr/migr/internal/runtime/host
@@ -143,6 +145,25 @@ linters:
             - pkg: github.com/emrebdr/migr/internal/driver/mysql
               desc: drivers must not import one another (CLAUDE.md invariant #2)
             - pkg: github.com/emrebdr/migr/internal/driver/sqlite
+              desc: drivers must not import one another (CLAUDE.md invariant #2)
+            - pkg: github.com/emrebdr/migr/internal/runtime/
+              desc: >-
+                only cmd/migr may import a concrete language runtime; a driver reaches
+                none at all (CLAUDE.md invariant #1)
+
+        # The same pair for sqlite, which grew sqlitetest at M8-T6: the untagged end-to-end
+        # round trip in cmd/migr compares a before and after schema, and invariant #3 will
+        # not let that suite compose the catalog query itself. The driver's own rebuild
+        # suite reads the same digest, so the driver imports its own child and needs the
+        # exemption above -- paired with this, or invariant #2 would be traded for nothing.
+        sqlite:
+          list-mode: lax
+          files:
+            - "**/internal/driver/sqlite/**"
+          deny:
+            - pkg: github.com/emrebdr/migr/internal/driver/postgres
+              desc: drivers must not import one another (CLAUDE.md invariant #2)
+            - pkg: github.com/emrebdr/migr/internal/driver/mysql
               desc: drivers must not import one another (CLAUDE.md invariant #2)
             - pkg: github.com/emrebdr/migr/internal/runtime/
               desc: >-

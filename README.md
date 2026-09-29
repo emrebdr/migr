@@ -397,6 +397,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0053](docs/adr/0053-expanding-an-operation-against-a-session.md) | An operation a driver compiles against the database, rather than against nothing |
 | [0054](docs/adr/0054-the-sqlite-table-rebuild.md) | The SQLite table rebuild, as the measurements made it |
 | [0055](docs/adr/0055-the-sqlite-file-lock.md) | The SQLite file lock: flock decides, the record reports, and nothing wedges |
+| [0056](docs/adr/0056-the-sqlite-history-store.md) | The SQLite history store: asking the catalog where PostgreSQL reads a code |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/driver/sqlite/sqlitetest"
 	"github.com/emrebdr/migr/internal/ir"
 )
 
@@ -46,16 +47,12 @@ func referenced(t *testing.T, c *sqliteConn) {
 func digest(t *testing.T, c *sqliteConn) string {
 	t.Helper()
 
-	rows := read(t, c, `SELECT type || ' ' || name || ' ' ||
-		replace(replace(coalesce(sql, '(none)'), char(10), ' '), char(9), ' ')
-		FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name`)
-
-	lines := make([]string, 0, len(rows.Values))
-	for _, row := range rows.Values {
-		lines = append(lines, *row[0])
+	rendered, err := sqlitetest.Digest(sqlitetest.Over(t.Context(), c, ""))
+	if err != nil {
+		t.Fatalf("describing the database: %v", err)
 	}
 
-	return strings.Join(lines, "\n")
+	return rendered
 }
 
 // expanded compiles one emulated operation against a live database and runs every statement.

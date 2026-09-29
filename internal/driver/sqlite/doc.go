@@ -354,14 +354,64 @@
 // not a guarantee. SQLite's own locking is unsafe there for the same reason, so the limit is
 // inherited rather than introduced -- but it is a limit.
 //
+// # The history store asks the catalog where PostgreSQL reads an error code
+//
+// history.ErrNoTable on every read path is the one thing CLAUDE.md calls the worst failure in this
+// contract to get wrong -- read as "no runs yet", a fully migrated production database looks virgin
+// and the next up re-runs everything. PostgreSQL decides it from a SQLSTATE. SQLite reports a missing
+// table, a missing column and a syntax error all as SQLITE_ERROR, which is 1 -- measured -- so there
+// is nothing in a failure to classify.
+//
+// So the catalog is asked instead: one sqlite_schema lookup at the top of List, Latest, Record,
+// MarkFailed and MarkDirty, which is what makes the rule structural rather than remembered. Ensure is
+// the one caller that branches on absence instead of refusing. The message SQLite gives does name the
+// table, but matching English prose is not how this sentinel gets decided.
+//
+// The same move explains what is left. A duplicate run is the one cause with a code of its own, and
+// only because lib.Error.Code() reports the *extended* code: SQLITE_CONSTRAINT_PRIMARYKEY, 1555,
+// rather than the primary 19. A missing column and a table another process created first are both
+// answered by asking the catalog again on the failure path.
+//
+// COLLATE NOCASE in that lookup is load-bearing. SQLite folds ASCII case inside an identifier and
+// compares sqlite_schema.name as BINARY, so a history table created as MixedCase reports absent,
+// Ensure runs CREATE TABLE, and SQLite refuses it as already existing -- on every run, forever.
+// Measured, and PostgreSQL's quote_ident finding in a second dialect.
+//
+// checkColumns reads pragma_table_info rather than table_xinfo, and that is the check working rather
+// than a shortcut: table_info omits a generated column and SQLite refuses an INSERT into one, so a
+// generated column counts as absent. table_xinfo would call a table that fails every write the right
+// shape.
+//
+// applied_at is rendered here and parsed here: UTC, RFC3339 with a fixed-width nanosecond fraction.
+// The column is declared timestamptz, which carries NUMERIC affinity, and a bound time.Time is stored
+// as Go's own String form with the zone abbreviation in it -- "2026-09-29 11:22:33.123456789 +0530
+// UTC+5:30", measured, which no RFC3339 parser reads back and which scanning into a time.Time
+// refuses. The fraction is fixed-width because RFC3339Nano trims trailing zeros, which makes ".11Z"
+// sort before ".1Z"; nothing here orders by applied_at (ADR 0013 orders by batch and ordinal), but a
+// column an operator sorts by hand should not lie. Reading back accepts any width.
+//
+// A recorded direction, outcome, checksum or instant this build cannot read back is a
+// history.CorruptError naming the column, never a row silently repaired.
+//
+// # What a round trip can claim, and the one thing it cannot
+//
+// cmd/migr drives the whole stack against this engine untagged, which is the first end-to-end CLI
+// round trip inside make check. It is two projects because every .sql migration reaches the database
+// as ir.Raw: a .sql project can never produce an emulated operation, so it covers the native path --
+// byte-identically, DROP COLUMN included -- and a Go project covers the rebuild.
+//
+// A rebuild cannot restore the *wording* of the table it replaced. It re-renders the CREATE TABLE
+// from its own splitter, so the columns, the key, the indexes and the constraints all come back and
+// the recorded text is the rebuild's rather than the author's. What is asserted instead is that a
+// second round trip from the rebuilt state is byte-identical: the wording moves once and then stops.
+//
 // # What refuses by name
 //
-// History() returns a store whose every method refuses, naming M8-T6. It is a value rather than a
-// nil, because the engine calls Conn.History() without being able to check for one.
+// Nothing. A configured schema is refused rather than ignored -- a SQLite database is one file, and
+// the only other namespaces are the ones ATTACH creates, which nothing here opens -- and
+// lock.strategy is refused unless it is the file half this driver implements. Neither is a placeholder.
 //
-// A configured schema is refused rather than ignored. A SQLite database is one file, and the only
-// other namespaces are the ones ATTACH creates, which nothing here opens.
-//
-// Status: connection handling, the compiler, the capability declaration, the table rebuild, and the
-// file lock. The rest of M8 fills in the history store (see TASKS.md).
+// Status: complete for M8. Connection handling, the compiler, the capability declaration, the table
+// rebuild, the file lock, and the history store. Introspect is M11-T1 and the lock axis in migr plan
+// is M13-T6 (see TASKS.md).
 package sqlite

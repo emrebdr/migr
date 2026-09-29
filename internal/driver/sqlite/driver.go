@@ -66,7 +66,7 @@ func checkSchema(schema string) error {
 // checkHistoryTable refuses a history table name this driver cannot compile its own schema for.
 func checkHistoryTable(table string) error {
 	if strings.TrimSpace(table) == "" {
-		return &HistoryError{Table: table, Detail: "a table name is required"}
+		return &HistoryError{Table: table, Detail: "history.table is required"}
 	}
 
 	for _, op := range history.Schema(table) {
@@ -84,7 +84,8 @@ func checkHistoryTable(table string) error {
 
 // describeDerived names the history schema as what could not be compiled, rather than the name alone.
 func describeDerived(table string, err error) string {
-	return fmt.Sprintf("the history schema cannot be compiled for a table named %q: %v. The schema "+
+	return fmt.Sprintf("history.table names %q and the history schema cannot be compiled for it: "+
+		"%v. The schema "+
 		"is itself a set of operations (invariant #3), so compiling it is the whole check: there "+
 		"is nothing about a name this driver refuses that the operations carrying it do not",
 		table, err)
@@ -166,7 +167,7 @@ func (d *sqliteDriver) establish(ctx context.Context, db *sql.DB) (*sqliteConn, 
 		return nil, fmt.Errorf("%w: pinning a connection: %w", ErrConnect, err)
 	}
 
-	session := &sqliteConn{db: db, conn: conn, lockWait: d.lockWait}
+	session := &sqliteConn{db: db, conn: conn, table: d.table, lockWait: d.lockWait}
 
 	if err := applyPragmas(ctx, session, d.statementLockWait); err != nil {
 		return nil, errors.Join(err, closeConn(conn))

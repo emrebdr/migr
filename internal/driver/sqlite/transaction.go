@@ -28,6 +28,15 @@ func (c *sqliteConn) runner() runner {
 	return c.conn
 }
 
+// inTransaction runs work atomically, opening a transaction only when the session has none.
+func (c *sqliteConn) inTransaction(ctx context.Context, work driver.Work) error {
+	if c.tx != nil {
+		return work(ctx)
+	}
+
+	return c.Transact(ctx, work)
+}
+
 // Transact runs work inside one transaction, committing it only if work returns nil.
 func (c *sqliteConn) Transact(ctx context.Context, work driver.Work) (err error) {
 	if work == nil {

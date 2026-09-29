@@ -27,6 +27,8 @@ type sqliteConn struct {
 	tx *sql.Tx
 	// path is where the engine says the database is, and is empty for an in-memory one.
 	path string
+	// table is where runs are recorded, resolved by Options.Namespace rather than assumed.
+	table string
 	// lockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
 	lockWait time.Duration
 	// lock is the lock file this session holds the migration lock through, nil when it holds none.
@@ -63,9 +65,9 @@ func (c *sqliteConn) Capabilities() capability.Set {
 	return c.caps
 }
 
-// History returns this session's view of the migration history, which M8-T6 implements.
+// History returns this session's view of the migration history, bound to this session.
 func (c *sqliteConn) History() history.Store {
-	return pendingHistory{}
+	return sqliteHistory{session: c, table: c.table}
 }
 
 // ServerVersion returns the SQLite release this binary links, as it reported itself at Open.

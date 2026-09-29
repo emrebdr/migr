@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	lib "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/emrebdr/migr/internal/driver"
@@ -176,8 +175,7 @@ func text(value string) *string {
 
 // classifyRead reports a write SQLite refused as the refusal it is, rather than as a failure.
 func classifyRead(err error) error {
-	var refused *lib.Error
-	if errors.As(err, &refused) && refused.Code() == sqlite3.SQLITE_READONLY {
+	if hasCode(err, sqlite3.SQLITE_READONLY) {
 		return fmt.Errorf("%w: %w: %w", ErrQuery, driver.ErrNotReadOnly, err)
 	}
 

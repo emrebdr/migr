@@ -15,6 +15,9 @@ import (
 // function cannot disagree.
 const fsp = 6
 
+// uuidCharacters is how wide the char a uuid is stored in is, stated once so a key can be measured.
+const uuidCharacters = 36
+
 // nativeType returns MySQL's declared type for a logical one, and nothing when it has none.
 func nativeType(t schema.Type) string {
 	switch t.Kind() {
@@ -42,7 +45,7 @@ func nativeType(t schema.Type) string {
 	case schema.KindFloat64:
 		return "double"
 	case schema.KindUUID:
-		return "char(36)"
+		return fmt.Sprintf("char(%d)", uuidCharacters)
 	case schema.KindJSON:
 		return "json"
 	case schema.KindTimestamp, schema.KindTimestampTZ:
@@ -99,5 +102,23 @@ func expressionFunction(f ir.Function) bool {
 		return false
 	default:
 		return false
+	}
+}
+
+// nativeAction returns MySQL's spelling of a referential action, and nothing when it has none.
+func nativeAction(a ir.ReferentialAction) string {
+	switch a {
+	case ir.ActionNoAction:
+		return "NO ACTION"
+	case ir.ActionRestrict:
+		return "RESTRICT"
+	case ir.ActionCascade:
+		return "CASCADE"
+	case ir.ActionSetNull:
+		return "SET NULL"
+	case ir.ActionSetDefault:
+		return ""
+	default:
+		return ""
 	}
 }

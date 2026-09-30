@@ -19,16 +19,6 @@ const foldedNames = 1
 // caseQuery reads how this server stores an identifier, which decides what its catalog is asked for.
 const caseQuery = `SELECT @@global.lower_case_table_names`
 
-// detectStoredName reports the history table's name as this server's catalog holds it.
-func detectStoredName(ctx context.Context, c *mysqlConn, table string) (string, error) {
-	folding, err := readCaseFolding(ctx, c)
-	if err != nil {
-		return "", err
-	}
-
-	return storedName(table, folding), nil
-}
-
 // readCaseFolding asks the server how it stores an identifier, refusing an answer it cannot read.
 func readCaseFolding(ctx context.Context, c *mysqlConn) (int, error) {
 	var reported string

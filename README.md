@@ -399,6 +399,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0055](docs/adr/0055-the-sqlite-file-lock.md) | The SQLite file lock: flock decides, the record reports, and nothing wedges |
 | [0056](docs/adr/0056-the-sqlite-history-store.md) | The SQLite history store: asking the catalog where PostgreSQL reads a code |
 | [0057](docs/adr/0057-the-mysql-session.md) | The MySQL session: what a read-only transaction does not refuse |
+| [0058](docs/adr/0058-compiling-mysql.md) | Compiling MySQL |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

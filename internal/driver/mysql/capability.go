@@ -32,6 +32,42 @@ const (
 	expressionDefaultPatch = 13
 )
 
+// redefineStrategy names how this driver achieves a column change, which migr plan displays.
+const redefineStrategy = "column redefinition"
+
+// The release where MySQL began enforcing a check constraint rather than parsing and discarding it.
+//
+// Below it the syntax is accepted, the constraint does not exist, and the migration reports success --
+// which is the worst answer available, so it is refused instead. MariaDB has enforced them since
+// 10.2.1, below this driver's floor.
+const (
+	enforcedCheckMajor = 8
+	enforcedCheckMinor = 0
+	enforcedCheckPatch = 16
+)
+
+// The release where MySQL gained DROP CONSTRAINT, which is the one spelling both servers drop a check by.
+//
+// MariaDB has no DROP CHECK at all -- error 1064 on 11.4.13, measured -- and MySQL has had DROP CHECK
+// since 8.0.16 but DROP CONSTRAINT only since 8.0.19. A pure Compile cannot pick by variant, so one
+// spelling is emitted and the three releases that enforce a check without being able to drop one that
+// way are refused.
+const (
+	dropConstraintMajor = 8
+	dropConstraintMinor = 0
+	dropConstraintPatch = 19
+)
+
+// The MariaDB release that gained RENAME COLUMN, which is just above this driver's floor.
+//
+// 10.5.0 and 10.5.1 are inside the supported range and have only CHANGE COLUMN, which needs the
+// column's full definition and so would make a rename an operation compiled against the database.
+const (
+	renameColumnMajor = 10
+	renameColumnMinor = 5
+	renameColumnPatch = 2
+)
+
 // facts renders what this session is, for a capability set that reports itself.
 func facts(version serverVersion) capability.Facts {
 	return capability.Facts{
@@ -53,7 +89,9 @@ func rules(version serverVersion) map[ir.Kind]capability.Rule {
 
 // verdict answers both axes for one operation, on the server this declaration was built against.
 func (v serverVersion) verdict(op ir.Operation) capability.Verdict {
-	if _, err := compile(op); err != nil {
+	_, err := compile(op)
+
+	if err != nil && !errors.Is(err, driver.ErrNeedsSession) {
 		return capability.Unsupported(describeRefusal(err))
 	}
 
@@ -61,17 +99,34 @@ func (v serverVersion) verdict(op ir.Operation) capability.Verdict {
 		return capability.Unsupported(problem)
 	}
 
+	if errors.Is(err, driver.ErrNeedsSession) {
+		return capability.Emulated(redefineStrategy, capability.LockUnknown)
+	}
+
 	return capability.Native(capability.LockUnknown)
 }
 
 // checkVersion reports what this server cannot do, which the version-blind compiler cannot know.
 func (v serverVersion) checkVersion(op ir.Operation) string {
-	created, ok := op.(ir.CreateTable)
-	if !ok {
+	switch o := op.(type) {
+	case ir.CreateTable:
+		return v.checkColumnDefaults(o)
+	case ir.AddColumn:
+		return v.checkAddedDefault(o)
+	case ir.AddCheck:
+		return v.checkEnforcedCheck()
+	case ir.DropCheck:
+		return v.checkDropConstraint()
+	case ir.RenameColumn:
+		return v.checkRenameColumn()
+	default:
 		return ""
 	}
+}
 
-	for _, column := range created.Columns {
+// checkColumnDefaults reports a table whose columns need a default syntax this server does not have.
+func (v serverVersion) checkColumnDefaults(op ir.CreateTable) string {
+	for _, column := range op.Columns {
 		if !isExpressionDefault(column) {
 			continue
 		}
@@ -82,6 +137,54 @@ func (v serverVersion) checkVersion(op ir.Operation) string {
 	}
 
 	return ""
+}
+
+// checkAddedDefault reports a column added with a default syntax this server does not have.
+func (v serverVersion) checkAddedDefault(op ir.AddColumn) string {
+	if !isExpressionDefault(op.Column) {
+		return ""
+	}
+
+	return v.checkExpressionDefault(op.Column.Name)
+}
+
+// checkEnforcedCheck reports a server that would accept a check constraint and not enforce it.
+func (v serverVersion) checkEnforcedCheck() string {
+	if v.AtLeastPatch(MySQL, enforcedCheckMajor, enforcedCheckMinor, enforcedCheckPatch) ||
+		v.variant == MariaDB {
+		return ""
+	}
+
+	return fmt.Sprintf("MySQL began enforcing check constraints in %d.%d.%d and this server is %s: "+
+		"below that release the syntax is accepted, the constraint does not exist, and the migration "+
+		"reports success. Refusing is the only answer that is not a lie", enforcedCheckMajor,
+		enforcedCheckMinor, enforcedCheckPatch, v)
+}
+
+// checkDropConstraint reports a server with no spelling of a check drop that works on both variants.
+func (v serverVersion) checkDropConstraint() string {
+	if v.AtLeastPatch(MySQL, dropConstraintMajor, dropConstraintMinor, dropConstraintPatch) ||
+		v.variant == MariaDB {
+		return ""
+	}
+
+	return fmt.Sprintf("a check is dropped by ALTER TABLE ... DROP CONSTRAINT, which MySQL gained in "+
+		"%d.%d.%d and this server is %s: MariaDB has no DROP CHECK at all, so that spelling is not "+
+		"portable and Compile cannot choose by variant", dropConstraintMajor, dropConstraintMinor,
+		dropConstraintPatch, v)
+}
+
+// checkRenameColumn reports a MariaDB with only CHANGE COLUMN, which needs the column's definition.
+func (v serverVersion) checkRenameColumn() string {
+	if v.variant != MariaDB ||
+		v.AtLeastPatch(MariaDB, renameColumnMajor, renameColumnMinor, renameColumnPatch) {
+		return ""
+	}
+
+	return fmt.Sprintf("MariaDB gained RENAME COLUMN in %d.%d.%d and this server is %s: below that "+
+		"release a rename is CHANGE COLUMN, which restates the whole definition and would make "+
+		"renaming a column an operation compiled against the database", renameColumnMajor,
+		renameColumnMinor, renameColumnPatch, v)
 }
 
 // checkExpressionDefault reports a server too old for the only default syntax MySQL would accept.

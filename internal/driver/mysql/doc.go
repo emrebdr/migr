@@ -149,15 +149,141 @@
 // so a failed ALTER leaves no half-built table; that bounds the damage to one statement and does not
 // make a migration of several recoverable. M9-T5 is where the engine's answer is built.
 //
-// # The compiler, which is two operations rather than twenty
+// # The compiler
 //
-// The history table is created through driver-compiled operations (invariant #3), so create_table
-// and add_index have to compile before there is a history store at all. They do, completely --
-// backtick quoting, the full logical type map, nullability, composite primary keys, and every
-// default form. The other eighteen refuse naming M9-T2, and test/golden/mysql holds all twenty, so
-// that task arrives as a diff of eighteen.
+// Nineteen of the twenty operations compile with no database. The twentieth is alter_column, which is
+// mostly compiled against one; see below. test/golden/mysql holds all twenty and the live tests run
+// every compiled statement against both servers, so a golden file here is one the engine accepted
+// rather than one that is merely the right shape.
 //
-// Three things the type map decides, each with a cost worth stating:
+// Four spellings are MySQL's own rather than the other drivers'. drop_index names its table, MySQL
+// indexes being table-scoped where PostgreSQL's and SQLite's are not. drop_foreign_key is DROP
+// FOREIGN KEY. drop_unique is DROP INDEX, a unique constraint being an index here, and that form
+// works on every version of both servers where DROP CONSTRAINT arrived only in MySQL 8.0.19. And
+// drop_check is DROP CONSTRAINT, because DROP CHECK is error 1064 on MariaDB 11.4.13 -- the reverse
+// asymmetry, which is why one spelling is emitted and the releases without it are refused instead of
+// Compile trying to choose by variant, which a pure function cannot do.
+//
+// add_primary_key carries no name. MySQL has one primary key per table and always calls it PRIMARY:
+// ADD CONSTRAINT <name> PRIMARY KEY is accepted and the name discarded, measured, so emitting it
+// would produce a statement whose name nothing can find again. The IR anticipated this -- Name is
+// optional on both key operations, and ir.DropPrimaryKey's own comment says MySQL has none -- so the
+// name is dropped rather than refused, and M11-T1's Introspect will report PRIMARY.
+//
+// set_default is refused, and it is the one referential action that is. Both servers accept the
+// clause and neither performs it: the delete is refused with error 1451 as though the action were
+// restrict and the child row keeps its value, while MySQL records ON DELETE SET DEFAULT in SHOW
+// CREATE TABLE anyway and MariaDB drops the clause entirely. So the catalog is not even agreed on
+// what is there. PostgreSQL performs it, so passing this through would give one migration two
+// meanings on three engines.
+//
+// No statement sets NoTransaction. It means a statement cannot run inside a transaction, and MySQL's
+// DDL can be sent inside one -- it just commits it. Setting the flag would make internal/engine
+// split every migration into single-statement groups, which is M9-T5's model to choose rather than a
+// flag the compiler sets.
+//
+// # Character set and collation, which are declared rather than inherited
+//
+// Every table declares DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, and so does every column
+// whose type accepts one. Both halves are needed and the column half is the load-bearing one: a
+// column migr adds to a table migr did not create would otherwise inherit that table's character
+// set, which changes what the column can hold, how many bytes wide it is, and whether it fits in a
+// key.
+//
+// Four native types accept the clause -- varchar, longtext, char and enum -- and json, longblob and
+// every numeric and temporal type answer error 1064 for it. That list is measured rather than
+// reasoned from what looks textual: MariaDB's json is itself a longtext and still refuses it.
+//
+// utf8mb4_bin is the collation because it is what makes one migration mean one thing on every
+// engine. The two servers do not agree on their own default -- utf8mb4_0900_ai_ci on MySQL 8.0.46,
+// utf8mb4_uca1400_ai_ci on MariaDB 11.4.13 -- and both are case-insensitive, so under either of them
+// a unique constraint on an email column refuses 'Bob@x.com' beside 'bob@x.com' where PostgreSQL and
+// SQLite accept both. The same add_unique would declare a different constraint on each engine. The
+// cost is the other side of the same coin and is real: equality is case-sensitive here and ORDER BY
+// is code-point order, where an operator used to MySQL may expect neither. A project wanting a
+// case-insensitive column has ir.Raw.
+//
+// Pinning the character set is also what makes two length limits decidable with no database. A
+// varchar holds at most 16383 characters, which is 65535/4 and which error 1074 states itself; and
+// an InnoDB key spans at most 3072 bytes, so at most 768 characters.
+//
+// # The two key limits, and why the server answers one of them
+//
+// MySQL refuses to put a text or blob column in a key without a prefix length (error 1170) and
+// refuses a key past 3072 bytes (error 1071). No v1 operation carries a prefix length, and
+// ir.AddIndex, ir.AddUnique and ir.AddPrimaryKey name columns rather than types -- so a pure Compile
+// cannot know that a column is a longtext or how wide a varchar is.
+//
+// The server's own refusal is therefore what an operator sees for those three, and Exec states the
+// rule beside it: what the limit is, that the operation carries no field for it, and that MariaDB
+// indexes a longtext without a prefix so the same migration succeeds there. Inventing a prefix was
+// rejected. It would make every index Emulated and unchecked by migr validate, and a prefixed
+// add_unique is not the constraint the migration declared -- uniqueness on the first 255 bytes
+// refuses two distinct values that happen to share a prefix, which is exactly the silent degradation
+// a capability model exists to prevent.
+//
+// create_table is the one operation that does carry its columns' types, so there the same two limits
+// are refused with no database open: a primary key over a text or binary column, and one wider than
+// 3072 bytes. The first of those is error 1170 on MariaDB as well, measured -- where a plain index
+// over a longtext is accepted there -- so that refusal is not MySQL's alone.
+//
+// # alter_column, which is a redefinition rather than an alteration
+//
+// MySQL has no statement that changes one attribute of a column. A type or nullability change is
+// MODIFY COLUMN, a full redefinition, and every attribute it does not restate is dropped: measured,
+// a MODIFY of the type alone lost both the NOT NULL and the DEFAULT on both servers. ir.AlterColumn
+// carries only a delta, and its From records only the attributes being changed, so it can never
+// supply the rest. The missing attributes live in the database and nowhere else.
+//
+// So alter_column answers driver.ErrNeedsSession and the session is a driver.Expander, declared
+// Emulated (ADR 0053, SQLite's precedent one engine over). Exactly one payload is exempt:
+// DropDefault alone compiles to ALTER COLUMN ... DROP DEFAULT with no database, because dropping a
+// default names no value and so needs no type -- accepted on every native type this driver emits,
+// including a column that had no default to drop. That makes one ir.Kind carry two verdicts by
+// payload, which is the case where a capability Rule receiving the whole operation is load-bearing
+// rather than merely available.
+//
+// Setting a default is not exempt, and that measurement is what narrowed the exemption to one case:
+// ALTER COLUMN ... SET DEFAULT is error 1101 on a text, blob or json column on MySQL for the bare
+// form and the parenthesised one alike, and a bare function default is error 1064 there. Only MODIFY
+// COLUMN can set a default on such a column, and which form is legal is a fact about the column's
+// type rather than about the default.
+//
+// What the expansion keeps is the server's own text. COLUMN_TYPE is restated verbatim where the
+// operation does not change the type, which is faithful by construction and is why an enum survives
+// -- its labels are part of its type and nothing re-derives them. MariaDB renders int(11) where MySQL
+// renders int, and restating each server's own rendering cannot be wrong about it.
+//
+// What it refuses is anything a redefinition would silently lose, and those refusals are the point
+// of it rather than its edges:
+//
+// A default the operation does not replace. information_schema.COLUMN_DEFAULT does not round trip:
+// MySQL reports a string default as the raw value where MariaDB reports a quoted literal, DEFAULT
+// NULL is SQL null on one and the four characters NULL on the other -- which on MySQL is instead a
+// column defaulting to the string NULL -- and MySQL renders an expression default with backslash
+// escapes, a grammar this session pins off. So only the presence of a default is read, and the
+// refusal names the fix: set default on the operation, which makes the migration state what it should
+// be. That is more correct than any inference from a field that does not round trip.
+//
+// Anything in EXTRA. It is empty for an ordinary column and carries auto_increment, an ON UPDATE
+// clause, and VIRTUAL or STORED GENERATED, each of which a redefinition restates nothing of. The
+// check fails closed: an EXTRA string this build has never seen is refused rather than discarded.
+// DEFAULT_GENERATED is stripped first, MySQL setting it for any column with an expression default --
+// the same reasoning as the history store's GENERATION_EXPRESSION filter, one field over.
+//
+// A collation this driver did not set. A redefinition must restate one, and restating this driver's
+// would change what equality and uniqueness mean on a column the operation only asked to retype.
+//
+// A check constraint MariaDB records under the column's own name. MariaDB writes a column's check
+// inside the column definition, so a MODIFY drops it -- measured, a json column's json_valid check
+// was gone afterwards and invalid JSON was accepted, and a hand-written CHECK (n > 0) went the same
+// way and took -1. MariaDB implements json as a longtext carrying that check, so COLUMN_TYPE says
+// nothing about it and the constraint's name is the only evidence. MySQL holds a check apart from the
+// column, names it after the table, and a MODIFY keeps it -- error 3819 still refused -1 after one --
+// so this is asked of MariaDB alone, which is also the only variant whose CHECK_CONSTRAINTS has a
+// TABLE_NAME column at all.
+//
+// # What the type map decides, each with a cost worth stating
 //
 // text is longtext and binary is longblob, because the logical types mean an unbounded string and
 // unbounded bytes where MySQL's TEXT and BLOB stop at 65535 bytes.
@@ -179,14 +305,17 @@
 // capability rule refuses them below that, keyed to the server rather than assumed. MariaDB has had
 // them since 10.2, below this driver's floor, so the gate is MySQL's alone.
 //
-// add_index carries no prefix length, and that is a limit of the operation rather than of this
-// driver: ir.AddIndex names columns and not types, and Compile is pure, so nothing here can know
-// that a column is a longtext -- which MySQL will not index without one (error 1170) -- or a varchar
-// past 3072 bytes (error 1071). MariaDB indexes both. The server's own refusal is what an operator
-// sees, and M9-T2 owns whatever replaces that.
-//
 // An identifier longer than 64 characters, holding a NUL byte, or ending in a space is refused here
 // rather than by the server mid-migration. The limit is characters, not bytes.
+//
+// Three version gates keyed to the server rather than assumed, beside the expression-default one
+// above. A check constraint is refused below MySQL 8.0.16, where the syntax is accepted and the
+// constraint does not exist -- a migration reporting success over nothing, which is worse than a
+// refusal. Dropping one is refused below 8.0.19, where DROP CONSTRAINT arrived. And renaming a column
+// is refused below MariaDB 10.5.2, which is inside this driver's range and has only CHANGE COLUMN --
+// itself a full redefinition. Neither container can reach any of those, so each is tested against a
+// constructed version, which is ADR 0052's reading of invariant #13: the version is asked for and
+// never hardcoded, and a branch no available server produces is still written and held to a test.
 //
 // # The history store, and where this engine's premise reaches it
 //

@@ -324,6 +324,11 @@ function changes the format.
 Also closed. Used by `on_delete` and `on_update`; omitted when unset, which leaves the engine's
 default behavior.
 
+`set_default` is the one action an engine may have to refuse. MySQL and MariaDB both accept the clause
+and neither performs it — the delete is refused as though the action were `restrict`, MySQL records
+the clause in its catalog anyway and MariaDB drops it — so a driver that passed it through would give
+one migration a different meaning on each engine.
+
 ### 6.5 Recorded prior state — the `from` payloads
 
 An operation that destroys information it does not otherwise carry may record what it replaced, in
@@ -666,6 +671,12 @@ one spelling, so there is no `unique` flag here.
 ```json
 { "op": "add_index", "table": "users", "name": "idx_users_email", "columns": ["email"] }
 ```
+
+`columns` names columns and carries **no prefix length**, and v1 has no field for one. An engine that
+requires a prefix to index a column of some type therefore refuses the operation rather than choosing
+a prefix itself — a prefix is a different index, and on `add_unique` a different constraint. MySQL
+requires one for a text or blob column and for a key past 3072 bytes; MariaDB requires one only for a
+primary key. The same applies to [`add_unique`](#add_unique) and [`add_primary_key`](#add_primary_key).
 
 ---
 

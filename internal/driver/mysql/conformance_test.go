@@ -8,6 +8,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/ir"
 	conformance "github.com/emrebdr/migr/test/conformance/driver"
 )
 
@@ -25,6 +26,11 @@ func (declaredConn) Exec(context.Context, driver.Statement) error { return errNo
 // Query refuses: there is no server behind this session.
 func (declaredConn) Query(context.Context, driver.Query) (driver.Rows, error) {
 	return driver.Rows{}, errNoServer
+}
+
+// Expand refuses, and exists because the suite requires an Expander wherever Compile asks for a session.
+func (declaredConn) Expand(context.Context, ir.Operation) ([]driver.Statement, error) {
+	return nil, errNoServer
 }
 
 // Perform refuses: there is no server behind this session.

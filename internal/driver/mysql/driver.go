@@ -171,7 +171,7 @@ func (d *mysqlDriver) prepare(ctx context.Context, session *mysqlConn) error {
 		return err
 	}
 
-	stored, err := detectStoredName(ctx, session, d.table)
+	folding, err := readCaseFolding(ctx, session)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,8 @@ func (d *mysqlDriver) prepare(ctx context.Context, session *mysqlConn) error {
 		return wrapConnect("declaring capabilities", err)
 	}
 
-	session.version, session.stored, session.caps = version, stored, caps
+	session.version, session.caps = version, caps
+	session.folding, session.stored = folding, storedName(d.table, folding)
 
 	return nil
 }

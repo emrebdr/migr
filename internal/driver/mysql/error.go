@@ -72,6 +72,59 @@ var ErrHistoryRace = errors.New("another process created the migration history t
 // ErrAlreadyRecorded marks a run already written under the batch and ordinal it claims.
 var ErrAlreadyRecorded = errors.New("this run is already recorded")
 
+// ErrRedefine marks a column change this driver compiles against the database but cannot, for errors.Is.
+var ErrRedefine = errors.New("redefining a column")
+
+// ErrIndexKey marks a key the server refused over the columns it names, for errors.Is.
+var ErrIndexKey = errors.New("the server refused this key over the columns it names")
+
+// RedefineError reports a column MySQL's full-redefinition statement cannot restate faithfully.
+type RedefineError struct {
+	// Table is the table holding the column.
+	Table string
+	// Column is the column the operation asked to change.
+	Column string
+	// Detail states what the redefinition would lose, or what went wrong reading the column.
+	Detail string
+	// Err is the server's own failure, where the refusal is not this driver's own.
+	Err error
+}
+
+// Error names the column and what stops it being redefined.
+func (e *RedefineError) Error() string {
+	return fmt.Sprintf("%v %s.%s: %s", ErrRedefine, e.Table, e.Column, e.Detail)
+}
+
+// Unwrap reports the sentinel and the server's failure, so errors.Is finds either.
+func (e *RedefineError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrRedefine}
+	}
+
+	return []error{ErrRedefine, e.Err}
+}
+
+// IndexKeyError reports a key the server refused because of a column type no operation carries.
+type IndexKeyError struct {
+	// Number is the error the server reported, which is what an operator will search for.
+	Number uint16
+	// Detail states the rule the server applied and what a migration can do about it.
+	Detail string
+	// Err is the server's own failure, kept so its message survives.
+	Err error
+}
+
+// Error names the server's own error and the rule behind it.
+func (e *IndexKeyError) Error() string {
+	return fmt.Sprintf("%v (error %d): %s. The server said: %v", ErrIndexKey, e.Number, e.Detail,
+		e.Err)
+}
+
+// Unwrap reports the sentinel and the server's failure, so errors.Is finds either.
+func (e *IndexKeyError) Unwrap() []error {
+	return []error{ErrIndexKey, e.Err}
+}
+
 // DSNError reports a connection string this driver will not open, withholding the string itself.
 type DSNError struct {
 	// Detail states what is wrong with it, naming no part of the string a secret could be in.

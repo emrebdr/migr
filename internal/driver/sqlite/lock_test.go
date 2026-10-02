@@ -101,13 +101,26 @@ func TestTheHoldersAgeComesFromTheEnginesOwnClock(t *testing.T) {
 		t.Fatalf("the report identified nobody: %v", report.Unidentified)
 	}
 
-	if report.Holder.Connected < 250*time.Millisecond {
+	if report.Holder.Elapsed < 250*time.Millisecond {
 		t.Errorf("the lock reads as held for %s, and it has been held for at least 300ms",
-			report.Holder.Connected)
+			report.Holder.Elapsed)
+	}
+
+	if report.Holder.Measured != measuredHold {
+		t.Errorf("the hold is labeled %q, want %q", report.Holder.Measured, measuredHold)
+	}
+
+	if strings.Contains(report.Error(), "session") {
+		t.Errorf("the report calls a hold a session age: %v", report)
 	}
 
 	t.Log("forbidigo bans time.Now in a driver, so the stamp is SQLite's own and SQLite")
 	t.Log("subtracts it -- ADR 0020 E2's shape, with the in-process library as the server.")
+	t.Log("")
+	t.Log("What this driver measures is the hold itself, which is the better of the two numbers a")
+	t.Log("report can carry and is not what PostgreSQL measures. Until ADR 0060 the field carrying")
+	t.Log("it rendered as \"whose session has been open for\", which was false here -- a hold is not")
+	t.Log("a session age, and this lock file outlives neither.")
 }
 
 func TestTheWaitIsAWaitRatherThanARefusal(t *testing.T) {

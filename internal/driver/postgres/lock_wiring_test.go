@@ -108,29 +108,50 @@ func TestASessionAgeTheServerWithheldIsNotReportedAsBrandNew(t *testing.T) {
 		name string
 		ms   *int64
 		want time.Duration
+		read bool
 	}{
-		{name: "withheld across roles", ms: nil, want: 0},
-		{name: "a negative the server should never send", ms: ptr(int64(-1)), want: 0},
-		{name: "four minutes and twelve seconds", ms: ptr(int64(252000)), want: 252 * time.Second},
-		{name: "a session opened this instant", ms: ptr(int64(0)), want: 0},
+		{name: "withheld across roles", ms: nil, want: 0, read: false},
+		{name: "a negative the server should never send", ms: ptr(int64(-1)), want: 0, read: false},
+		{name: "four minutes and twelve seconds", ms: ptr(int64(252000)),
+			want: 252 * time.Second, read: true},
+		{name: "a session opened this instant", ms: ptr(int64(0)), want: 0, read: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := sessionAge(tt.ms); got != tt.want {
+			got, read := sessionAge(tt.ms)
+
+			if got != tt.want {
 				t.Errorf("sessionAge = %s, want %s", got, tt.want)
+			}
+
+			if read != tt.read {
+				t.Errorf("sessionAge reports read=%v, want %v", read, tt.read)
 			}
 		})
 	}
+
+	t.Log("The last case is why the second return exists: a session opened this instant really is")
+	t.Log("zero milliseconds old, and until ADR 0060 that was indistinguishable from an age the")
+	t.Log("server withheld. The label the holder now carries is what says which, and it is set only")
+	t.Log("where a number was read.")
 }
 
-func TestAWithheldSessionAgeIsIndistinguishableFromNoAgeAtAll(t *testing.T) {
-	if sessionAge(nil) != 0 {
-		t.Error("a withheld backend_start produced a non-zero age")
+func TestAWithheldSessionAgeIsNotLabelledAsOneThatWasRead(t *testing.T) {
+	if _, read := sessionAge(nil); read {
+		t.Error("a withheld backend_start was reported as a duration this driver measured")
 		t.Log("Measured: pg_stat_activity withholds backend_start from a session whose role this")
-		t.Log("one is not a member of, while leaving application_name visible. Zero is what the")
-		t.Log("report renders as \"this connection is not permitted to read\"; any other value")
-		t.Log("renders as a confident duration nobody measured.")
+		t.Log("one is not a member of, while leaving application_name visible. An unlabeled zero is")
+		t.Log("what the report renders as \"this connection is not permitted to read\"; a labeled")
+		t.Log("one would render as a confident duration nobody measured.")
+	}
+
+	if measuredWhere(false) != "" {
+		t.Error("a duration nobody read carries a label saying what it measured")
+	}
+
+	if measuredWhere(true) != measuredAge {
+		t.Errorf("a session age is labeled %q", measuredWhere(true))
 	}
 }
 

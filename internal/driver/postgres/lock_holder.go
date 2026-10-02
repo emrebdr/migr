@@ -46,6 +46,13 @@ SELECT l.pid,
  ORDER BY l.pid
  LIMIT 1`
 
+// measuredAge names what this driver's holder duration is, PostgreSQL recording no grant time.
+//
+// The session's age bounds the hold from above: the backend cannot have held the lock for longer
+// than it has existed. ADR 0020 E chose it for that reason, and ADR 0060 is why it is now labeled --
+// three engines measure three different durations, and only the one that measured can say which.
+const measuredAge = "session age"
+
 // noHolder is why a report names nobody when the lock was released between the failure and the look.
 const noHolder = "nobody held it by the time this session looked, so it was released in between"
 
@@ -81,18 +88,30 @@ func (c *pgConn) holder(ctx context.Context) (*driver.LockHolder, error) {
 		return nil, err
 	}
 
+	age, read := sessionAge(connectedMS)
+
 	return &driver.LockHolder{
 		Process:     fmt.Sprintf("pid %d", pid),
 		Application: application,
-		Connected:   sessionAge(connectedMS),
+		Elapsed:     age,
+		Measured:    measuredWhere(read),
 	}, nil
 }
 
-// sessionAge turns the milliseconds the server measured into a duration, or zero where it withheld it.
-func sessionAge(connectedMS *int64) time.Duration {
-	if connectedMS == nil || *connectedMS < 0 {
-		return 0
+// measuredWhere labels the duration only where one was read, a label being what says it was.
+func measuredWhere(read bool) string {
+	if !read {
+		return ""
 	}
 
-	return time.Duration(*connectedMS) * time.Millisecond
+	return measuredAge
+}
+
+// sessionAge turns the milliseconds the server measured into a duration, reporting one it withheld.
+func sessionAge(connectedMS *int64) (time.Duration, bool) {
+	if connectedMS == nil || *connectedMS < 0 {
+		return 0, false
+	}
+
+	return time.Duration(*connectedMS) * time.Millisecond, true
 }

@@ -133,6 +133,11 @@
 // tempting wrong one: it is NULL for an idle holder, which is exactly what a session holding a
 // lock and doing nothing is, so it would render "held for 0s" for a hold of an hour.
 //
+// That is what this driver labels its duration, since ADR 0060: the three engines measure three
+// different things and only the one that measured can say which. A session age is also why the label
+// is set only where a number was read -- a backend opened this instant is genuinely zero milliseconds
+// old, and an unlabeled zero is what renders as an age this connection could not determine.
+//
 // Across roles pg_stat_activity withholds backend_start while leaving application_name visible, so
 // the degraded report is "who, but not how long" rather than a confident zero. The holder is read
 // after the wait has already failed, so it is who holds the lock now rather than provably who

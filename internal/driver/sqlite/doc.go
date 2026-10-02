@@ -304,6 +304,11 @@
 // inside it -- pid, host, application, and when the lock was taken -- is what a failed wait reports,
 // and a second opinion where flock cannot be trusted. It is never what decides.
 //
+// Because the stamp is in the file, what a report carries here is the **hold** rather than the
+// holder's age: this driver has the better of the two numbers, and PostgreSQL does not. Since
+// ADR 0060 it says so, the duration being labeled with what it measures -- until then the field
+// carrying it rendered as a session age, which a hold is not.
+//
 // That split is the whole recovery story, and it is what invariant #11 needs from this strategy. The
 // kernel drops an flock when the process holding it dies, whatever killed it, so a crashed run leaves
 // a database the next run can migrate with no operator step -- measured, with a real SIGKILLed child,

@@ -45,6 +45,10 @@ type mysqlConn struct {
 	folding int
 	// lockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
 	lockWait time.Duration
+	// lock is the user-level lock name this installation takes, derived from the database and table.
+	lock lockName
+	// locked is whether this session holds that lock, since MySQL counts a second acquire as a second.
+	locked bool
 }
 
 // Exec runs one compiled statement, inside this session's transaction when it has one open.

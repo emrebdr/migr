@@ -123,9 +123,9 @@ func TestTheFailureNamesThePidAndApplicationOfTheSessionHoldingIt(t *testing.T) 
 					applicationName())
 			}
 
-			if busy.Holder.Connected <= 0 {
+			if busy.Holder.Elapsed <= 0 {
 				t.Errorf("the holder's session age is %s, want a positive duration",
-					busy.Holder.Connected)
+					busy.Holder.Elapsed)
 			}
 		})
 	}
@@ -412,8 +412,8 @@ func TestTheReportedSessionAgeIsTheSessionsAndNotItsTransactions(t *testing.T) {
 		t.Fatalf("the report names no holder: %v", busy)
 	}
 
-	if busy.Holder.Connected <= 0 {
-		t.Errorf("the holder's session age is %s, want a positive duration", busy.Holder.Connected)
+	if busy.Holder.Elapsed <= 0 {
+		t.Errorf("the holder's session age is %s, want a positive duration", busy.Holder.Elapsed)
 		t.Log("The holder is idle: it took the lock and is running nothing, so xact_start is NULL.")
 		t.Log("Reading the age from it would render \"open for 0s\" for a session that has held")
 		t.Log("the lock since it connected. backend_start is what bounds the hold from above.")

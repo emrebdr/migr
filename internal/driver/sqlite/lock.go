@@ -19,6 +19,13 @@ const stampQuery = `SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')`
 // heldQuery asks the engine how long ago a stamp it wrote was written, in whole milliseconds.
 const heldQuery = `SELECT CAST((julianday('now') - julianday(?)) * 86400000 AS INTEGER)`
 
+// measuredHold names what this driver's holder duration is, which is not what PostgreSQL's is.
+//
+// The lock file records when the lock was taken, so this is the hold itself rather than the holder's
+// age -- the better of the two numbers, and ADR 0055 G chose it for that. Until ADR 0060 the field
+// carrying it was rendered as a session age, which is what labeling it fixes.
+const measuredHold = "time holding the lock"
+
 // errLockFileBusy is why a wait ended, and is the cause driver.LockBusyError carries underneath.
 var errLockFileBusy = errors.New("another process holds the lock file beside this database")
 
@@ -166,24 +173,36 @@ func (c *sqliteConn) busy(ctx context.Context, file *os.File) error {
 
 // holder renders what the lock file recorded into the shape every driver reports a holder in.
 func (c *sqliteConn) holder(ctx context.Context, held record) *driver.LockHolder {
+	elapsed, read := c.heldFor(ctx, held.Acquired)
+
 	return &driver.LockHolder{
 		Process:     held.describeProcess(),
 		Application: held.Application,
-		Connected:   c.heldFor(ctx, held.Acquired),
+		Elapsed:     elapsed,
+		Measured:    measuredWhere(read),
 	}
 }
 
-// heldFor reports how long the lock has been held, and zero where the stamp cannot be read back.
-func (c *sqliteConn) heldFor(ctx context.Context, acquired string) time.Duration {
+// measuredWhere labels the duration only where one was read, a label being what says it was.
+func measuredWhere(read bool) string {
+	if !read {
+		return ""
+	}
+
+	return measuredHold
+}
+
+// heldFor reports how long the lock has been held, saying so where the stamp cannot be read back.
+func (c *sqliteConn) heldFor(ctx context.Context, acquired string) (time.Duration, bool) {
 	var elapsed *int64
 
 	row := c.runner().QueryRowContext(context.WithoutCancel(ctx), heldQuery, acquired)
 
 	if err := row.Scan(&elapsed); err != nil || elapsed == nil || *elapsed < 0 {
-		return 0
+		return 0, false
 	}
 
-	return time.Duration(*elapsed) * time.Millisecond
+	return time.Duration(*elapsed) * time.Millisecond, true
 }
 
 // releaser returns a release that gives the lock back once, and reports success thereafter.

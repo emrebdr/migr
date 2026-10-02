@@ -16,13 +16,15 @@ type LockHolder struct {
 	Process string
 	// Application is what the holder called itself, empty where the engine would not say.
 	Application string
-	// Connected is how long the holder's session had been open, zero when the engine would not say.
-	Connected time.Duration
+	// Elapsed is a duration the engine measured about the holder, zero where it would not say.
+	Elapsed time.Duration
+	// Measured names what Elapsed is a duration of, the three engines answering different questions.
+	Measured string
 }
 
 // String names the holder, and says which of the two things about it the engine would not answer.
 func (h LockHolder) String() string {
-	return h.Process + h.describeApplication() + h.describeAge()
+	return h.Process + h.describeApplication() + h.describeElapsed()
 }
 
 // describeApplication renders what the holder called itself, saying so when the engine withheld it.
@@ -34,13 +36,23 @@ func (h LockHolder) describeApplication() string {
 	return fmt.Sprintf(" (%q)", h.Application)
 }
 
-// describeAge renders how long the holder's session has been open, or that this build cannot see it.
-func (h LockHolder) describeAge() string {
-	if h.Connected == 0 {
-		return ", whose session age this connection is not permitted to read"
+// describeElapsed renders the duration the engine measured, naming which duration it is.
+func (h LockHolder) describeElapsed() string {
+	if strings.TrimSpace(h.Measured) == "" {
+		return h.describeUnmeasured()
 	}
 
-	return fmt.Sprintf(", whose session has been open for %s", h.Connected)
+	return fmt.Sprintf(", whose %s is %s", h.Measured, h.Elapsed)
+}
+
+// describeUnmeasured says that no duration was read, or names a driver that read one and said nothing.
+func (h LockHolder) describeUnmeasured() string {
+	if h.Elapsed == 0 {
+		return ", whose age this connection is not permitted to read"
+	}
+
+	return fmt.Sprintf(", and %s has passed without this driver saying what it measured, which is "+
+		"a bug in the driver rather than something about the holder", h.Elapsed)
 }
 
 // snapshotCaveat states that a holder was read after the wait failed, so it is who holds it now.

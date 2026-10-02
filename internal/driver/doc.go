@@ -154,18 +154,34 @@
 //
 // LockBusyError carries who holds the lock, and LockHolder is deliberately shaped for three
 // engines rather than one: Process is a string because MySQL's holder is a connection id, SQLite's
-// an OS pid in a lock file, and PostgreSQL's a backend pid. Connected is a duration the server
+// an OS pid in a lock file, and PostgreSQL's a backend pid. Elapsed is a duration the server
 // measured, not an instant, since forbidigo leaves a driver no clock and comparing a server
 // timestamp against a client one is wrong across skew. A holder is read after the wait has already
 // failed, so it names who holds the lock now rather than provably who blocked this run — the
 // message says so, because otherwise it aims a termination at a session that may be innocent.
+//
+// # The holder's duration is labeled, because the three engines measure three different things
+//
+// Measured names what Elapsed is a duration of, and ADR 0060 added it because no one sentence is
+// true of all three. PostgreSQL reads a session age out of backend_start, which bounds the hold
+// from above. SQLite reads the hold itself, out of the stamp in its own lock file. MySQL reads the
+// holder's time in its current state, because the server records a session's start time nowhere at
+// all — and that number under-reports: a session an hour old that has just begun a statement reads
+// near zero.
+//
+// The label rather than the duration is what says whether anything was measured. Zero is a real
+// answer on MySQL, where a holder that has just taken the lock and gone idle has been idle for no
+// whole seconds, so a driver sets Measured only where it read a number. An Elapsed with no label
+// renders a line naming that omission as a driver bug, which is the shape capability.Emulated with
+// no strategy already has: a value that cannot be built honestly degrades to one that says so.
 //
 // What "recoverable" means is a property of the strategy rather than of the driver. PostgreSQL's
 // advisory lock dies with its backend and needs no recovery code; a lock file does not vanish when
 // its owner does, so the file strategy owes a staleness rule this one has no use for. See ADR 0020,
 // and ADR 0055 for how SQLite pays it: the lock is an flock the kernel reclaims on death, the file
 // beside it is only where that lock and its holder's record live, and the record is what a failed
-// wait reports rather than what decides.
+// wait reports rather than what decides. MySQL's user-level lock is the advisory shape again — it
+// dies with its session, so it owes no staleness rule either (ADR 0060).
 //
 // # Refusing an operation
 //

@@ -190,6 +190,7 @@ func (d *mysqlDriver) prepare(ctx context.Context, session *mysqlConn) error {
 
 	session.version, session.caps = version, caps
 	session.folding, session.stored = folding, storedName(d.table, folding)
+	session.lock = namespaceLock(session.database, d.table)
 
 	return nil
 }

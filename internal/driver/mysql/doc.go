@@ -4,8 +4,48 @@
 // therefore the proving ground for the engine's statement-level recovery, dirty-state marking, and
 // resume model.
 //
-// Locking uses GET_LOCK, which is connection-scoped: the same connection must both hold and release
-// it. That is M9-T4, and Lock refuses by name until it lands.
+// # The migration lock is a user-level lock, and the name is derived
+//
+// GET_LOCK takes a lock that is global to the *server* rather than scoped to a database, lives on a
+// session, and dies with it. So the name carries the database as well as the history table, or two
+// migr installations on one server would exclude each other: it is migr1: and 32 lowercase hex
+// characters of a digest over the two (M9-T4, ADR 0060). Readable names were measured and rejected --
+// MySQL refuses a name over 64 characters with error 4163 where MariaDB accepts one, and MySQL
+// compares names case-insensitively where MariaDB does not, so two 64-character identifiers neither
+// fit nor mean one thing. Every failure renders the name, which is what IS_USED_LOCK takes.
+//
+// The wait is GET_LOCK's own second argument, a decimal number of seconds -- not waitSeconds, which
+// renders whole ones for lock_wait_timeout and would turn every sub-second bound into an immediate
+// try. Nothing is set and nothing is reset, which is where this differs from PostgreSQL bounding its
+// acquire with lock_timeout: giving up is a value the server returns and leaves the session usable.
+//
+// Three answers, and the third is not a timeout: 1 grants, 0 is the wait giving up, and NULL is
+// neither. MariaDB answers NULL for a negative timeout and for a waiter whose query is killed, where
+// MySQL waits forever for the first and answers error 1317 for the second -- so no wait this driver
+// renders may be negative or zero. A second acquire on one session is refused rather than counted,
+// because MySQL counts a recursive GET_LOCK and would owe a second release.
+//
+// A holder is a connection id plus whatever else this connection may see. IS_USED_LOCK needs no
+// privilege; information_schema.PROCESSLIST shows another session's row only to a user with PROCESS,
+// and filters it out silently otherwise -- measured, which makes the degraded report the ordinary one
+// for a production grant. So the id is always named and the rest is optional, where PostgreSQL's
+// holder is one row and no row means no holder.
+//
+// # What a crashed migr costs, and the one case this engine cannot bound
+//
+// A user-level lock dies with its session, so there is no stale lock to reclaim and no staleness rule
+// to write -- SQLite's file lock owes one and this does not. A crashed migr on a reachable host costs
+// the length of the statement that was in flight: the kernel closes the dead process's sockets and the
+// server reaps the session as soon as it next touches one. Measured at the CLI on both servers, with
+// SIGKILL mid-migration: the lock was still held one second later and free by four, which is when the
+// abandoned statement finished.
+//
+// The case this cannot bound is a client *host* that vanishes without a FIN. The server then blocks
+// reading for wait_timeout, 28800 seconds on both images, and MySQL has no per-connection server-side
+// keepalive a client can pin -- which is what PostgreSQL's tcp_keepalives_* in the startup packet buys
+// (ADR 0020). Shortening wait_timeout for the session was rejected rather than deferred: this
+// connection is idle whenever a language runtime is deciding what a migration does, so a short bound
+// would disconnect migr mid-run. What a blocked run gets instead is the connection id to KILL.
 //
 // # Lock impact, and the two things this server says about its own ALTER
 //

@@ -31,6 +31,18 @@ var ErrSchema = errors.New("MySQL's schema is its database")
 // ErrLockStrategy marks a migration lock strategy this driver does not implement, for errors.Is.
 var ErrLockStrategy = errors.New("this driver does not implement that migration lock strategy")
 
+// ErrLock marks a migration lock this driver could not take or give back, for errors.Is.
+var ErrLock = errors.New("migration lock")
+
+// ErrLockHeld marks a second acquire on a session that already holds the lock.
+var ErrLockHeld = errors.New("this session already holds the migration lock")
+
+// ErrLockNotHeld marks a release of a lock the server says this session did not hold.
+var ErrLockNotHeld = errors.New("the server reports this session did not hold the migration lock")
+
+// ErrLockRelease marks a release that failed, leaving the lock held until the session ends.
+var ErrLockRelease = errors.New("releasing the migration lock failed")
+
 // ErrWait marks a configured wait this engine cannot be asked to wait, for errors.Is.
 var ErrWait = errors.New("the configured wait is not one MySQL can be asked to wait")
 
@@ -237,6 +249,28 @@ func (e *LockStrategyError) Error() string {
 // Unwrap reports the sentinel so errors.Is(err, ErrLockStrategy) succeeds.
 func (e *LockStrategyError) Unwrap() error {
 	return ErrLockStrategy
+}
+
+// LockError reports a migration lock failure, naming the lock so IS_USED_LOCK can be matched to it.
+type LockError struct {
+	// Name is the user-level lock name this driver locks the installation on.
+	Name lockName
+	// Err is what went wrong, one of this package's lock sentinels or a server error.
+	Err error
+}
+
+// Error names the lock and what went wrong with it.
+func (e *LockError) Error() string {
+	return fmt.Sprintf("%v %s: %v", ErrLock, e.Name, e.Err)
+}
+
+// Unwrap reports the sentinel and the cause, so errors.Is finds either.
+func (e *LockError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrLock}
+	}
+
+	return []error{ErrLock, e.Err}
 }
 
 // WaitError reports a configured wait this engine cannot be asked to wait.

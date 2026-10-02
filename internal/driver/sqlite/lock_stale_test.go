@@ -185,15 +185,21 @@ func TestAStampNothingCanSubtractIsNoAgeRatherThanAWrongOne(t *testing.T) {
 				t.Fatalf("the report identified nobody: %v", report.Unidentified)
 			}
 
-			if report.Holder.Connected != 0 {
-				t.Errorf("the hold reads as %s, want no age at all", report.Holder.Connected)
+			if report.Holder.Elapsed != 0 {
+				t.Errorf("the hold reads as %s, want no age at all", report.Holder.Elapsed)
+			}
+
+			if report.Holder.Measured != "" {
+				t.Errorf("a hold nothing could read is labeled %q", report.Holder.Measured)
 			}
 		})
 	}
 
 	t.Log("julianday answers NULL for a stamp it cannot read and a negative number for one in")
-	t.Log("the future -- measured, both. LockHolder renders a zero as an age this connection")
-	t.Log("could not determine, and a negative as a hold of minus eight million hours.")
+	t.Log("the future -- measured, both. An unlabeled zero is what LockHolder renders as an age")
+	t.Log("this connection could not determine, and leaving the label off is what says so: since")
+	t.Log("ADR 0060 the label rather than the duration carries that, because zero is a real answer")
+	t.Log("on MySQL.")
 }
 
 func TestARecordNothingCanReadIsReportedAsItselfRatherThanAsAHolder(t *testing.T) {

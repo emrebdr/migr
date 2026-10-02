@@ -269,6 +269,15 @@ func TestABookkeepingFailureOnADirtyRunIsJoinedRatherThanReplacing(t *testing.T)
 		t.Log("Reporting only the migration's failure hides that migr status will show this")
 		t.Log("database as pending while its schema is between states, which is the worse lie.")
 	}
+
+	window, bookkeeping := strings.Index(err.Error(), "between states"),
+		strings.Index(err.Error(), "the history table is gone")
+
+	if window > bookkeeping {
+		t.Errorf("the bookkeeping failure is reported above what happened to the schema: %v", err)
+		t.Log("Both are real and the operator acts on the first one they read, so the window the")
+		t.Log("run left open comes before the row it could not write about it.")
+	}
 }
 
 func TestTheDirtyWritePathDoesNotInheritTheContextThatCanceledTheRun(t *testing.T) {
@@ -295,5 +304,66 @@ func TestTheDirtyWritePathDoesNotInheritTheContextThatCanceledTheRun(t *testing.
 		t.Log("Ctrl-C during a migration on a driver with no transactional DDL is the case this")
 		t.Log("path exists for: the statements that ran are still there, and a row nobody wrote")
 		t.Log("leaves the next up believing the migration never started.")
+	}
+}
+
+func TestTheRowRecordsWhatStoppedTheRunRatherThanTheWindowItOpened(t *testing.T) {
+	conn := stopping(t, false, "d3")
+	opts, _ := staged(t, "abcde")
+
+	_, err := Apply(t.Context(), conn, opts)
+
+	rec := onlyRun(t, conn)
+	if strings.Contains(rec.Error, "\n") {
+		t.Errorf("the row's error spans %d lines:\n%s", strings.Count(rec.Error, "\n")+1, rec.Error)
+		t.Log("Measured against MySQL 8.0 and MariaDB 11.4 before M9-T5: the column held the whole")
+		t.Log("window paragraph, 638 bytes over 10 lines, down to the advice about resolving the")
+		t.Log("state -- and the refusal that reads it renders that value inline.")
+	}
+
+	if !strings.Contains(rec.Error, "statement 4") || !strings.Contains(rec.Error, errRefused.Error()) {
+		t.Errorf("the row does not name the statement that failed: %q", rec.Error)
+	}
+
+	if strings.Contains(rec.Error, "between states") {
+		t.Errorf("the row records the window describing the failure rather than the failure: %q",
+			rec.Error)
+	}
+
+	var dirty *DirtyError
+	if !errors.As(err, &dirty) {
+		t.Fatalf("the caller got %T, want the window the run opened", err)
+	}
+
+	t.Log("The row records the cause and the caller gets the window: a column beside")
+	t.Log("last_statement that repeats it in prose is a second copy to keep in agreement.")
+}
+
+func TestBothWritePathsRecordTheSameKindOfCause(t *testing.T) {
+	dirty := stopping(t, false, "d3")
+	opts, _ := staged(t, "abcde")
+
+	if _, err := Apply(t.Context(), dirty, opts); err == nil {
+		t.Fatal("Apply succeeded over a statement the session refuses")
+	}
+
+	failed := stopping(t, false, "a0")
+	opts, _ = staged(t, "abcde")
+
+	if _, err := Apply(t.Context(), failed, opts); err == nil {
+		t.Fatal("Apply succeeded over a statement the session refuses")
+	}
+
+	left, right := onlyRun(t, dirty), onlyRun(t, failed)
+	if left.Outcome == right.Outcome {
+		t.Fatalf("both runs were recorded %q, want one dirty and one failed", left.Outcome)
+	}
+
+	for _, rec := range []history.Record{left, right} {
+		if !strings.HasPrefix(rec.Error, "statement ") {
+			t.Errorf("a %s run records %q, want the statement that stopped it", rec.Outcome, rec.Error)
+			t.Log("The two paths disagreed before M9-T5: MarkFailed recorded the statement and")
+			t.Log("MarkDirty recorded the paragraph describing the window.")
+		}
 	}
 }

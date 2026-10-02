@@ -303,12 +303,90 @@ func describeAtomicity(transactional bool) string {
 	return autoCommitting
 }
 
+// DirtyStateError refuses a run against a database whose last run left a migration between states.
+type DirtyStateError struct {
+	// Migration is the file this version was found in, zero where the database carries one no file describes.
+	Migration migration.Migration
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string
+	// Direction is what the run that stopped was performing, since a rollback leaves this state too.
+	Direction ir.Direction
+	// LastStatement is the 1-based position of the last statement that succeeded, as the row records it.
+	LastStatement int32
+	// Batch is the batch that run belonged to.
+	Batch int64
+	// Ordinal is its position within that batch.
+	Ordinal int32
+	// RecordedAt is when that run started.
+	RecordedAt time.Time
+	// Cause is what the row says stopped it, which is text because a history column holds text.
+	Cause string
+}
+
+// dirtyStateTemplate puts what survived above what did not, since the whole refusal is that pair.
+const dirtyStateTemplate = `%s: this migration's last run left the schema between states.
+
+  applied      %s, and nothing rolled them back
+  stopped by   %s
+  not applied  whatever that run had left after statement %d -- the row records how far it got,
+               not how far it had to go, and nothing here recomputes that: the statements were
+               the ones that run emitted, and a migration may branch on live query results
+               (ADR 0009)
+  recorded     batch %d, ordinal %d, at %s
+
+Neither up nor down runs against this database until the dirty state is resolved explicitly, and
+nothing here undoes it -- nothing here knows what the statement that failed left behind. migr
+status and migr history print this row without failing; resuming from statement %d is M9-T6's.`
+
+// Error names what survived the run that stopped, what stopped it, and what the row does not say.
+func (e *DirtyStateError) Error() string {
+	return fmt.Sprintf(dirtyStateTemplate,
+		describeMigration(e.Migration, e.Version),
+		describeSurvived(e.LastStatement, e.Direction),
+		describeStopped(e.Cause),
+		e.LastStatement,
+		e.Batch,
+		e.Ordinal,
+		e.RecordedAt.UTC().Format(stamp),
+		e.LastStatement,
+	)
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrDirty) succeeds, and nothing else.
+func (e *DirtyStateError) Unwrap() error {
+	return ErrDirty
+}
+
+// describeSurvived names the statements that are in the database, and which run put them there.
+func describeSurvived(last int32, dir ir.Direction) string {
+	if last == 1 {
+		return fmt.Sprintf("statement 1 of the %s run", dir)
+	}
+
+	return fmt.Sprintf("statements 1 through %d of the %s run", last, dir)
+}
+
+// describeStopped renders what the row says ended the run, saying so when the row says nothing.
+func describeStopped(cause string) string {
+	if strings.TrimSpace(cause) == "" {
+		return "nothing the row records, which is a bug in whatever wrote it"
+	}
+
+	return cause
+}
+
 // dirtyError refuses the whole run, naming the migration whose last run stopped partway.
 func dirtyError(st history.Status) error {
-	return fmt.Errorf("%w: %s stopped after statement %d, so its schema is between states and "+
-		"nothing here can tell which -- resolving that is an explicit command's, and resuming from "+
-		"that statement is M9-T6's. Neither up nor down runs against this database until then",
-		ErrDirty, describeVersion(st), st.Recorded.LastStatement)
+	return &DirtyStateError{
+		Migration:     st.Migration,
+		Version:       st.Version,
+		Direction:     st.Recorded.Direction,
+		LastStatement: st.Recorded.LastStatement,
+		Batch:         st.Recorded.Batch,
+		Ordinal:       st.Recorded.Ordinal,
+		RecordedAt:    st.Recorded.AppliedAt,
+		Cause:         st.Recorded.Error,
+	}
 }
 
 // missingError refuses the whole rollback, naming a version the database carries and no file does.

@@ -36,6 +36,8 @@ type fake struct {
 	table bool
 	// refuse is the statement this database rejects, empty when it rejects none.
 	refuse string
+	// autoCommits makes this database declare no transactional DDL, as MySQL's driver does.
+	autoCommits bool
 	// unsupported is the SQL whose operation this driver will not compile at all.
 	unsupported string
 	// emulates names the strategy this driver achieves every operation by, empty when it is native.
@@ -185,7 +187,7 @@ func (f *fake) capabilities(t *testing.T) capability.Set {
 	set, err := capability.NewSet(capability.Facts{
 		Driver:           fakeName,
 		Server:           "0.0-fake",
-		TransactionalDDL: true,
+		TransactionalDDL: !f.autoCommits,
 	}, rules)
 	if err != nil {
 		t.Fatalf("NewSet: %v", err)

@@ -2,7 +2,10 @@
 //
 // MySQL has no transactional DDL, so a failed migration leaves partial state. This driver is
 // therefore the proving ground for the engine's statement-level recovery, dirty-state marking, and
-// resume model.
+// resume model -- and since M9-T5 it is the only engine that has ever produced that state by failing:
+// a three-statement migration stopping at its second records last_statement = 1 on MySQL 8.0 and
+// MariaDB 11.4 alike, with the first statement's table still in the catalog. PostgreSQL and SQLite
+// both declare transactional DDL, so ADR 0024 could describe this half and never run it.
 //
 // # The migration lock is a user-level lock, and the name is derived
 //
@@ -123,7 +126,8 @@
 //
 //   - clientFoundRows would make Perform report rows matched where MySQL reports rows changed;
 //   - multiStatements would let one Query carry several, which the read-only enforcement below and
-//     M9-T5's statement-level recovery both reason against;
+//     statement-level recovery (M9-T5) both reason against -- a dirty row names one statement index,
+//     and a line holding three would make it name the wrong thing;
 //   - parseTime would hand some values over as time.Time, where every value is the server's own text;
 //   - interpolateParams would splice arguments into the statement rather than bind them.
 //
@@ -226,7 +230,9 @@
 // before it survives the rollback too. Measured on both servers, and it is why TransactionalDDL is
 // false. From 8.0 a single DDL statement is itself atomic, the data dictionary being transactional,
 // so a failed ALTER leaves no half-built table; that bounds the damage to one statement and does not
-// make a migration of several recoverable. M9-T5 is where the engine's answer is built.
+// make a migration of several recoverable. M9-T5 is where the engine's answer was measured: the
+// statements that landed before the failure are still there, so the run is recorded dirty and the
+// next one is refused with the row it wrote (ADR 0061).
 //
 // # The compiler
 //
@@ -258,8 +264,9 @@
 //
 // No statement sets NoTransaction. It means a statement cannot run inside a transaction, and MySQL's
 // DDL can be sent inside one -- it just commits it. Setting the flag would make internal/engine
-// split every migration into single-statement groups, which is M9-T5's model to choose rather than a
-// flag the compiler sets.
+// split every migration into single-statement groups, which is the dirty-state model's to choose
+// rather than a flag the compiler sets. M9-T5 chose: the groups are left alone and a failure partway
+// records how far it got.
 //
 // # Character set and collation, which are declared rather than inherited
 //

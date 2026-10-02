@@ -312,6 +312,29 @@
 // history row lands in a different transaction from the schema change it describes. That window is
 // what a dirty row exists to describe rather than a defect in it. See docs/adr/0024-dirty-runs.md.
 //
+// The row records what stopped the run and the caller gets the window it opened. Those were one value
+// until M9-T5: perform computed leftDirty once and passed the resulting *DirtyError as both, so the
+// error column held the whole window paragraph — measured at 638 bytes over 10 lines against MySQL,
+// advice included, with a statement index inside the column that sits beside last_statement. The
+// failed path had always recorded the statement failure, so the two write paths disagreed. They now
+// record the same kind of thing, and the join that reports both puts the window above the bookkeeping
+// failure, because an operator acts on the first one they read.
+//
+// # What a dirty database is told when it is refused
+//
+// A migration that *is* dirty and a run that just *became* one are both ErrDirty, and the two are
+// separated by type: *DirtyStateError is built from the row, *DirtyError from the run. Neither
+// errors.As finds the other, which is what lets a caller tell "this database is between states" from
+// "this invocation left it there" — and errors.Is(err, ErrDirty) still finds both, which is the
+// obvious thing a caller writes.
+//
+// The refusal renders four labeled rows: what survived, what stopped it, what is not recorded, and
+// where the row sits. It cannot say how many statements the run had, because the row records how far
+// it got rather than how far it had to go — so it says that rather than leaving a reader to infer it.
+// Nothing recomputes the total: the statements were the ones *that run* emitted, and a migration may
+// branch on live query results (ADR 0009), so re-asking could legitimately produce a different list
+// than the one that half-ran. See docs/adr/0061-refusing-a-dirty-database.md.
+//
 // # What a drifted migration is told, and what it is not told
 //
 // DriftError is a block rather than a sentence, which every other refusal here is. Comparing two

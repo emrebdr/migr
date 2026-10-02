@@ -196,6 +196,13 @@
 // statement. M9-T6 resumes from this index, and an off-by-one there replays a statement that
 // already ran.
 //
+// The cause a write method is given is what stopped the run, not a description of the state it left.
+// Nothing here can check that, and until M9-T5 the engine handed MarkDirty the paragraph describing
+// the window: the error column held ten lines of it, including advice about resolving the state and a
+// statement index already sitting in the column beside it. A row is read by migr history, by
+// migr status --json and by the refusal the next run gets, so a presentation stored inside it is a
+// second copy to keep in agreement (ADR 0061).
+//
 // # Ensure cannot be idempotent through IR alone
 //
 // Schema returns the operations that create the table, and ir.CreateTable has no IfNotExists.

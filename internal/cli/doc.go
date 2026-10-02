@@ -66,10 +66,20 @@
 // It goes to stderr, as one object on one line, so stdout keeps holding exactly
 // one result document -- a run that committed two migrations and then failed
 // owes both answers, and putting them in one stream makes neither parseable
-// (ADR 0029, A). The two errors that render paragraphs, engine.DriftError and
-// engine.DirtyError, are carried as the fields they are built from rather than
-// as their prose; the prose is what --json exists to replace, so it is not
-// repeated beside them.
+// (ADR 0029, A). The three errors that render paragraphs -- engine.DriftError,
+// engine.DirtyError and engine.DirtyStateError -- are carried as the fields they
+// are built from rather than as their prose; the prose is what --json exists to
+// replace, so it is not repeated beside them.
+//
+// The last two share the `dirty` key and are told apart by its `sense`, which is
+// `became` for a run that just left the schema between states and `already` for
+// one refused over a database that was. That is the distinction ADR 0024 draws
+// with errors.As, written into the document so a consumer branches on a named
+// field rather than on which key turned up. Fields only one sense knows are
+// absent from the other: a run that just failed knows its statement total and
+// the declaration of the session it ran on, and a row read back knows when it
+// was recorded. transactional_ddl is a pointer for that reason -- a false there
+// would read as a session the refusal never asked (ADR 0061).
 //
 // # Nothing migr writes replaces anything
 //

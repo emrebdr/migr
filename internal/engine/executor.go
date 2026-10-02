@@ -143,8 +143,8 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 
 	survived, err := e.runMigration(ctx, ready.groups, e.recorder(&rec))
 	if err != nil {
-		return Run{}, e.fail(ready.item, ready.compiled,
-			e.recordFailure(ctx, rec, survived, e.leftDirty(ready, survived, err)))
+		return Run{}, e.fail(ready.item, ready.compiled, errors.Join(
+			e.leftDirty(ready, survived, err), e.recordFailure(ctx, rec, survived, err)))
 	}
 
 	return Run{
@@ -298,16 +298,16 @@ func (e *executor) recorder(rec *history.Record) driver.Work {
 	}
 }
 
-// recordFailure appends the run that failed, on a context that outlives whatever canceled it.
+// recordFailure appends the run that failed with what stopped it, on a context outliving the cancel.
 func (e *executor) recordFailure(ctx context.Context, rec history.Record, survived int32, cause error) error {
 	rec.Duration = elapsed(rec.AppliedAt, e.opts.Clock())
 	outliving := context.WithoutCancel(ctx)
 
 	if survived < 1 {
-		return errors.Join(cause, e.store.MarkFailed(outliving, rec, cause))
+		return e.store.MarkFailed(outliving, rec, cause)
 	}
 
-	return errors.Join(cause, e.store.MarkDirty(outliving, rec, survived, cause))
+	return e.store.MarkDirty(outliving, rec, survived, cause)
 }
 
 // leftDirty describes the window a failure opened, for a run whose statements outlived it.

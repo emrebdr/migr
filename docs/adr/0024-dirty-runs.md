@@ -149,6 +149,11 @@ because nothing splits it, not because nothing could record a partial failure.
   the documented dirty state"* — is where a real one first appears, and M13-T4 is where PostgreSQL
   can reach one. The integration suite holds the other half: a dirty row written to a real table
   reads back, folds to `StateDirty`, and refuses both directions.
+  *(M9-T5 is where a real one first appeared, one task earlier than this expected: MySQL 8.0 and
+  MariaDB 11.4 both record it by failing. Doing so found that `recordFailure` recorded this ADR's
+  `*DirtyError` as the row's cause — the window paragraph rather than the statement that stopped the
+  run — which [ADR 0061](0061-refusing-a-dirty-database.md) §D corrects. It remains true that
+  PostgreSQL cannot produce one.)*
 - **Record-before-commit is not a guarantee on an engine whose DDL auto-commits.** ADR 0013's
   ordering is unchanged and still exact on PostgreSQL and SQLite. On MySQL the row and the schema
   change are not one unit, and nothing available can make them one — which is the reason this state

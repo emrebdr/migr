@@ -165,7 +165,7 @@ func TestHistoryWritesOutWhyARunDidNotComplete(t *testing.T) {
 		Batch: 2, Ordinal: 1, Version: versionAt(1), Name: "add_teams",
 		Direction: ir.Down, Outcome: history.Dirty, Duration: tick,
 		Checksum:      checksum.Checksum{Source: checksum.OfSource([]byte("teams"))},
-		LastStatement: 3, Error: "relation \"teams\" does not exist",
+		LastStatement: 3, Error: `statement 4: DROP TABLE teams;: relation "teams" does not exist`,
 	})
 
 	stdout, _, err := runWith(t, dir, noon, drivers, "history")
@@ -175,7 +175,8 @@ func TestHistoryWritesOutWhyARunDidNotComplete(t *testing.T) {
 
 	for _, want := range []string{
 		"failed: the server was not listening",
-		`stopped after statement 3: relation "teams" does not exist`,
+		`stopped after statement 3 -- statement 4: DROP TABLE teams;: ` +
+			`relation "teams" does not exist`,
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("history does not write out %q:\n%s", want, stdout)

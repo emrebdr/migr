@@ -46,7 +46,7 @@ func lockSession(t *testing.T, s server, table string, wait time.Duration) *mysq
 	return openServer(t, s, driver.Options{HistoryTable: table, LockWait: wait})
 }
 
-// siblingName is a second history table for the same test, the same length so it still fits.
+// siblingName is a second table name for the same test, the same length so it still fits.
 func siblingName(t *testing.T) string {
 	t.Helper()
 

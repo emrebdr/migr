@@ -402,6 +402,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0058](docs/adr/0058-compiling-mysql.md) | Compiling MySQL |
 | [0059](docs/adr/0059-mysql-lock-verdicts.md) | MySQL's lock verdicts, and the two things a server will say about its own ALTER |
 | [0060](docs/adr/0060-the-mysql-migration-lock.md) | The MySQL migration lock, and a holder duration that says what it measures |
+| [0061](docs/adr/0061-refusing-a-dirty-database.md) | Refusing a dirty database, and what the row may be asked to say |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -50,20 +50,32 @@ type drifted struct {
 	Ordinal int32 `json:"ordinal"`
 }
 
+// The two senses ErrDirty covers, which engine distinguishes by type and this document by name.
+const (
+	senseBecame  = "became"
+	senseAlready = "already"
+)
+
 // halted is how far a run got before it left the schema between states, as fields.
 type halted struct {
+	// Sense is whether this run became dirty or the database already was, which ADR 0024 separates.
+	Sense string `json:"sense"`
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string `json:"version"`
 	// Direction is what the run was performing, since a rollback can leave this state too.
 	Direction ir.Direction `json:"direction"`
 	// LastStatement is the 1-based position of the last statement that succeeded.
 	LastStatement int32 `json:"last_statement"`
-	// Statements is how many the migration compiled to, so a reader can say how far it got.
-	Statements int32 `json:"statements"`
+	// Statements is how many the migration compiled to, which only the run that just failed knows.
+	Statements int32 `json:"statements,omitempty"`
 	// Batch is the batch the run belonged to.
 	Batch int64 `json:"batch"`
 	// Ordinal is its position within that batch.
 	Ordinal int32 `json:"ordinal"`
-	// TransactionalDDL is what the session declared, since a false one is what most needs explaining.
-	TransactionalDDL bool `json:"transactional_ddl"`
+	// RecordedAt is when the run started, which only a row read back from the history carries.
+	RecordedAt *time.Time `json:"recorded_at,omitempty"`
+	// TransactionalDDL is what the session declared, and only the run that just failed was on it.
+	TransactionalDDL *bool `json:"transactional_ddl,omitempty"`
 	// Cause is what stopped it, in one line.
 	Cause string `json:"cause"`
 }
@@ -98,6 +110,7 @@ func failureOf(err error) failure {
 	found.locate(err)
 	found.describeDrift(err)
 	found.describeDirty(err)
+	found.describeDirtyState(err)
 
 	return found
 }
@@ -156,13 +169,37 @@ func (f *failure) describeDirty(err error) {
 	f.Error = engine.ErrDirty.Error()
 	f.Migration = describeFile(stopped.Migration)
 	f.Dirty = &halted{
+		Sense:            senseBecame,
+		Version:          stopped.Migration.Version,
 		Direction:        stopped.Direction,
 		LastStatement:    stopped.LastStatement,
 		Statements:       stopped.Statements,
 		Batch:            stopped.Batch,
 		Ordinal:          stopped.Ordinal,
-		TransactionalDDL: stopped.TransactionalDDL,
+		TransactionalDDL: &stopped.TransactionalDDL,
 		Cause:            describeCause(stopped.Err),
+	}
+}
+
+// describeDirtyState replaces the paragraph a refused run renders with the row it was built from.
+func (f *failure) describeDirtyState(err error) {
+	var between *engine.DirtyStateError
+	if !errors.As(err, &between) {
+		return
+	}
+
+	recorded := between.RecordedAt.UTC()
+	f.Error = engine.ErrDirty.Error()
+	f.Migration = describeFile(between.Migration)
+	f.Dirty = &halted{
+		Sense:         senseAlready,
+		Version:       between.Version,
+		Direction:     between.Direction,
+		LastStatement: between.LastStatement,
+		Batch:         between.Batch,
+		Ordinal:       between.Ordinal,
+		RecordedAt:    &recorded,
+		Cause:         between.Cause,
 	}
 }
 

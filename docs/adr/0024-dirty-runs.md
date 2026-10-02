@@ -175,7 +175,9 @@ because nothing splits it, not because nothing could record a partial failure.
 M9-T6 resumes from `LastStatement`, which is the last statement that **succeeded**, not the one that
 failed. ADR 0013 flagged the off-by-one and this ADR is where the producing side is written:
 `reached` subtracts one from `StatementError.Position`, and a test asserts the recorded index against
-a five-statement migration failing at its fourth.
+a five-statement migration failing at its fourth. *(It did, in
+[ADR 0062](0062-resolving-a-dirty-migration.md): a resume starts at `LastStatement + 1` — the
+statement that failed — and `executor.from` makes a second failure record an absolute index.)*
 
 M13-T4 needs no change here. Deleting `checkRunnable`'s two `ErrNotAtomic` branches makes the
 multi-run cases reachable, and `durable` already answers for them — one of them is tested today

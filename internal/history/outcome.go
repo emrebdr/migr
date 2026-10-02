@@ -7,13 +7,14 @@ type Outcome string
 
 // The run outcomes. The zero Outcome names none of them and is not an outcome.
 const (
-	Applied Outcome = "applied"
-	Failed  Outcome = "failed"
-	Dirty   Outcome = "dirty"
+	Applied  Outcome = "applied"
+	Failed   Outcome = "failed"
+	Dirty    Outcome = "dirty"
+	Resolved Outcome = "resolved"
 )
 
 // outcomes lists every run outcome, from the one that changed the schema to the one that may have.
-var outcomes = []Outcome{Applied, Failed, Dirty}
+var outcomes = []Outcome{Applied, Failed, Dirty, Resolved}
 
 // Outcomes returns every outcome a run may be recorded with, as a copy.
 func Outcomes() []Outcome {

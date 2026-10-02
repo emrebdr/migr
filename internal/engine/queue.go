@@ -15,6 +15,9 @@ import (
 // firstBatch is what an invocation records under when the history holds no run at all.
 const firstBatch = 1
 
+// firstOrdinal is the position within a batch of a run that is the only one in it.
+const firstOrdinal = 1
+
 // queued is one migration this run will act on, and the position it will be recorded under.
 type queued struct {
 	// migration is the migration to run.
@@ -125,7 +128,7 @@ func runnable(st history.Status) (bool, error) {
 	case history.StateApplied, history.StateMissing:
 		return false, nil
 	case history.StateDrifted:
-		return false, driftedError(st, ir.Up)
+		return false, driftedError(st, ir.Up, false)
 	case history.StateDirty:
 		return false, dirtyError(st)
 	}
@@ -143,7 +146,7 @@ func reversible(st history.Status) (bool, error) {
 	case history.StateMissing:
 		return false, missingError(st)
 	case history.StateDrifted:
-		return false, driftedError(st, ir.Down)
+		return false, driftedError(st, ir.Down, false)
 	case history.StateDirty:
 		return false, dirtyError(st)
 	}

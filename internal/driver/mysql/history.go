@@ -109,6 +109,15 @@ func (h mysqlHistory) MarkDirty(ctx context.Context, rec history.Record, last in
 	return h.write(ctx, rec)
 }
 
+// MarkResolved appends an operator's assertion that a migration left between states is settled.
+func (h mysqlHistory) MarkResolved(ctx context.Context, rec history.Record, reason string) error {
+	rec.Outcome = history.Resolved
+	rec.Error = reason
+	rec.LastStatement = 0
+
+	return h.write(ctx, rec)
+}
+
 // checkCause refuses a run marked as not completing without saying what stopped it.
 func (h mysqlHistory) checkCause(method string, cause error) error {
 	if cause == nil {

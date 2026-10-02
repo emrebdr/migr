@@ -335,6 +335,37 @@
 // branch on live query results (ADR 0009), so re-asking could legitimately produce a different list
 // than the one that half-ran. See docs/adr/0061-refusing-a-dirty-database.md.
 //
+// # Settling it, which is the only way out
+//
+// Resolve is the fourth entry point and the only one that exists because invariant #6 permits a
+// repair path. It finds the one migration between states and either runs what the stopped run never
+// reached or records what an operator did about it, and DryRun stops it after the plan rather than
+// putting a second pipeline beside the first (ADR 0026's rule).
+//
+// Resolution is an append. The fold already clears a dirty run when a later Applied or Resolved row
+// lands, so nothing is edited and no recorded checksum is rewritten -- which is the only shape
+// invariant #6 allows.
+//
+// A resume carries on in the direction the stopped run was going, asking for the undo by the same
+// path a rollback does, and it refuses on two digests. The source half moving is drift (exit 4, and
+// the message says "stopped partway" rather than "applied" because only one of the two can be
+// resumed). The emitted operation list hashing differently is ErrNotResumable: the recorded index
+// names a statement in the list *that run* emitted, so against a list that moved it names a different
+// statement. A migration that branches on live data is therefore not resumable, and the refusal says
+// so and names the two repairs that are.
+//
+// The skip is executor.from, read by grouped as Statements()[from:] and by perform as the position to
+// count from, so a resume that stops again records an absolute index rather than one relative to
+// itself. Where from equals the whole count -- a dirty row naming every statement, which ADR 0024
+// says means the commit or the history write failed -- nothing is executed and the Applied row the
+// bookkeeping never got to is recorded instead.
+//
+// The two asserted repairs reach neither a planner nor a runtime: the row is built from the recorded
+// one plus this session, so a migration that no longer builds can still be settled. They copy the
+// *recorded* source digest rather than the file's own now, so an operator who edited the file gets the
+// dirty state settled and the edit reported as drifted -- which is true, rather than laundered.
+// See docs/adr/0062-resolving-a-dirty-migration.md.
+//
 // # What a drifted migration is told, and what it is not told
 //
 // DriftError is a block rather than a sentence, which every other refusal here is. Comparing two

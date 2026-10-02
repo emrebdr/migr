@@ -432,6 +432,13 @@ func (s *fakeStore) MarkDirty(_ context.Context, rec history.Record, last int32,
 	return s.write(rec, history.Dirty, cause.Error(), last)
 }
 
+// MarkResolved appends an operator's assertion that a migration left between states is settled.
+func (s *fakeStore) MarkResolved(_ context.Context, rec history.Record, reason string) error {
+	s.fake.note(describeWrite("mark-resolved", s.fake.inTx))
+
+	return s.write(rec, history.Resolved, reason, 0)
+}
+
 // write holds a row to what a run must carry, as a real store does, and keeps it.
 func (s *fakeStore) write(rec history.Record, outcome history.Outcome, failure string, last int32) error {
 	rec.Outcome = outcome

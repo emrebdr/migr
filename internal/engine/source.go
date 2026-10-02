@@ -77,8 +77,8 @@ func (o Options) check() error {
 		return ErrNoSource
 	}
 
-	if o.Clock == nil {
-		return ErrNoClock
+	if err := o.checkRecording(); err != nil {
+		return err
 	}
 
 	if o.Runtime == nil {
@@ -86,4 +86,13 @@ func (o Options) check() error {
 	}
 
 	return o.Scope.check()
+}
+
+// checkRecording reports what an invocation that only writes a history row was not given.
+func (o Options) checkRecording() error {
+	if o.Clock == nil {
+		return ErrNoClock
+	}
+
+	return nil
 }

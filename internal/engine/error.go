@@ -31,11 +31,59 @@ var ErrNoRuntime = errors.New("a runtime name is required: every history row rec
 // ErrNoHistory marks a session that handed back no history store to record runs in.
 var ErrNoHistory = errors.New("this session has no migration history store")
 
-// ErrDrifted marks an applied migration whose file has been edited since, for errors.Is.
-var ErrDrifted = errors.New("an applied migration has been edited since it was applied")
+// ErrDrifted marks a recorded migration whose file has been edited since that run, for errors.Is.
+var ErrDrifted = errors.New("a recorded migration's file has been edited since the run that recorded it")
 
 // ErrDirty marks a migration whose last run left the schema between states, for errors.Is.
 var ErrDirty = errors.New("a migration left the schema between states")
+
+// ErrUnknownRepair marks a way of resolving a dirty migration this build has no rule for, for errors.Is.
+var ErrUnknownRepair = errors.New("this build does not know that way of resolving a dirty migration")
+
+// unknownRepairError refuses a repair rather than guessing which of the three was meant.
+func unknownRepairError(mode RepairMode) error {
+	return fmt.Errorf("%w: %q is not one of %v", ErrUnknownRepair, mode, Repairs())
+}
+
+// ErrNoReason marks a resolution whose reason is missing where one is owed or given where none is.
+var ErrNoReason = errors.New("a resolution records the operator's reason for it")
+
+// missingReasonError refuses an asserted repair that records no account of what was actually done.
+func missingReasonError(mode RepairMode) error {
+	return fmt.Errorf("%w, and --%s records one: the history row is the only thing that will still "+
+		"say why this migration reads as settled when nobody remembers the incident", ErrNoReason, mode)
+}
+
+// unwantedReasonError refuses a reason on a resume, which records what it ran rather than a claim.
+func unwantedReasonError(mode RepairMode) error {
+	return fmt.Errorf("%w, and --%s is not one: it runs the statements the dirty run never reached, "+
+		"so what it records is what it did rather than an account of what somebody else did",
+		ErrNoReason, mode)
+}
+
+// ErrSeveralDirty marks a database carrying more than one migration between states, for errors.Is.
+var ErrSeveralDirty = errors.New("this database carries more than one migration between states")
+
+// severalDirtyError refuses a resolution rather than picking which of several dirty migrations to settle.
+func severalDirtyError(dirty []history.Status) error {
+	return fmt.Errorf("%w: %s -- no migr run can produce that, since a dirty migration refuses "+
+		"both directions before anything else runs, so these were not all left by this tool. "+
+		"Settling one would be a guess at which",
+		ErrSeveralDirty, describeDirty(dirty))
+}
+
+// describeDirty lists the migrations a database left between states, by the names a message renders.
+func describeDirty(dirty []history.Status) string {
+	named := make([]string, 0, len(dirty))
+	for _, st := range dirty {
+		named = append(named, describeVersion(st))
+	}
+
+	return strings.Join(named, ", ")
+}
+
+// ErrNotResumable marks a dirty migration whose recorded index no longer names a statement, for errors.Is.
+var ErrNotResumable = errors.New("this migration cannot be resumed from the recorded statement")
 
 // ErrUnknownState marks a reconciled state this build has no rule for, for errors.Is.
 var ErrUnknownState = errors.New("this build does not know that migration state")
@@ -175,23 +223,39 @@ type DriftError struct {
 	Batch int64
 	// Ordinal is its position within that batch.
 	Ordinal int32
+	// Resuming reports whether the run this refused was a resume, which the two cannot share advice.
+	Resuming bool
 }
 
 // driftTemplate renders the two values on their own lines, since comparing 64 hex characters is the message's whole job.
-const driftTemplate = `%s: an applied migration has been edited since it was applied.
+const driftTemplate = `%s: %s
 The source half of its checksum moved, and it is the only half drift is decided on:
 
   recorded   %s
-             applied %s, batch %d ordinal %d
+             recorded %s, batch %d ordinal %d
   on disk    source %s
 
 The recorded IR half is what that run emitted, and nothing here recomputes it: doing so
 needs a language runtime and a live database, and a migration may branch on live query
 results, so a mismatch there would not be drift (ADR 0009).
 
-Restore the file to the bytes that were applied, or write a new migration for the change.
+%s
 No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
 first statement.%s`
+
+// driftHeadline says what the edited file was recorded as, since the two refusals are not the same event.
+const (
+	appliedAndEdited = "an applied migration has been edited since it was applied."
+	stoppedAndEdited = "this migration stopped partway, and its file has been edited since."
+)
+
+// driftAdvice says what to do about it, which differs because only one of the two can be resumed.
+const (
+	rewriteOrReauthor = "Restore the file to the bytes that were applied, or write a new " +
+		"migration for the change."
+	rewriteOrAssert = "Restore the file to the bytes that ran and resume, or record what you did\n" +
+		"about it yourself with --applied or --rolled-back."
+)
 
 // undoingDrift is the further reason a rollback refuses, which an apply has no equivalent of.
 const undoingDrift = "\n\nA rollback refuses for a stronger reason than an apply does: the " +
@@ -201,13 +265,33 @@ const undoingDrift = "\n\nA rollback refuses for a stronger reason than an apply
 func (e *DriftError) Error() string {
 	return fmt.Sprintf(driftTemplate,
 		describeMigration(e.Migration, e.Version),
+		describeEdited(e.Resuming),
 		e.Recorded.String(),
 		e.AppliedAt.UTC().Format(stamp),
 		e.Batch,
 		e.Ordinal,
 		e.Source.String(),
+		describeRemedy(e.Resuming),
 		describeDirection(e.Direction),
 	)
+}
+
+// describeEdited says what the run that recorded this file left behind, which is not one thing.
+func describeEdited(resuming bool) string {
+	if resuming {
+		return stoppedAndEdited
+	}
+
+	return appliedAndEdited
+}
+
+// describeRemedy says what to do about the edit, which only a resumable migration may resume from.
+func describeRemedy(resuming bool) string {
+	if resuming {
+		return rewriteOrAssert
+	}
+
+	return rewriteOrReauthor
 }
 
 // Unwrap reports the sentinel so errors.Is(err, ErrDrifted) succeeds.
@@ -224,8 +308,8 @@ func describeDirection(dir ir.Direction) string {
 	return undoingDrift
 }
 
-// driftedError refuses the whole run, naming the migration edited after it was applied.
-func driftedError(st history.Status, dir ir.Direction) error {
+// driftedError refuses the whole run, naming the migration edited after the run that recorded it.
+func driftedError(st history.Status, dir ir.Direction, resuming bool) error {
 	return &DriftError{
 		Migration: st.Migration,
 		Version:   st.Version,
@@ -235,6 +319,7 @@ func driftedError(st history.Status, dir ir.Direction) error {
 		AppliedAt: st.Recorded.AppliedAt,
 		Batch:     st.Recorded.Batch,
 		Ordinal:   st.Recorded.Ordinal,
+		Resuming:  resuming,
 	}
 }
 
@@ -336,7 +421,8 @@ const dirtyStateTemplate = `%s: this migration's last run left the schema betwee
 
 Neither up nor down runs against this database until the dirty state is resolved explicitly, and
 nothing here undoes it -- nothing here knows what the statement that failed left behind. migr
-status and migr history print this row without failing; resuming from statement %d is M9-T6's.`
+status and migr history print this row without failing, and migr resolve is what settles it:
+--resume runs on from statement %d, and --applied or --rolled-back record what you did yourself.`
 
 // Error names what survived the run that stopped, what stopped it, and what the row does not say.
 func (e *DirtyStateError) Error() string {

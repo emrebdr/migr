@@ -42,7 +42,7 @@ func edited(t *testing.T, dir ir.Direction) (*DriftError, history.Status) {
 	}
 
 	var drift *DriftError
-	if err := driftedError(st, dir); !errors.As(err, &drift) {
+	if err := driftedError(st, dir, false); !errors.As(err, &drift) {
 		t.Fatalf("driftedError returned %T, want a *DriftError", err)
 	}
 
@@ -196,7 +196,7 @@ func TestADriftErrorReportsTheSentinelAndCarriesItsValues(t *testing.T) {
 		Migration: migrationAt(t, 0),
 		Source:    checksum.OfSource([]byte("edited")),
 		Recorded:  history.Record{Checksum: sumOf(0), AppliedAt: applied},
-	}, ir.Up)
+	}, ir.Up, false)
 
 	if !errors.Is(err, ErrDrifted) {
 		t.Fatal("a drift error does not report itself as drift")

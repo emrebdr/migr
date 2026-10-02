@@ -196,7 +196,7 @@ func (f folded) after(rec Record) folded {
 // afterUp applies a forward run, which either carries the migration, leaves it dirty, or changes nothing.
 func (f folded) afterUp(rec Record) folded {
 	switch rec.Outcome {
-	case Applied:
+	case Applied, Resolved:
 		return folded{carried: true, anchor: rec}
 	case Dirty:
 		return stoppedPartway(rec)
@@ -210,7 +210,7 @@ func (f folded) afterUp(rec Record) folded {
 // afterDown applies a rollback, which either gives the changes back, leaves it dirty, or changes nothing.
 func (f folded) afterDown(rec Record) folded {
 	switch rec.Outcome {
-	case Applied:
+	case Applied, Resolved:
 		return folded{anchor: rec}
 	case Dirty:
 		return stoppedPartway(rec)

@@ -285,6 +285,8 @@ func describeOutcome(run loggedRun) string {
 		return "failed: " + run.Error
 	case history.Dirty:
 		return fmt.Sprintf("stopped after statement %d -- %s", run.LastStatement, run.Error)
+	case history.Resolved:
+		return "resolved by hand, running nothing -- " + run.Error
 	}
 
 	return run.Error

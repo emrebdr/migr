@@ -100,6 +100,19 @@ var codes = []coded{
 	{name: "validate", command: "validate", stage: staged, want: ExitOK},
 	{name: "a migration nothing can undo", command: "validate", stage: stagedOneWay,
 		want: ExitValidation},
+	{name: "resolve over a database with nothing between states", command: "resolve",
+		args: []string{"--resume"}, stage: stagedApplied, want: ExitOK},
+	{name: "a database with no migration history at all", command: "resolve",
+		args: []string{"--resume"}, stage: staged, want: ExitRuntime},
+	{name: "no repair at all", command: "resolve", stage: stagedDirty, want: ExitValidation},
+	{name: "two repairs at once", command: "resolve",
+		args: []string{"--resume", "--applied"}, stage: stagedDirty, want: ExitValidation},
+	{name: "an asserted repair with no reason", command: "resolve", args: []string{"--applied"},
+		stage: stagedDirty, want: ExitValidation},
+	{name: "the migration lock", command: "resolve", args: []string{"--resume"},
+		stage: stagedLocked, want: ExitLock},
+	{name: "a migration edited since the run that stopped", command: "resolve",
+		args: []string{"--resume"}, stage: stoppedAndEdited, want: ExitDrift},
 }
 
 func TestEveryCommandEndsWithTheCodeSection5Documents(t *testing.T) {

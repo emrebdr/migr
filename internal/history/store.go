@@ -22,4 +22,6 @@ type Store interface {
 	MarkFailed(ctx context.Context, rec Record, cause error) error
 	// MarkDirty appends a run that failed partway, naming the last statement that succeeded.
 	MarkDirty(ctx context.Context, rec Record, lastStatement int32, cause error) error
+	// MarkResolved appends an operator's assertion that a migration left between states is settled.
+	MarkResolved(ctx context.Context, rec Record, reason string) error
 }

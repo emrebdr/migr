@@ -31,7 +31,7 @@ type Record struct {
 	Duration time.Duration
 	// LastStatement is the 1-based position of the last statement that succeeded, on a dirty run.
 	LastStatement int32
-	// Error is why the run did not complete, set by MarkFailed and MarkDirty.
+	// Error is why the run did not complete, or an operator's reason for resolving one by hand.
 	Error string
 	// Driver is the engine the run targeted, spelled as that driver is registered.
 	Driver string
@@ -143,7 +143,8 @@ func (r Record) checkOutcome() error {
 	}
 
 	if r.Outcome != Applied && strings.TrimSpace(r.Error) == "" {
-		return r.incomplete("error", "is required for a run that did not complete")
+		return r.incomplete("error", "is required for a run that did not complete, and is the "+
+			"operator's reason on one they resolved by hand")
 	}
 
 	return r.checkLastStatement()

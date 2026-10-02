@@ -214,4 +214,6 @@ remembers.
 
 M9-T6 inherits a type rather than the decision to make one. It resumes from `LastStatement`, which is
 the last statement that **succeeded**, so the next statement to run is `LastStatement + 1`; whatever
-it prints before acting reads the same row this refusal does.
+it prints before acting reads the same row this refusal does. *(It does:
+[ADR 0062](0062-resolving-a-dirty-migration.md)'s `migr resolve` renders that row through the same
+`recordedRun`, and declined §C2's `statements` column again.)*

@@ -81,6 +81,30 @@
 // was recorded. transactional_ddl is a pointer for that reason -- a false there
 // would read as a session the refusal never asked (ADR 0061).
 //
+// # The one command that repairs, and the two ways it reaches a database
+//
+// migr resolve settles the migration a stopped run left between states, and
+// it is the only command invariant #6 permits to exist: a repair path that is
+// explicit, separately named, and says exactly what it is changing. The mode
+// is required -- naming none of the three is exit 2, as any mistyped
+// invocation is -- and --dry-run prints without acting, which is the spelling
+// migr up already uses.
+//
+// --resume follows open's path, because it asks the migration what it does and
+// therefore needs every runtime the directory holds. --applied and
+// --rolled-back follow runStatus's -- resolve, files, connect, no sources --
+// because the row they write is built from the row that went dirty plus this
+// session, so nothing needs compiling. That is not an optimization: a
+// migration that no longer builds is exactly when an operator reaches for
+// them, and starting a runtime to write a bookkeeping row would fail for a
+// reason that has nothing to do with the repair (ADR 0062).
+//
+// What it prints is a third rendering of one history row. recordedRun is the
+// shape migr status and migr history already print, and the statements a
+// resume will run are laid out the way migr plan lays out a compiled
+// operation -- so an operator reads shapes three commands have already taught
+// them.
+//
 // # Nothing migr writes replaces anything
 //
 // Every file this package creates goes through writeNew, which opens with

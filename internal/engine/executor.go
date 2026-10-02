@@ -28,6 +28,8 @@ type executor struct {
 	batch int64
 	// position counts statements within one migration, continuing across its runs.
 	position int32
+	// from is how many of a migration's statements a resume skips, and zero for every other run.
+	from int32
 }
 
 // newExecutor checks what a run was given and binds it to the session's history, before any lock.
@@ -36,6 +38,11 @@ func newExecutor(conn driver.Conn, opts Options, mode Mode) (*executor, error) {
 		return nil, err
 	}
 
+	return bind(conn, opts, mode)
+}
+
+// bind checks the mode and gives an invocation the history store the session opened at Open.
+func bind(conn driver.Conn, opts Options, mode Mode) (*executor, error) {
 	if !mode.Valid() {
 		return nil, unknownModeError(mode)
 	}
@@ -112,6 +119,18 @@ type prepared struct {
 func (e *executor) prepare(ctx context.Context, item queued, dir ir.Direction,
 	emitted Emitted,
 ) (prepared, error) {
+	ready, err := e.compileFor(ctx, item, dir, emitted)
+	if err != nil {
+		return prepared{}, err
+	}
+
+	return e.grouped(ready)
+}
+
+// compileFor hashes what a migration emitted and compiles it, leaving the grouping to the caller.
+func (e *executor) compileFor(ctx context.Context, item queued, dir ir.Direction,
+	emitted Emitted,
+) (prepared, error) {
 	sum, err := checksum.OfOperations(emitted.Operations)
 	if err != nil {
 		return prepared{}, fmt.Errorf("hashing the emitted operations: %w", err)
@@ -122,24 +141,28 @@ func (e *executor) prepare(ctx context.Context, item queued, dir ir.Direction,
 		return prepared{}, err
 	}
 
-	groups := Groups(compiled.Statements())
-	if err := e.checkRunnable(groups); err != nil {
-		return prepared{}, err
-	}
-
 	return prepared{
 		item:     item,
 		compiled: compiled,
-		groups:   groups,
 		sum:      checksum.Checksum{Source: item.source, IR: sum},
 		direct:   emitted.Direct,
 	}, nil
 }
 
+// grouped splits what a migration compiled to into the runs that execute it, skipping what has run.
+func (e *executor) grouped(ready prepared) (prepared, error) {
+	ready.groups = Groups(ready.compiled.Statements()[e.from:])
+	if err := e.checkRunnable(ready.groups); err != nil {
+		return prepared{}, err
+	}
+
+	return ready, nil
+}
+
 // perform runs one prepared migration, recording it inside the last transaction it runs in.
 func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 	rec := e.newRecord(ready)
-	e.position = 0
+	e.position = e.from
 
 	survived, err := e.runMigration(ctx, ready.groups, e.recorder(&rec))
 	if err != nil {
@@ -150,7 +173,7 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 	return Run{
 		Migration:  ready.item.migration,
 		Ordinal:    ready.item.ordinal,
-		Statements: ready.compiled.Len(),
+		Statements: ready.compiled.Len() - e.from,
 		Started:    rec.AppliedAt,
 		Duration:   rec.Duration,
 	}, nil

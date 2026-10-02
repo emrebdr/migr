@@ -190,15 +190,16 @@ var _ driver.Conn = (*recorder)(nil)
 
 // journal is a history store with no database, recording what the executor asked of it.
 type journal struct {
-	session *recorder
-	runs    []history.Record
-	table   bool
-	ensure  error
-	list    error
-	latest  error
-	record  error
-	failed  error
-	dirty   error
+	session  *recorder
+	runs     []history.Record
+	table    bool
+	ensure   error
+	list     error
+	latest   error
+	record   error
+	failed   error
+	dirty    error
+	resolved error
 }
 
 // Ensure records the call and creates the table, unless a test staged a failure.
@@ -279,6 +280,17 @@ func (j *journal) MarkDirty(ctx context.Context, rec history.Record, last int32,
 	}
 
 	return j.write(rec, history.Dirty, cause.Error(), last)
+}
+
+// MarkResolved appends an operator's assertion that a migration left between states is settled.
+func (j *journal) MarkResolved(ctx context.Context, rec history.Record, reason string) error {
+	j.session.note(live(ctx, j.describeWrite("mark-resolved", rec)))
+
+	if j.resolved != nil {
+		return j.resolved
+	}
+
+	return j.write(rec, history.Resolved, reason, 0)
 }
 
 // describeWrite records which row was written and whether a transaction was open at the time.

@@ -263,3 +263,127 @@ func TestAFirstStatementFailureIsFailedRatherThanDirtyOnAnEngineThatAutoCommits(
 		}
 	})
 }
+
+// settles asks for one repair against a server, failing the test rather than returning the refusal.
+func settles(t *testing.T, c *mysqlConn, opts engine.Options, ask engine.Repair) engine.Resolution {
+	t.Helper()
+
+	settled, err := engine.Resolve(t.Context(), c, opts, ask)
+	if err != nil {
+		t.Fatalf("Resolve %v: %v", ask.Mode, err)
+	}
+
+	return settled
+}
+
+// indexed reports whether a table carries one index, which is what the resumed statement creates.
+func indexed(t *testing.T, c *mysqlConn, table, index string) bool {
+	t.Helper()
+
+	rows, err := c.Query(t.Context(), driver.Query{
+		SQL: "SELECT INDEX_NAME FROM information_schema.STATISTICS " +
+			"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?",
+		Args: []string{table, index},
+	})
+	if err != nil {
+		t.Fatalf("asking the catalog for %s: %v", index, err)
+	}
+
+	return len(rows.Values) == 1
+}
+
+func TestResumingADirtyRunAgainstARealServerFinishesTheMigration(t *testing.T) {
+	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
+		table := siblingName(t)
+		fresh(t, c, table)
+
+		opts := stopsPartway(t, table)
+
+		if _, err := engine.Apply(t.Context(), c, opts); !errors.Is(err, engine.ErrDirty) {
+			t.Fatalf("Apply returned %v, want a failure reporting ErrDirty", err)
+		}
+
+		exec(t, c, "CREATE TABLE "+quote(table+"_absent")+" (id bigint)")
+		dropLater(t, c, table+"_absent")
+
+		settled := settles(t, c, opts, engine.Repair{Mode: engine.RepairResume})
+
+		if settled.Stopped.LastStatement != 1 || settled.Pending() != 2 {
+			t.Fatalf("the resume reports %d pending from statement %d, want 2 from 1",
+				settled.Pending(), settled.Stopped.LastStatement)
+		}
+
+		if !indexed(t, c, table, table+"_idx") {
+			t.Error("the statement the stopped run never reached is still not in the catalog")
+			t.Log("This is the half M9-T5 could not reach: a real server driven into a dirty state")
+			t.Log("and back out of it, with the catalog saying every statement landed.")
+		}
+
+		if state, rec := reconciledState(t, c, opts); state != history.StateApplied ||
+			rec.Outcome != history.Applied {
+			t.Errorf("the migration reconciled to %q anchored on a %q run, want applied on applied",
+				state, rec.Outcome)
+		}
+
+		if _, err := engine.Apply(t.Context(), c, opts); err != nil {
+			t.Errorf("an apply over the resolved database failed: %v", err)
+			t.Log("Nothing is pending and nothing is between states, so there is nothing to do.")
+		}
+	})
+}
+
+func TestAnAssertedRepairAgainstARealServerRecordsTheFourthOutcome(t *testing.T) {
+	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
+		table := siblingName(t)
+		fresh(t, c, table)
+
+		opts := stopsPartway(t, table)
+
+		if _, err := engine.Apply(t.Context(), c, opts); err == nil {
+			t.Fatal("Apply succeeded over a statement the server refuses")
+		}
+
+		settles(t, c, opts, engine.Repair{
+			Mode: engine.RepairRolledBack, Reason: "dropped the table by hand",
+		})
+
+		runs, err := c.History().List(t.Context())
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+
+		last := runs[len(runs)-1]
+		if last.Outcome != history.Resolved || last.Error != "dropped the table by hand" {
+			t.Fatalf("the row reads %q / %q, want resolved and the reason", last.Outcome, last.Error)
+		}
+
+		if last.Direction != ir.Down {
+			t.Errorf("the row records a %q run, want the direction the operator asserted", last.Direction)
+		}
+
+		if state, _ := reconciledState(t, c, opts); state != history.StatePending {
+			t.Errorf("the migration reconciled to %q, want pending", state)
+		}
+
+		t.Log("A fourth outcome survives the string(16) column and the read path on both servers.")
+		t.Log("An older migr meeting one reports history.ErrCorrupt naming the column and the")
+		t.Log("value, which is the designed answer to a database a newer build has resolved.")
+	})
+}
+
+// reconciledState folds what this server now holds against the one migration these tests stage.
+func reconciledState(t *testing.T, c *mysqlConn, opts engine.Options) (history.State, history.Record) {
+	t.Helper()
+
+	runs, err := c.History().List(t.Context())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	statuses, present := history.Reconcile(opts.Migrations, history.NewLog(runs)).Resolved()
+	if !present || len(statuses) != 1 {
+		t.Fatalf("the report holds %d statuses (present %t)", len(statuses), present)
+	}
+
+	return statuses[0].State, statuses[0].Recorded
+}

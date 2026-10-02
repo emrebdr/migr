@@ -79,6 +79,11 @@ func (noServerHistory) MarkDirty(context.Context, history.Record, int32, error) 
 	return errNoServer
 }
 
+// MarkResolved refuses: there is no server behind this session.
+func (noServerHistory) MarkResolved(context.Context, history.Record, string) error {
+	return errNoServer
+}
+
 // declaredSet builds the capability set Open would build for one server, with no server present.
 func declaredSet(t *testing.T, f serverFacts) capability.Set {
 	t.Helper()

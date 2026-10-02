@@ -21,14 +21,15 @@ func TestTheZeroOutcomeIsNotAnOutcome(t *testing.T) {
 }
 
 func TestOnlyADirtyRunBlocksTheNext(t *testing.T) {
-	blocking := map[Outcome]bool{Applied: false, Failed: false, Dirty: true}
+	blocking := map[Outcome]bool{Applied: false, Failed: false, Dirty: true, Resolved: false}
 
 	for _, outcome := range Outcomes() {
 		if outcome.Blocking() != blocking[outcome] {
 			t.Errorf("%s.Blocking() = %v, want %v", outcome, outcome.Blocking(), blocking[outcome])
-			t.Log("This is the whole reason the outcome is three values rather than a bool.")
+			t.Log("This is the whole reason the outcome is several values rather than a bool.")
 			t.Log("A failed run left the schema unchanged and the next up may proceed; a dirty")
 			t.Log("one did not, and M4-T9 requires the next up to refuse until it is resolved.")
+			t.Log("Resolved is what stops blocking: it is the run that settles a dirty one (M9-T6).")
 		}
 	}
 }
@@ -41,7 +42,7 @@ func TestOutcomesIsACopy(t *testing.T) {
 		t.Error("a caller mutated the package's own outcome list")
 	}
 
-	if len(Outcomes()) != 3 {
-		t.Errorf("Outcomes() returned %d outcomes, want 3", len(Outcomes()))
+	if len(Outcomes()) != 4 {
+		t.Errorf("Outcomes() returned %d outcomes, want 4", len(Outcomes()))
 	}
 }

@@ -305,7 +305,7 @@ func describeRun(row statusRow) string {
 func describeState(row statusRow) string {
 	switch row.State {
 	case history.StateApplied, history.StatePending:
-		return ""
+		return describeAsserted(row.Run)
 	case history.StateMissing:
 		return "no migration file carries this version"
 	case history.StateDrifted:
@@ -316,6 +316,15 @@ func describeState(row statusRow) string {
 	}
 
 	return "this build has no note for that state"
+}
+
+// describeAsserted says when a settled state was asserted by an operator rather than run by migr.
+func describeAsserted(run *recordedRun) string {
+	if run == nil || run.Outcome != history.Resolved {
+		return ""
+	}
+
+	return "resolved by hand rather than run: " + run.Error
 }
 
 // describeDirty says how far a run got before it left the schema between states.

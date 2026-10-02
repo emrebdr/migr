@@ -92,6 +92,15 @@ func (h sqliteHistory) MarkDirty(ctx context.Context, rec history.Record, last i
 	return h.write(ctx, rec)
 }
 
+// MarkResolved appends an operator's assertion that a migration left between states is settled.
+func (h sqliteHistory) MarkResolved(ctx context.Context, rec history.Record, reason string) error {
+	rec.Outcome = history.Resolved
+	rec.Error = reason
+	rec.LastStatement = 0
+
+	return h.write(ctx, rec)
+}
+
 // checkCause refuses a run marked as not completing without saying what stopped it.
 func (h sqliteHistory) checkCause(method string, cause error) error {
 	if cause == nil {

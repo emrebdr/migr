@@ -13,8 +13,8 @@
 //
 // # Two vocabularies, deliberately kept apart
 //
-// An Outcome is how one run ended: Applied, Failed, or Dirty. It is a fact about a run, written
-// once by the store method that recorded it.
+// An Outcome is how one run ended: Applied, Failed, Dirty, or Resolved. It is a fact about a run,
+// written once by the store method that recorded it.
 //
 // A State is what Reconcile resolves a migration to by comparing the records against the files on
 // disk: applied, pending, missing, drifted, or dirty. It is derived, it is not stored, and it can
@@ -25,10 +25,11 @@
 // runs leave it applied and whose file still hashes the same reconciles to applied, and the two
 // senses agreeing is the ordinary case rather than a confusion.
 //
-// Outcome is three values rather than a bool because Failed and Dirty differ in what an operator
+// Outcome is several values rather than a bool because Failed and Dirty differ in what an operator
 // must do next. A failed run left the schema unchanged and the next up may proceed; a dirty one
 // did not, and M4-T9 requires the next up to refuse until it is explicitly resolved. Blocking is
-// where that difference is named, so the engine asks rather than testing for Dirty itself.
+// where that difference is named, so the engine asks rather than testing for Dirty itself, and
+// Resolved is false there because it is the run that settles a dirty one.
 //
 // There is deliberately no State.Blocking. Blocking works on the run axis because a dirty run
 // blocks every command identically; a state does not — drifted blocks up and down but not status,
@@ -57,12 +58,14 @@
 //	down applied   the changes were given back, anchored on this run
 //	down failed    nothing changed
 //	down dirty     the schema is between states, anchored on this run
+//	up   resolved  an operator says the database carries it, anchored on this run
+//	down resolved  an operator says it does not, anchored on this run
 //
 // The anchor is the run that put the migration in the state it is in, which is what a status
 // carries and what drift is measured against. A failed run put it in no state, so it is not one.
 //
-// Both switches are total and carry no default, so exhaustive breaks the build the day a fourth
-// outcome or a third direction arrives. The trailing return each one needs is also the answer for
+// Both switches are total and carry no default, so exhaustive breaks the build the day another
+// outcome or a third direction arrives -- which is exactly what happened when Resolved did (M9-T6). The trailing return each one needs is also the answer for
 // a pair this build cannot interpret: it changes nothing. Such a record neither claims
 // applied-ness nor revokes it, and no store can produce one — but NewLog is a hole a caller
 // reaches directly, and a total function is cheaper than the argument.
@@ -73,9 +76,10 @@
 // consequences are decisions rather than fallthrough. A rolled-back migration that was then
 // edited is pending rather than drifted, because invariant #6 protects applied migrations and one
 // the database no longer carries is free to be edited. And a dirty migration whose file also
-// changed reports dirty, because that is the condition blocking everything and its repair
-// (M9-T6) needs the recorded row; a Status carries both digests, so a renderer can note the drift
-// alongside.
+// changed reports dirty, because that is the condition blocking everything and its repair needs the
+// recorded row; a Status carries both digests, so a renderer can note the drift alongside. M9-T6 is
+// where that mattered: migr resolve reads the recorded row, and an assertion over an edited file
+// settles the dirty state and leaves the drift to be reported on its own.
 //
 // Drift compares Checksum.Source and nothing else (ADR 0009), with a plain comparison. A recorded
 // digest of all zeroes decodes cleanly — checksum.Parse checks length, case and hex, and 128
@@ -171,8 +175,19 @@
 // # Each write method owns its outcome
 //
 // Record writes Applied, MarkFailed writes Failed, MarkDirty writes Dirty and takes the statement
-// index that outcome needs. A caller therefore cannot record a failure marked applied, and cannot
-// mark a run dirty without saying where it stopped.
+// index that outcome needs, and MarkResolved writes Resolved and takes the operator's reason. A caller
+// therefore cannot record a failure marked applied, cannot mark a run dirty without saying where it
+// stopped, and cannot assert a migration settled without saying why.
+//
+// Resolved is the fourth outcome and arrived in M9-T6. It is a row an operator asked for about a
+// migration a dirty run left between states: they finished it or undid it themselves, and this records
+// which. The fold reads it exactly as Applied — carried going up, given back going down — so what it
+// changes is not the state but what the history says produced it: nothing here claims migr ran
+// statements a person ran. A resume records Applied instead, because migr did run them. The reason
+// lives in the error column, which is why Validate's "an error is required" covers this outcome too,
+// and the column being string(16) rather than an enum is why a fourth value changed no table.
+// An older migr meeting one reports ErrCorrupt, which is this package's rule for a recorded value a
+// build cannot read working as designed. See docs/adr/0062-resolving-a-dirty-migration.md.
 //
 // Record is called inside the migration's transaction and MarkFailed after its rollback, which is
 // the only order either can have: the transaction being discarded cannot carry a row describing

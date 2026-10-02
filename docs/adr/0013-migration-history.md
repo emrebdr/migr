@@ -211,6 +211,12 @@ What that commits to:
   `Record` writes applied, `MarkFailed` writes failed, `MarkDirty` writes dirty and takes the
   statement index that outcome requires. A caller cannot record a failure marked applied, and
   cannot mark a run dirty without saying where it stopped.
+  *(Four since M9-T6: `MarkResolved` writes `resolved`, the row an operator's account of what they
+  did about a migration left between states, carrying their reason in the `error` column. The rule is
+  unchanged — each write method still owns its outcome — and the `outcome` column being `string(16)`
+  rather than an enum is what let a value be added with no change to the table. See
+  [ADR 0062](0062-resolving-a-dirty-migration.md); the consequence for an older migr reading such a
+  row is `ErrCorrupt`, which is §"a recorded value this build cannot read" working as designed.)*
 - **`LastStatement` is 1-based**, so zero unambiguously means no statement succeeded — and a run
   where none succeeded left the schema unchanged and is failed rather than dirty. Validation
   rejects the contradiction in both directions.

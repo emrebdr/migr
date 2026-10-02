@@ -12,9 +12,10 @@
 // This package is where engine-specific knowledge belongs. An `if driver == "mysql"` branch in the
 // engine means this model is missing something and should be extended instead.
 //
-// Status: both axes complete (M2-T2). PostgreSQL classifies every operation (M3-T3); SQLite and
-// MySQL report LockUnknown until M8-T3 and M9-T3, and M13-T1 is where all three are held to one
-// standard. See docs/adr/0012-capability-resolution.md and 0016-lock-impact-is-a-duration.md.
+// Status: both axes complete (M2-T2), and all three drivers classify every operation on both --
+// PostgreSQL at M3-T3, SQLite at M8-T3, MySQL at M9-T3. M13-T1 is where the three are held to one
+// standard rather than each to its own measurement. See docs/adr/0012-capability-resolution.md and
+// 0016-lock-impact-is-a-duration.md, which fixed what the four verdicts mean.
 //
 // # Resolution answers about an operation, not about a kind
 //

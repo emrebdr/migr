@@ -9,6 +9,10 @@
 # detects a variant as well as a version, and a driver that only ever meets MySQL cannot have
 # that tested at all. SQLite needs no container.
 #
+# Both MySQL services mount initdb/grant-process.sql, which grants the one privilege the
+# lock-impact tests need and migr itself never uses -- see that file. An existing volume predates
+# it, so `docker compose down -v` once is what picks it up.
+#
 # Ports are non-default so this never collides with a server an operator is already running.
 # The DSNs matching these are the defaults in internal/driver/postgres and internal/driver/mysql;
 # override with MIGR_TEST_PG16_DSN, MIGR_TEST_PG17_DSN, MIGR_TEST_MYSQL80_DSN and
@@ -55,6 +59,8 @@ services:
       MYSQL_DATABASE: migr
     ports:
       - "55480:3306"
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "mysql -h 127.0.0.1 -u migr -pmigr -e 'SELECT 1' migr"]
       interval: 1s
@@ -73,6 +79,8 @@ services:
       MARIADB_DATABASE: migr
     ports:
       - "55411:3306"
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
       interval: 1s

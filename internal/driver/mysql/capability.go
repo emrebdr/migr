@@ -1,8 +1,10 @@
 package mysql
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
@@ -68,42 +70,92 @@ const (
 	renameColumnPatch = 2
 )
 
+// errUnsafeSystemFunction is ER_BINLOG_UNSAFE_SYSTEM_FUNCTION, refused while a binary log is written.
+const errUnsafeSystemFunction = 1674
+
+// binaryLogQuery reads whether this server writes a binary log, which one refusal depends on.
+const binaryLogQuery = `SELECT @@global.log_bin`
+
+// serverFacts is everything a verdict is resolved against, detected once when the session opens.
+type serverFacts struct {
+	// version is the variant and release the server reported, which most verdicts are keyed to.
+	version serverVersion
+	// logBin is whether the server writes a binary log, which decides one support-axis refusal.
+	logBin bool
+}
+
+// readBinaryLogging asks whether this server writes a binary log, refusing an answer it cannot read.
+func readBinaryLogging(ctx context.Context, c *mysqlConn) (bool, error) {
+	var reported string
+
+	if err := c.runner().QueryRowContext(ctx, binaryLogQuery).Scan(&reported); err != nil {
+		return false, wrapConnect("reading log_bin", err)
+	}
+
+	return strings.TrimSpace(reported) == variableOn, nil
+}
+
 // facts renders what this session is, for a capability set that reports itself.
-func facts(version serverVersion) capability.Facts {
+func (f serverFacts) facts() capability.Facts {
 	return capability.Facts{
 		Driver:           Name,
-		Server:           version.String(),
+		Server:           f.version.String(),
 		TransactionalDDL: transactionalDDL,
 	}
 }
 
 // rules declares every operation against one detected server, so no verdict is version-blind.
-func rules(version serverVersion) map[ir.Kind]capability.Rule {
+func (f serverFacts) rules() map[ir.Kind]capability.Rule {
 	declared := make(map[ir.Kind]capability.Rule, len(ir.Kinds()))
 	for _, kind := range ir.Kinds() {
-		declared[kind] = version.verdict
+		declared[kind] = f.verdict
 	}
 
 	return declared
 }
 
 // verdict answers both axes for one operation, on the server this declaration was built against.
-func (v serverVersion) verdict(op ir.Operation) capability.Verdict {
+func (f serverFacts) verdict(op ir.Operation) capability.Verdict {
 	_, err := compile(op)
 
 	if err != nil && !errors.Is(err, driver.ErrNeedsSession) {
 		return capability.Unsupported(describeRefusal(err))
 	}
 
-	if problem := v.checkVersion(op); problem != "" {
+	if problem := f.checkServer(op); problem != "" {
 		return capability.Unsupported(problem)
 	}
 
 	if errors.Is(err, driver.ErrNeedsSession) {
-		return capability.Emulated(redefineStrategy, capability.LockUnknown)
+		return capability.Emulated(redefineStrategy, f.lockImpact(op))
 	}
 
-	return capability.Native(capability.LockUnknown)
+	return capability.Native(f.lockImpact(op))
+}
+
+// checkServer reports what this server will not do, by its release and by how it is configured.
+func (f serverFacts) checkServer(op ir.Operation) string {
+	if problem := f.version.checkVersion(op); problem != "" {
+		return problem
+	}
+
+	return f.checkReplicationSafety(op)
+}
+
+// checkReplicationSafety reports a column MySQL refuses to add while it writes a binary log.
+func (f serverFacts) checkReplicationSafety(op ir.Operation) string {
+	added, ok := op.(ir.AddColumn)
+	if !ok || f.version.variant == MariaDB || !f.logBin ||
+		!perRowDefault(added.Column.Default) {
+		return ""
+	}
+
+	return fmt.Sprintf("column %q is added with a %s default, which MySQL writes into every existing "+
+		"row and therefore refuses outright with error %d while it writes a binary log: the value "+
+		"would differ on a replica. This server has log_bin on. A new table may declare the same "+
+		"default, and so may a later alter_column, so adding the column without one and setting it "+
+		"afterwards is two operations that do work -- or generate the value in the application",
+		added.Column.Name, ir.FuncUUID, errUnsafeSystemFunction)
 }
 
 // checkVersion reports what this server cannot do, which the version-blind compiler cannot know.

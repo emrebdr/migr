@@ -13,7 +13,7 @@ import (
 func declaredFor(t *testing.T, version serverVersion) capability.Set {
 	t.Helper()
 
-	return declaredSet(t, version)
+	return declaredSet(t, serverFacts{version: version})
 }
 
 func TestThisEngineDeclaresThatAFailedMigrationLeavesTheSchemaChanged(t *testing.T) {
@@ -277,7 +277,7 @@ func TestAnOrdinaryColumnIsNotGatedOnTheExpressionDefaultRelease(t *testing.T) {
 	}
 }
 
-func TestEveryAllowedVerdictCarriesALockImpactUntilM9T3ResolvesOne(t *testing.T) {
+func TestRawIsTheOnlyAllowedOperationLeftWithNoLockVerdict(t *testing.T) {
 	set := declaredFor(t, serverVersion{variant: MySQL, major: 8, minor: 0, patch: 46})
 
 	for _, op := range operationsFor(t) {
@@ -286,14 +286,76 @@ func TestEveryAllowedVerdictCarriesALockImpactUntilM9T3ResolvesOne(t *testing.T)
 			continue
 		}
 
-		if verdict.Lock() != capability.LockUnknown {
-			t.Errorf("%s declares %s, and M9-T3 is where a real verdict is resolved", op.Kind(),
-				verdict.Lock())
+		if unknown := verdict.Lock() == capability.LockUnknown; unknown != (op.Kind() == ir.KindRaw) {
+			t.Errorf("%s declares %s", op.Kind(), verdict.Lock())
 		}
 	}
 
-	t.Log("LockUnknown ranks equal to TableRewrite for every threshold comparison, so declaring it")
-	t.Log("is pessimistic rather than permissive. M9-T3 resolves the real answer from the ALGORITHM")
-	t.Log("that applies, which depends on the column type and the alteration and so cannot be a")
-	t.Log("static table.")
+	t.Log("The inverse of what this test asserted until M9-T3: every operation but one now carries a")
+	t.Log("verdict resolved from the ALGORITHM the server applies. raw keeps LockUnknown permanently,")
+	t.Log("because nothing can know what an operator's own SQL does -- ADR 0016's point that")
+	t.Log("\"unknown means unclassified\" is the wrong reading of the verdict.")
+}
+
+func TestAColumnWithAUUIDDefaultIsRefusedOnAServerWritingABinaryLog(t *testing.T) {
+	op := ir.AddColumn{Table: "users", Column: ir.Column{Name: "token",
+		Type: mustType(t, "uuid"), Nullable: true, Default: ir.Call(ir.FuncUUID)}}
+
+	version := serverVersion{variant: MySQL, major: 8, minor: 0, patch: 46}
+
+	logged := declaredSet(t, serverFacts{version: version, logBin: true}).Resolve(op)
+	if logged.Allowed() {
+		t.Error("a uuid default is declared allowed on a MySQL writing a binary log")
+	}
+
+	for _, phrase := range []string{"1674", "log_bin", "replica", "token"} {
+		if !strings.Contains(logged.Reason(), phrase) {
+			t.Errorf("the refusal does not mention %q: %s", phrase, logged.Reason())
+		}
+	}
+
+	if !declaredSet(t, serverFacts{version: version}).Resolve(op).Allowed() {
+		t.Error("the same column is refused on a server with no binary log, which accepts it")
+	}
+
+	if !declaredSet(t, serverFacts{
+		version: serverVersion{variant: MariaDB, major: 11, minor: 4, patch: 13},
+		logBin:  true,
+	}).Resolve(op).Allowed() {
+		t.Error("MariaDB is refused, and it accepts the statement with its binary log on")
+	}
+
+	t.Log("Measured rather than cited, and narrowly: ALTER TABLE ... ADD COLUMN ... DEFAULT (UUID())")
+	t.Log("is error 1674 on MySQL 8.0.46 with log_bin on -- on an empty table too, and under")
+	t.Log("binlog_format=ROW -- because the column is materialized into every row and a replica would")
+	t.Log("compute different values. SET sql_log_bin=0 makes it pass, which is what says the binary")
+	t.Log("log is the condition. MariaDB 11.4.13 started with --log-bin accepts it, so the refusal is")
+	t.Log("MySQL's alone, and the server is asked rather than the variant assumed (ADR 0016).")
+}
+
+func TestTheOtherThreeDefaultFunctionsAreNotCaughtByThatRefusal(t *testing.T) {
+	version := serverVersion{variant: MySQL, major: 8, minor: 0, patch: 46}
+	set := declaredSet(t, serverFacts{version: version, logBin: true})
+
+	for _, function := range []ir.Function{
+		ir.FuncCurrentTimestamp, ir.FuncCurrentDate, ir.FuncCurrentTime,
+	} {
+		op := ir.AddColumn{Table: "users", Column: ir.Column{Name: "stamped",
+			Type: mustType(t, "timestamptz"), Nullable: true, Default: ir.Call(function)}}
+
+		if !set.Resolve(op).Allowed() {
+			t.Errorf("the %s default is refused: %s", function, set.Resolve(op).Reason())
+		}
+	}
+
+	literal := ir.AddColumn{Table: "users", Column: ir.Column{Name: "nickname",
+		Type: mustType(t, "string(64)"), Nullable: true, Default: ir.Literal("anonymous")}}
+
+	if !set.Resolve(literal).Allowed() {
+		t.Error("a literal default is refused")
+	}
+
+	t.Log("CURDATE() is a parenthesised expression default like UUID() is and MySQL accepts it,")
+	t.Log("measured -- so the condition is the value differing per row rather than the syntax. A")
+	t.Log("refusal keyed to isExpressionDefault would have rejected three working defaults.")
 }

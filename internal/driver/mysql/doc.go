@@ -2,13 +2,52 @@
 //
 // MySQL has no transactional DDL, so a failed migration leaves partial state. This driver is
 // therefore the proving ground for the engine's statement-level recovery, dirty-state marking, and
-// resume model. Lock impact is resolved from the ALTER algorithm that actually applies -- INSTANT,
-// INPLACE, or COPY -- which depends on the column type and the specific alteration and so cannot be
-// a static table. That is M9-T3; every operation declares LockUnknown until then, which ranks equal
-// to TableRewrite for every threshold comparison.
+// resume model.
 //
 // Locking uses GET_LOCK, which is connection-scoped: the same connection must both hold and release
 // it. That is M9-T4, and Lock refuses by name until it lands.
+//
+// # Lock impact, and the two things this server says about its own ALTER
+//
+// Every operation but raw carries a verdict, resolved from the algorithm the detected server applies
+// (M9-T3, ADR 0059). INSTANT is BriefExclusive and not LockFree: the statement is metadata-only once
+// it holds its lock and it still requests an exclusive metadata lock and still waits for one, so it
+// can hold a table hostage for the length of the query ahead of it. Only create_table and a
+// create_view that replaces nothing are LockFree, which is PostgreSQL's answer for PostgreSQL's
+// reason -- neither touches an object that already exists.
+//
+// Two gates move a verdict with the release, and both are MySQL's: add_column rewrote the table
+// below 8.0.12 and drop_column below 8.0.29, where MariaDB has done both instantly since before this
+// driver's floor. rename_column gained INSTANT at 8.0.28 and was INPLACE with no rebuild below it,
+// so no gate is written for it -- a gate per release would be a table of release notes rather than a
+// declaration.
+//
+// What decides add_column besides the release is whether this server can *store* the new column's
+// default or has to write it into every row. MySQL materializes any parenthesised default, which is
+// what isExpressionDefault already names; MariaDB stores all of those and materializes only a value
+// that differs per row, which is uuid alone. Measured on both.
+//
+// alter_column carries two verdicts by payload. Naming neither a type nor a nullability means the
+// redefinition restates both from the catalog verbatim and changes only the DEFAULT, which is INSTANT
+// on both servers; naming either is a rebuild. A retype is declared a rewrite even where the server
+// would widen a varchar in place, because telling a widening from a narrowing needs the column's
+// current type and the operation carries that only as `from` -- what an author recorded rather than
+// what the column is. The expansion does read the real type, and Resolve performs no I/O, so the
+// precise answer lives on a path a verdict cannot reach from here; M13-T6 is where that could change.
+//
+// drop_table is the one verdict reasoned rather than measured. InnoDB evicts the table's buffer-pool
+// pages and unlinks the tablespace under the metadata lock, and the attempt to measure the scaling
+// could not separate 13 MB from nothing against the harness baseline -- so the pessimistic verdict
+// stands and this driver says LongExclusive where PostgreSQL says BriefExclusive.
+//
+// # A uuid default is refused while this server writes a binary log
+//
+// ALTER TABLE ... ADD COLUMN ... DEFAULT (UUID()) is error 1674 on MySQL whenever log_bin is on,
+// which is 8.0's default: the value is written into every existing row, so a replica replaying the
+// DDL would compute different ones. Measured, and narrow in every direction -- refused on an empty
+// table and under binlog_format=ROW, accepted by CREATE TABLE and by both ways of setting a default
+// afterwards, accepted for CURDATE(), and accepted by MariaDB even with a binary log. So log_bin is
+// read once in Open and the refusal names the setting and the two-operation fix (ADR 0059 §G).
 //
 // # Two engines, one driver, and a version that lies
 //

@@ -176,7 +176,14 @@ func (d *mysqlDriver) prepare(ctx context.Context, session *mysqlConn) error {
 		return err
 	}
 
-	caps, err := capability.NewSet(facts(version), rules(version))
+	logBin, err := readBinaryLogging(ctx, session)
+	if err != nil {
+		return err
+	}
+
+	declaration := serverFacts{version: version, logBin: logBin}
+
+	caps, err := capability.NewSet(declaration.facts(), declaration.rules())
 	if err != nil {
 		return wrapConnect("declaring capabilities", err)
 	}

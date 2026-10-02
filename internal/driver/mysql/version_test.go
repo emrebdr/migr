@@ -142,7 +142,8 @@ func TestTheVersionRendersTheVariantSoAMigrationCanBranchOnIt(t *testing.T) {
 		t.Errorf("the version renders as %q", got)
 	}
 
-	if !strings.Contains(facts(serverVersion{variant: MySQL, major: 8}).Server, "MySQL") {
+	declared := serverFacts{version: serverVersion{variant: MySQL, major: 8}}
+	if !strings.Contains(declared.facts().Server, "MySQL") {
 		t.Error("the capability facts do not name the variant")
 	}
 

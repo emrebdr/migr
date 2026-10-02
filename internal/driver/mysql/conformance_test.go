@@ -80,10 +80,10 @@ func (noServerHistory) MarkDirty(context.Context, history.Record, int32, error) 
 }
 
 // declaredSet builds the capability set Open would build for one server, with no server present.
-func declaredSet(t *testing.T, version serverVersion) capability.Set {
+func declaredSet(t *testing.T, f serverFacts) capability.Set {
 	t.Helper()
 
-	set, err := capability.NewSet(facts(version), rules(version))
+	set, err := capability.NewSet(f.facts(), f.rules())
 	if err != nil {
 		t.Fatalf("the declaration is not a complete capability set: %v", err)
 	}
@@ -92,18 +92,19 @@ func declaredSet(t *testing.T, version serverVersion) capability.Set {
 }
 
 func TestTheConformanceSuitePassesWithoutAServer(t *testing.T) {
-	for _, version := range []serverVersion{
-		{variant: MySQL, major: 8, minor: 0, patch: 46},
-		{variant: MySQL, major: 8, minor: 4, patch: 0},
-		{variant: MariaDB, major: 11, minor: 4, patch: 13},
+	for _, declaration := range []serverFacts{
+		{version: serverVersion{variant: MySQL, major: 8, minor: 0, patch: 46}},
+		{version: serverVersion{variant: MySQL, major: 8, minor: 4}},
+		{version: serverVersion{variant: MariaDB, major: 11, minor: 4, patch: 13}},
+		{version: serverVersion{variant: MySQL, major: 8, minor: 0, patch: 46}, logBin: true},
 	} {
-		t.Run(version.String(), func(t *testing.T) {
+		t.Run(describeDeclaration(declaration), func(t *testing.T) {
 			d, err := New(driver.Options{})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
 
-			conformance.Suite{Driver: d, Conn: declaredConn{caps: declaredSet(t, version)}}.Run(t)
+			conformance.Suite{Driver: d, Conn: declaredConn{caps: declaredSet(t, declaration)}}.Run(t)
 		})
 	}
 
@@ -111,6 +112,20 @@ func TestTheConformanceSuitePassesWithoutAServer(t *testing.T) {
 	t.Log("declaration refuses exactly what Compile refuses -- is a make test and CI gate rather")
 	t.Log("than one only Docker reaches. Three versions, because a verdict keyed to a release is")
 	t.Log("what invariant #13 asks for and one version cannot show it holding.")
+	t.Log("")
+	t.Log("The fourth case is the same server with its binary log on, which is the one fact besides")
+	t.Log("the release a verdict is keyed to. It refuses an add_column carrying a uuid default and")
+	t.Log("must disturb nothing else: checkCompiled fails a declaration that refuses an operation")
+	t.Log("Compile accepted, so a refusal reaching one fixture too many fails here.")
+}
+
+// describeDeclaration names one declaration, since two cases may differ by configuration alone.
+func describeDeclaration(f serverFacts) string {
+	if f.logBin {
+		return f.version.String() + " with a binary log"
+	}
+
+	return f.version.String()
 }
 
 // compile-time proof that the double satisfies the same contract a real session does.

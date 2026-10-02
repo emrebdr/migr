@@ -234,3 +234,12 @@ gaps survive that no wider payload closes, and both are the same one this note i
 
 Both are pinned by a test that asserts the gap, so closing either arrives as a failing assertion
 rather than as a discovery.
+
+*(M9-T7 ran the same round trip against MySQL 8.0 and MariaDB 11.4, compared through `SHOW CREATE`,
+and found the second gap identically — both servers keep the `NOT NULL` that `ADD PRIMARY KEY`
+implied. Its own first gap is a different operation reached the same way: `add_foreign_key` over an
+unindexed column makes MySQL create an index named after the constraint, and `DROP FOREIGN KEY`
+leaves it behind. The IR records that no index was asked for, so nothing derives its removal; given
+an index of its own the server reuses it and the reversal is exact. That is two engines and four
+servers' worth of evidence for one note, and every case of it is an operation that records less than
+the engine does.)*

@@ -213,3 +213,6 @@ The live suite needed a history table per case for the reason M7-T8 recorded and
 `uniqueName(t)` is derived from the test's name, so the previous run's rows are still there.
 
 M9-T7 inherits the CI matrix and the committed op-set round trip. Nothing here is waiting on it.
+*(Both landed there, and it needed nothing from this ADR: the round trip reverses every operation
+without recording a run at all, and the CI job had been running all four servers since M9-T1 under a
+name that said two.)*

@@ -454,7 +454,47 @@
 //
 // Both servers are in test/docker-compose.yml, and the reason MariaDB is there is the reason two
 // PostgreSQL majors are: a driver that detects a variant and only ever meets one of them has not had
-// that tested at all.
+// that tested at all. CI runs every tagged package against all four from one job, with no
+// strategy.matrix over the engines: each driver holds its own table-driven server list, so one
+// invocation of make test-integration already covers them and a per-engine matrix would repeat the
+// whole suite four times for the same assertions.
+//
+// # The round trip, and what the server's own printer is for
+//
+// M9-T2 ran every compiled statement against both servers. What M9-T7 adds is the other direction:
+// every operation but raw is applied, reversed through ir.Reverse, and the schema held to what it
+// was -- plus the whole build undone through ir.ReverseAll, the teardown rebuilt from its from
+// payloads alone, and raw held to an authored undo. That makes MySQL the first engine whose emulated
+// reverse has run at all, alter_column being compiled against the database here and nowhere else.
+//
+// The comparison is SHOW CREATE TABLE and SHOW CREATE VIEW, which is this engine's
+// pg_get_constraintdef: one answer carrying the columns, the keys, the foreign keys with their
+// actions, the checks, and the table's own character set and collation -- what PostgreSQL's five
+// information_schema probes have to be reassembled from. Its lines are sorted, and that is the
+// load-bearing part: a reversed drop_column appends the column and no v1 operation can put it back
+// where it was, MySQL's AFTER clause having no field in the IR, so the digest compares what a schema
+// holds and never the order it holds it in. MySQL needs no probe for a relation with nothing in it,
+// where PostgreSQL does: it refuses to drop a table's last column outright (error 1090).
+//
+// Two reversals do not restore what they changed, and neither is a compiler defect:
+//
+// A foreign key over an unindexed column. MySQL requires an index on a referencing column and makes
+// one named after the constraint when it finds none, and DROP FOREIGN KEY then leaves that index
+// behind -- measured on both servers. The IR has no field recording that an index was ever created,
+// so nothing derives its removal. Given an index of its own the server reuses it and drops nothing,
+// which is why the fixture indexes the column before declaring the key.
+//
+// The nullability ADD PRIMARY KEY implied. It converts a nullable column to NOT NULL and DROP
+// PRIMARY KEY leaves it that way, on both servers -- PostgreSQL's gap exactly, reached from the same
+// direction. A name says nothing about what the constraint implied, so a wider from payload would
+// not help either. Both are left for introspection to close (M11-T2).
+//
+// The dirty state is proved at the engine rather than at the CLI, and a CLI-level version would buy
+// nothing: engine_integration_test.go drives engine.Apply, engine.Rollback and engine.Resolve over a
+// real session on both servers and reads the row the stopped run wrote, where what internal/cli adds
+// above that -- config, discovery, source digests, rendering, exit codes -- names no engine and is
+// covered by cmd/migr's fake-driver suite and its PostgreSQL and SQLite legs. Paying for it would
+// mean a third driver child package and the paired depguard rule sets one owes.
 //
 // Status: connection handling, the two methods a migration's own SQL needs, transactions, the
 // history store, and the compiler for the two operations that store is built on. Implemented across

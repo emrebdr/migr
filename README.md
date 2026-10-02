@@ -20,12 +20,11 @@ operator discipline.
 
 ## Status
 
-> **Pre-alpha.** migr applies and rolls back migrations against PostgreSQL today, written as
-> `.sql` files, in Go, or in TypeScript. The SQLite driver connects, reads, and refuses every
-> schema operation by name until M8-T2 compiles them. MySQL, schema diffing, and the zero-downtime
-> guarantees are not built yet. Do not depend on it.
+> **Pre-alpha.** migr applies and rolls back migrations against PostgreSQL, SQLite, MySQL and
+> MariaDB today, written as `.sql` files, in Go, or in TypeScript. Validation and safety checks,
+> schema diffing, and the zero-downtime guarantees are not built yet. Do not depend on it.
 
-Two of the ten subcommands, since they need no database:
+Two of the eleven subcommands, since they need no database:
 
 ```console
 $ migr version
@@ -66,7 +65,7 @@ validation:
   allow_destructive: false
 ```
 
-Ten subcommands are registered in [root.go](internal/cli/root.go); the table further down says
+Eleven subcommands are registered in [root.go](internal/cli/root.go); the table further down says
 which, and which are still planned. Credentials in a DSN are redacted on every output path, so
 leaking one takes a deliberate call.
 
@@ -91,17 +90,31 @@ PostgreSQL and `migr down` reverts it, compared by a schema digest taken before 
 migration authoring no `Down` included, which is the first time the framework's derived inverse has
 run against a real database.
 
-**Now — M7, TypeScript**, where "identical IR from two languages" stopped being a claim. The same
+**Done — M7, TypeScript**, where "identical IR from two languages" stopped being a claim. The same
 twelve fixtures, asked for both directions in both modes, are answered byte for byte by the Go SDK
 and by the TypeScript one; neither was compared to the other, and the file they are both compared to
 belongs to no language. Both languages then apply and roll back against a real PostgreSQL — and a
 TypeScript migration is the first in any language to read the live database and branch on the
 answer, and the first to send a statement of its own outside the transaction its operations run in.
 
-**Later.** The rest of the SQLite driver and all of the MySQL one (M8, M9), validation and safety (M10), introspection
-and schema diffing (M11), seeds and data transformations (M12), and the zero-downtime milestone
-(M13) — where "safe against a live production database" becomes something a test suite proves
-rather than something the README asserts.
+**Done — M8, SQLite**, which is where the capability model started earning its keep: seven
+operations this engine has no statement for are achieved by rebuilding the table, declared
+`Emulated`, compiled against the database rather than purely, and labeled as such in `migr plan`.
+Being in-process and pure Go, its live tests need no container — so a real database, an executable
+golden file, and an end-to-end `migr up`/`migr down` round trip all sit inside `make check` on both
+CI legs.
+
+**Done — M9, MySQL: the hardest rollback case, proven.** This engine has no transactional DDL, so a
+migration that fails partway leaves the schema between states — and MySQL 8.0 and MariaDB 11.4 are
+the first servers to produce that by failing rather than from a fixture. The run is recorded dirty at
+the statement it reached, the next `up` is refused with the row that run wrote, and `migr resolve`
+is the way out: resume from the recorded index, or record what you did by hand. The whole operation
+set then applies and **reverses** against both servers, compared by the server's own printer, which
+makes this the first engine whose emulated inverse has run at all.
+
+**Now — M10, validation and safety.** Then introspection and schema diffing (M11), seeds and data
+transformations (M12), and the zero-downtime milestone (M13) — where "safe against a live production
+database" becomes something a test suite proves rather than something the README asserts.
 
 ---
 
@@ -245,6 +258,7 @@ suite is what holds that true as both SDKs evolve.
 | `migr plan` | compiled statements per migration, either direction | **works today** |
 | `migr plan --safety` | the same, annotated with lock impact | planned |
 | `migr validate` | read, compile, and reverse every migration, connecting to nothing | **works today** |
+| `migr resolve` | settle the migration a stopped run left between states | **works today** |
 | `migr diff` | introspect, diff against the desired schema, emit a migration | planned |
 | `migr seed` | data seeds, kept separate from schema migrations | planned |
 

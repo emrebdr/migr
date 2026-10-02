@@ -118,8 +118,15 @@ jobs:
   # need `make tools` either -- that target installs golangci-lint, and this job lints
   # nothing. It does need Node from M7-T8 on: the suite runs a TypeScript project, and
   # the target builds the SDK it starts.
+  #
+  # All four servers, and still no strategy.matrix over them (M9-T7). One invocation of
+  # that target runs every tagged package against every server already: each driver
+  # holds its own table-driven list -- two PostgreSQL majors, MySQL 8.0 and MariaDB 11.4
+  # -- so a per-engine matrix would repeat the whole suite four times for the same
+  # assertions, and would need compose profiles and new Makefile surface no local gate
+  # uses. A server that never came healthy is identified by the last step instead.
   integration:
-    name: integration (postgres 16, 17)
+    name: integration (postgres 16/17, mysql 8.0, mariadb 11.4)
     runs-on: ubuntu-latest
 
     steps:
@@ -147,3 +154,10 @@ jobs:
 
       - name: Integration tests
         run: make test-integration
+
+      # Four containers now, and a driver's live tests fail rather than skip when their
+      # server is absent -- so a failure here is either the SQL or a server that never
+      # came healthy, and nothing in the Go output tells those apart.
+      - name: Report server state
+        if: failure()
+        run: docker compose -f test/docker-compose.yml ps

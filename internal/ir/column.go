@@ -10,35 +10,33 @@ import (
 )
 
 // Function names a default-producing function every driver maps to its own spelling.
-type Function string
+type Function = schema.Function
 
 // The neutral default functions. Drivers translate; the IR never carries engine SQL.
 const (
-	FuncCurrentTimestamp Function = "current_timestamp"
-	FuncCurrentDate      Function = "current_date"
-	FuncCurrentTime      Function = "current_time"
-	FuncUUID             Function = "uuid"
+	FuncCurrentTimestamp = schema.FuncCurrentTimestamp
+	FuncCurrentDate      = schema.FuncCurrentDate
+	FuncCurrentTime      = schema.FuncCurrentTime
+	FuncUUID             = schema.FuncUUID
 )
 
 // functions lists every accepted default function.
-var functions = []Function{FuncCurrentTimestamp, FuncCurrentDate, FuncCurrentTime, FuncUUID}
+var functions = schema.Functions()
 
 // ReferentialAction is what a foreign key does when its referenced row changes.
-type ReferentialAction string
+type ReferentialAction = schema.ReferentialAction
 
 // The referential actions, spelled as SQL names them.
 const (
-	ActionNoAction   ReferentialAction = "no_action"
-	ActionRestrict   ReferentialAction = "restrict"
-	ActionCascade    ReferentialAction = "cascade"
-	ActionSetNull    ReferentialAction = "set_null"
-	ActionSetDefault ReferentialAction = "set_default"
+	ActionNoAction   = schema.ActionNoAction
+	ActionRestrict   = schema.ActionRestrict
+	ActionCascade    = schema.ActionCascade
+	ActionSetNull    = schema.ActionSetNull
+	ActionSetDefault = schema.ActionSetDefault
 )
 
 // actions lists every accepted referential action.
-var actions = []ReferentialAction{
-	ActionNoAction, ActionRestrict, ActionCascade, ActionSetNull, ActionSetDefault,
-}
+var actions = schema.Actions()
 
 // Default is a column default: either a literal or a neutral function, never both.
 type Default struct {

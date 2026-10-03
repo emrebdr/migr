@@ -66,6 +66,22 @@
 // Opening no database is not the same as needing no configuration. Which engine to compile for
 // comes from migr.yaml, and there is no answer without one.
 //
+// # The sixth check is the only one with a severity, and the only one that can warn
+//
+// Options.Rules holds what internal/rule resolved against migr.yaml's validation.rules, and the
+// lint pass runs once per migration *after* the five checks -- which is what lets a rule read where
+// the migration's down came from. A rule at error lands in Problems and one at warn lands in
+// Warnings, a third list beside Unchecked: judged-and-failed, judged-and-noted, not-judged. So
+// Problems keeps meaning "this run exits 2", and Clean() ignores warnings entirely.
+//
+// Nil Rules means the caller wants no lint pass, mirroring Capabilities; a non-nil zero set is
+// refused as ErrUnbuiltRules, since a project that switched every rule off resolves to a *built*
+// set holding every rule and those two must not be one value.
+//
+// A migration whose up could not be read is not linted, which is the rule below applied without
+// exception. And no rule can fire on a .sql project at all: every statement there is ir.Raw, which
+// carries no columns and no key for a rule to read.
+//
 // # Every problem, in the order a run would meet them
 //
 // Run returns a Report rather than an error, for the reason history.Reconcile does: "there are

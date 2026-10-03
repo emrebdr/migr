@@ -17,6 +17,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/rule"
 	"github.com/emrebdr/migr/internal/runtime"
 	"github.com/emrebdr/migr/internal/source/sql"
 	"github.com/emrebdr/migr/internal/validate"
@@ -500,6 +501,16 @@ func allowanceFor(t *target, opts *options) engine.Allowance {
 		Kinds: t.cfg.Validation.AllowDestructive,
 		All:   opts.allowDestructive,
 	}
+}
+
+// rulesFor resolves every lint rule against the severity this project gave it, refusing one it did not.
+func rulesFor(t *target) (*rule.Set, error) {
+	rules, err := rule.NewSet(rule.All(), t.cfg.Validation.Rules)
+	if err != nil {
+		return nil, NewExitError(ExitValidation, err)
+	}
+
+	return &rules, nil
 }
 
 // sequence settles the order a run performs, which is what each migration declared over the timestamps.

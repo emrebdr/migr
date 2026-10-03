@@ -422,6 +422,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0063](docs/adr/0063-destructive-operations.md) | Destructive operations: who refuses, and what a project may permit |
 | [0064](docs/adr/0064-capability-preflight.md) | Capability preflight: who reads the declaration, and when |
 | [0065](docs/adr/0065-the-schema-snapshot.md) | The schema snapshot: what a driver-neutral schema can honestly claim |
+| [0066](docs/adr/0066-lint-rules.md) | Lint rules: what a severity may decide, and what it may not |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

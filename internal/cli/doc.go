@@ -316,6 +316,22 @@
 // is what makes it a decision rather than a restated default. See
 // docs/adr/0063-destructive-operations.md.
 //
+// # A lint rule reaches migr validate and no other command
+//
+// rulesFor resolves migr.yaml's validation.rules against the rules this build
+// ships, and only runValidate reads it: there is no flag, and migr up, migr plan
+// and --dry-run say nothing about rules at all. That is ADR 0066's E, which is
+// M10-T4's own note read straight -- the run's gates are each about whether an
+// operation is correct or permitted, and a practice judgment is not one of those.
+//
+// A rule at error is a problem and exits 2; one at warn is printed in a section
+// of its own beneath the problems and exits 0, counted in the summary. The column
+// that says what found a problem prints the rule's id rather than the word lint,
+// since the id is what a project configures; --json keeps check and rule as two
+// members, those being two vocabularies. The remedy names the rules that
+// *failed* and not the ones that warned: a remedy explains how to get past
+// something that stopped the command, and advice to silence advice is not that.
+//
 // # A plan prints before its error where a run does not
 //
 // A run that failed having done nothing prints no summary: "nothing to do" above

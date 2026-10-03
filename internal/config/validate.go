@@ -2,11 +2,14 @@ package config
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/rule"
 )
 
 // FieldError is one problem, located by its path within the YAML document.
@@ -203,6 +206,25 @@ func validateValidation(v *validator, val Validation) {
 				string(kind), join(ir.DestructiveKinds()))
 		case contains(val.AllowDestructive[:i], kind):
 			v.add(path, "%q is permitted twice, and once is what permits it", string(kind))
+		}
+	}
+
+	validateRules(v, val.Rules)
+}
+
+// validateRules checks the severity each rule is set to, refusing an id no rule in this build has.
+func validateRules(v *validator, rules map[rule.ID]rule.Severity) {
+	for _, id := range slices.Sorted(maps.Keys(rules)) {
+		path := "validation.rules." + string(id)
+
+		if _, shipped := rule.Default(id); !shipped {
+			v.add(path, "no rule is called %q (expected one of: %s)", string(id), rule.JoinIDs())
+
+			continue
+		}
+
+		if severity := rules[id]; !severity.Valid() {
+			v.add(path, "%s", rule.DescribeSeverity(string(severity)))
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/rule"
 )
 
 // Check names what a problem was found by, which is also what it stopped this migration at.
@@ -17,10 +18,12 @@ const (
 	CheckCompile     Check = "compile"
 	CheckCapability  Check = "capability"
 	CheckReverse     Check = "reverse"
+	CheckLint        Check = "lint"
 )
 
 // checks lists every check a run performs, in the order it performs them.
-var checks = []Check{CheckFormat, CheckDestructive, CheckCompile, CheckCapability, CheckReverse}
+var checks = []Check{CheckFormat, CheckDestructive, CheckCompile, CheckCapability, CheckReverse,
+	CheckLint}
 
 // Checks returns every check a validation run performs, in order, as a copy.
 func Checks() []Check {
@@ -43,6 +46,8 @@ type Problem struct {
 	Migration migration.Migration
 	// Check is what found the problem.
 	Check Check
+	// Rule is the lint rule that found it, empty for a check that is not a rule.
+	Rule rule.ID
 	// Direction is which of a migration's two halves the problem is in.
 	Direction ir.Direction
 	// Operation is the operation's place in that half, counting from one, zero when it is not one.

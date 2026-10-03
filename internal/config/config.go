@@ -5,6 +5,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/rule"
 )
 
 // Version is the only supported migr.yaml schema version.
@@ -68,7 +69,8 @@ type Safety struct {
 
 // Validation configures pre-execution checks.
 type Validation struct {
-	AllowDestructive []ir.Kind `yaml:"allow_destructive" json:"allow_destructive"`
+	AllowDestructive []ir.Kind                 `yaml:"allow_destructive" json:"allow_destructive"`
+	Rules            map[rule.ID]rule.Severity `yaml:"rules"             json:"rules"`
 }
 
 // Language identifies the runtime that executes migrations.

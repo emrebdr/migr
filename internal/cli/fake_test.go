@@ -247,11 +247,11 @@ type fakeDriver struct {
 // Name reports the name this driver is registered under.
 func (d *fakeDriver) Name() string { return fakeName }
 
-// Compile passes raw SQL through untouched, and refuses everything a .sql migration cannot emit.
+// Compile passes raw SQL through untouched, and renders a typed operation as a comment naming it.
 func (d *fakeDriver) Compile(op ir.Operation) ([]driver.Statement, error) {
 	raw, ok := op.(ir.Raw)
 	if !ok {
-		return nil, fmt.Errorf("the fake driver was given %s", op.Kind())
+		return []driver.Statement{{SQL: "-- " + op.Kind().String()}}, nil
 	}
 
 	if raw.Driver != fakeName {

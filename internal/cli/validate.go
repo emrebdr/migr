@@ -13,6 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/rule"
 	"github.com/emrebdr/migr/internal/source/sql"
 	"github.com/emrebdr/migr/internal/validate"
 )
@@ -83,12 +84,18 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
+	rules, err := rulesFor(t)
+	if err != nil {
+		return err
+	}
+
 	report, err := validate.Run(cmd.Context(), validate.Options{
 		Migrations:   ordered,
 		Source:       read.source,
 		Planner:      plan.Planner{Compiler: d},
 		Allow:        allowanceFor(t, opts),
 		Capabilities: caps,
+		Rules:        rules,
 	})
 	if err != nil {
 		return err
@@ -118,6 +125,8 @@ type fault struct {
 	File string `json:"file"`
 	// Check is what found the problem.
 	Check validate.Check `json:"check"`
+	// Rule is the lint rule that found it, absent for a check that is not a rule.
+	Rule rule.ID `json:"rule,omitempty"`
 	// Direction is which of the migration's two halves the problem is in.
 	Direction ir.Direction `json:"direction"`
 	// Operation is its place in that half, counting from one, absent when the problem is not one.
@@ -160,19 +169,14 @@ type validation struct {
 	Checked int `json:"migrations"`
 	// Problems is everything found wrong, in the order the checks found it.
 	Problems []fault `json:"problems"`
+	// Warnings is everything a rule set to warn found, which is judged and fails nothing.
+	Warnings []fault `json:"warnings,omitempty"`
 	// Unchecked is every half nothing could judge, which is not the same as one that passed.
 	Unchecked []unchecked `json:"unchecked,omitempty"`
 }
 
 // validationOf renders what a validation run found against one project.
 func validationOf(t *target, caps *capability.Set, report validate.Report) validation {
-	problems := report.Problems()
-
-	found := make([]fault, 0, len(problems))
-	for _, problem := range problems {
-		found = append(found, faultOf(problem))
-	}
-
 	return validation{
 		Database:  t.name,
 		Driver:    t.db.Driver,
@@ -180,9 +184,20 @@ func validationOf(t *target, caps *capability.Set, report validate.Report) valid
 		Server:    serverOf(caps),
 		Language:  t.cfg.Migrations.Language,
 		Checked:   report.Checked(),
-		Problems:  found,
+		Problems:  faultsOf(report.Problems()),
+		Warnings:  faultsOf(report.Warnings()),
 		Unchecked: uncheckedOf(report.Unchecked()),
 	}
+}
+
+// faultsOf renders one list of findings, allocating for an empty one so problems is [] not null.
+func faultsOf(problems []validate.Problem) []fault {
+	found := make([]fault, 0, len(problems))
+	for _, problem := range problems {
+		found = append(found, faultOf(problem))
+	}
+
+	return found
 }
 
 // serverOf names the server a declaration was resolved against, and nothing where none answered.
@@ -221,6 +236,7 @@ func faultOf(problem validate.Problem) fault {
 		Version:   problem.Migration.Version,
 		File:      problem.Migration.Filename(),
 		Check:     problem.Check,
+		Rule:      problem.Rule,
 		Direction: problem.Direction,
 		Operation: problem.Operation,
 		Kind:      problem.Kind,
@@ -238,21 +254,55 @@ func (v validation) String() string {
 	v.writeUnchecked(&b)
 
 	if len(v.Problems) == 0 {
-		fmt.Fprintf(&b, "\nno problems found. %s\n", v.describeDatabase())
+		v.writeWarnings(&b)
+		fmt.Fprintf(&b, "\nno problems found%s. %s\n", v.describeWarned(), v.describeDatabase())
+		v.writeRemedy(&b)
 
 		return b.String()
 	}
 
 	v.writeProblems(&b)
+	v.writeWarnings(&b)
 
-	fmt.Fprintf(&b, "\n%s in %s. %s\n", describeProblems(len(v.Problems)),
-		describeMigrations(v.faulted()), v.describeDatabase())
+	fmt.Fprintf(&b, "\n%s in %s%s. %s\n", describeProblems(len(v.Problems)),
+		describeMigrations(v.faulted()), v.describeWarned(), v.describeDatabase())
 
-	if remedy := v.describeRemedy(); remedy != "" {
-		fmt.Fprintf(&b, "\n%s\n", remedy)
-	}
+	v.writeRemedy(&b)
 
 	return b.String()
+}
+
+// writeRemedy prints how this project answers what the checks found, where it can say.
+func (v validation) writeRemedy(b *strings.Builder) {
+	if remedy := v.describeRemedy(); remedy != "" {
+		fmt.Fprintf(b, "\n%s\n", remedy)
+	}
+}
+
+// describeWarned counts the findings that fail nothing, and says nothing where there are none.
+func (v validation) describeWarned() string {
+	switch len(v.Warnings) {
+	case 0:
+		return ""
+	case 1:
+		return ", 1 warning"
+	default:
+		return fmt.Sprintf(", %d warnings", len(v.Warnings))
+	}
+}
+
+// writeWarnings lists what a rule set to warn found, beneath the problems, since it fails nothing.
+func (v validation) writeWarnings(b *strings.Builder) {
+	if len(v.Warnings) == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\n  warnings — %s\n", strings.TrimPrefix(v.describeWarned(), ", "))
+
+	for _, warning := range v.Warnings {
+		fmt.Fprintf(b, "    %s %s %s%s\n", warning.File, warning.Rule, describeWhere(warning),
+			warning.Detail)
+	}
 }
 
 // describeDatabase says what this run asked a database, and what it asked nothing at all.
@@ -316,15 +366,48 @@ func describeUnchecked(n int) string {
 
 // describeRemedy says how this project's own format answers a problem, since a check cannot know.
 func (v validation) describeRemedy() string {
-	remedies := make([]string, 0, 2)
+	remedies := make([]string, 0, 3)
 
-	for _, remedy := range []string{v.describeReverseRemedy(), v.describeDestructiveRemedy()} {
+	for _, remedy := range []string{v.describeReverseRemedy(), v.describeDestructiveRemedy(),
+		v.describeLintRemedy()} {
 		if remedy != "" {
 			remedies = append(remedies, remedy)
 		}
 	}
 
 	return strings.Join(remedies, "\n\n")
+}
+
+// describeLintRemedy says how a project changes what a rule is worth, naming the rules that fired.
+func (v validation) describeLintRemedy() string {
+	fired := v.ruled()
+	if len(fired) == 0 {
+		return ""
+	}
+
+	lines := make([]string, 0, len(fired))
+	for _, id := range fired {
+		lines = append(lines, "      "+id+": warn")
+	}
+
+	return fmt.Sprintf("A lint rule is worth what this project says it is. Set one to %s in "+
+		"migr.yaml:\n\n  validation:\n    rules:\n%s", rule.JoinSeverities(),
+		strings.Join(lines, "\n"))
+}
+
+// ruled returns the rules that failed this run, each named once, in the order they found something.
+func (v validation) ruled() []string {
+	var fired []string
+
+	for _, found := range v.Problems {
+		if found.Rule == "" || slices.Contains(fired, found.Rule.String()) {
+			continue
+		}
+
+		fired = append(fired, found.Rule.String())
+	}
+
+	return fired
 }
 
 // describeReverseRemedy says how a SQL migration answers the question of what undoes it.
@@ -398,7 +481,7 @@ func (v validation) writeProblems(b *strings.Builder) {
 			fmt.Fprintf(b, "\n  %s\n", problem.File)
 		}
 
-		fmt.Fprintf(b, "    %-*s  %s%s\n", widest(v.Problems, checkOfFault), problem.Check,
+		fmt.Fprintf(b, "    %-*s  %s%s\n", widest(v.Problems, labelOfFault), labelOfFault(problem),
 			describeWhere(problem), problem.Detail)
 	}
 }
@@ -417,8 +500,14 @@ func (v validation) faulted() int {
 	return total
 }
 
-// checkOfFault names what found one problem.
-func checkOfFault(problem fault) string { return problem.Check.String() }
+// labelOfFault names what found one problem, which for a lint problem is the rule rather than lint.
+func labelOfFault(problem fault) string {
+	if problem.Rule != "" {
+		return problem.Rule.String()
+	}
+
+	return problem.Check.String()
+}
 
 // describeWhere names the operation a problem sits at, and nothing for one that is not about one.
 func describeWhere(problem fault) string {

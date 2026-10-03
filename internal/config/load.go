@@ -16,6 +16,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/rule"
 	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
 
@@ -122,6 +123,18 @@ func applyDefaults(cfg *Config) {
 
 	if cfg.Validation.AllowDestructive == nil {
 		cfg.Validation.AllowDestructive = []ir.Kind{}
+	}
+
+	setRuleDefaults(cfg)
+}
+
+// setRuleDefaults fills in every rule this build ships, keeping whatever the document said about it.
+func setRuleDefaults(cfg *Config) {
+	configured := cfg.Validation.Rules
+	cfg.Validation.Rules = rule.Defaults()
+
+	for id, severity := range configured {
+		cfg.Validation.Rules[id] = severity
 	}
 }
 

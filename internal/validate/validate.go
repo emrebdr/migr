@@ -12,6 +12,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/rule"
 )
 
 // Options is everything a validation run needs, none of which is a database.
@@ -26,6 +27,8 @@ type Options struct {
 	Allow engine.Allowance
 	// Capabilities is what the connected server declares, and is nil for a run that opened nothing.
 	Capabilities *capability.Set
+	// Rules are the lint rules this project runs, and nil is a run that performs no lint pass.
+	Rules *rule.Set
 }
 
 // check reports what a validation run was not given, before it reports on anything else.
@@ -38,7 +41,11 @@ func (o Options) check() error {
 		return ErrNoSource
 	}
 
-	return o.checkCapabilities()
+	if err := o.checkCapabilities(); err != nil {
+		return err
+	}
+
+	return o.checkRules()
 }
 
 // checkCapabilities refuses a declaration no driver built, which would refuse every operation.
@@ -48,6 +55,15 @@ func (o Options) checkCapabilities() error {
 	}
 
 	return ErrUnbuiltCapabilities
+}
+
+// checkRules refuses a rule set nothing built, which would silently run no rule at all.
+func (o Options) checkRules() error {
+	if o.Rules == nil || !o.Rules.Zero() {
+		return nil
+	}
+
+	return ErrUnbuiltRules
 }
 
 // Run checks every migration and reports everything wrong with them, opening no database.
@@ -89,7 +105,7 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 
 	r.destructive(m, up.Operations)
 	r.compile(ctx, m, ir.Up, up.Operations)
-	r.undo(ctx, m, up)
+	r.lint(m, up, r.undo(ctx, m, up))
 }
 
 // destructive reports every operation in a migration's up half that destroys what nothing permits.
@@ -118,28 +134,40 @@ func (r *runner) unanswered(m migration.Migration, dir ir.Direction, err error) 
 		Detail: detailOf(m, err)})
 }
 
+// undone is what a run found that undoes a migration: the half itself, and where it came from.
+type undone struct {
+	// emitted is what the down half does, which a migration nothing undoes has none of.
+	emitted engine.Emitted
+	// from is where that came from, since authoring a down and deriving one are different facts.
+	from rule.Undo
+}
+
 // undo checks what undoes a migration: what its author wrote, what its author declares, or an inverse.
-func (r *runner) undo(ctx context.Context, m migration.Migration, up engine.Emitted) {
+func (r *runner) undo(ctx context.Context, m migration.Migration, up engine.Emitted) undone {
 	down, err := r.ask(ctx, m, ir.Down)
 
 	switch {
 	case err == nil:
 		r.compile(ctx, m, ir.Down, down.Operations)
+
+		return undone{emitted: down, from: rule.UndoAuthored}
 	case errors.Is(err, engine.ErrDeclaredIrreversible):
-		return
+		return undone{from: rule.UndoDeclared}
 	case errors.Is(err, engine.ErrNoDownAuthored):
-		r.derive(ctx, m, up)
+		return r.derive(ctx, m, up)
 	default:
 		r.unanswered(m, ir.Down, err)
+
+		return undone{from: rule.UndoUnread}
 	}
 }
 
 // derive inverts what a migration does, reporting every operation nothing can undo rather than the first.
-func (r *runner) derive(ctx context.Context, m migration.Migration, up engine.Emitted) {
+func (r *runner) derive(ctx context.Context, m migration.Migration, up engine.Emitted) undone {
 	if len(up.Direct) > 0 {
 		r.report.add(directProblem(m, up.Direct))
 
-		return
+		return undone{from: rule.UndoNone}
 	}
 
 	inverse := make(ir.Operations, 0, len(up.Operations))
@@ -160,11 +188,55 @@ func (r *runner) derive(ctx context.Context, m migration.Migration, up engine.Em
 	}
 
 	if len(inverse) != len(up.Operations) {
-		return
+		return undone{from: rule.UndoNone}
 	}
 
 	slices.Reverse(inverse)
 	r.compile(ctx, m, ir.Down, inverse)
+
+	return undone{emitted: engine.Emitted{Operations: inverse}, from: rule.UndoDerived}
+}
+
+// lint reports what every enabled rule found about a migration whose halves have both been read.
+func (r *runner) lint(m migration.Migration, up engine.Emitted, down undone) {
+	if r.opts.Rules == nil {
+		return
+	}
+
+	for _, judged := range r.opts.Rules.Judge(subjectOf(m, up, down)) {
+		problem := lintProblem(m, judged)
+
+		switch judged.Severity {
+		case rule.SeverityError:
+			r.report.add(problem)
+		case rule.SeverityWarn:
+			r.report.warn(problem)
+		case rule.SeverityOff:
+		}
+	}
+}
+
+// subjectOf renders one migration as the rules see it, which is both halves and what undoes it.
+func subjectOf(m migration.Migration, up engine.Emitted, down undone) rule.Subject {
+	return rule.Subject{
+		Migration: m,
+		Up:        rule.Half{Operations: up.Operations, Direct: up.Direct},
+		Down:      rule.Half{Operations: down.emitted.Operations, Direct: down.emitted.Direct},
+		Undo:      down.from,
+	}
+}
+
+// lintProblem renders one judgement as a problem, naming the rule that made it.
+func lintProblem(m migration.Migration, judged rule.Judgement) Problem {
+	return Problem{
+		Migration: m,
+		Check:     CheckLint,
+		Rule:      judged.Rule,
+		Direction: judged.Direction,
+		Operation: judged.Operation,
+		Kind:      judged.Kind,
+		Detail:    judged.Detail,
+	}
 }
 
 // compile turns one half's operations into statements, reporting every one anything refuses.

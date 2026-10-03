@@ -54,6 +54,8 @@ const (
 	actLoadsNothing = "loads-nothing"
 	// actLoadsExtra reports a migration nothing routed to it, so two runtimes would claim one file.
 	actLoadsExtra = "loads-extra"
+	// actTypes emits typed operations rather than raw ones, which is what a lint rule can read.
+	actTypes = "types"
 )
 
 // The declarations a scripted runtime reports, which compose with every act above.
@@ -312,9 +314,18 @@ func (r *scriptedRuntime) execute(m *protocol.Message) bool {
 			"this migration authors no down of its own"))
 	}
 
-	r.callback(protocol.HostSchemaApply, operationsFor(p.Direction))
+	r.callback(protocol.HostSchemaApply, r.operations(p.Direction))
 
 	return r.reply(m, protocol.ExecuteResult{Operations: 1})
+}
+
+// operations renders the one operation this script emits for one direction.
+func (r *scriptedRuntime) operations(direction ir.Direction) string {
+	if r.act == actTypes {
+		return typedOperationsFor(direction)
+	}
+
+	return operationsFor(direction)
 }
 
 // operationsFor renders the one operation a scripted migration emits for one direction.
@@ -325,6 +336,20 @@ func operationsFor(direction ir.Direction) string {
 	}
 
 	return fmt.Sprintf(`{"operations":[{"op":"raw","driver":%q,"sql":%q}]}`, fakeName, statement)
+}
+
+// scriptedTable is the table a typed scripted migration creates, with no key and a text column.
+const scriptedTable = "scripted"
+
+// typedOperationsFor renders a create_table a lint rule can read, and the drop that undoes it.
+func typedOperationsFor(direction ir.Direction) string {
+	if direction == ir.Down {
+		return fmt.Sprintf(`{"operations":[{"op":"drop_table","table":%q}]}`, scriptedTable)
+	}
+
+	return fmt.Sprintf(`{"operations":[{"op":"create_table","table":%q,"columns":`+
+		`[{"name":"id","type":"int64","nullable":false},`+
+		`{"name":"note","type":"text","nullable":false}]}]}`, scriptedTable)
 }
 
 // callback makes one host request and waits for its answer, as an SDK that does not pipeline does.

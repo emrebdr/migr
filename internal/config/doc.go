@@ -82,6 +82,15 @@
 //
 // # Secrets
 //
+// Validation.Rules is a map from lint rule id to severity, and applyDefaults fills in every rule
+// internal/rule ships before validation runs -- so the resolved config *is* the complete set and
+// migr config lists every rule with what this project decided it is worth. That is where an
+// operator discovers the ids, and it is CLAUDE.md §9's rule exactly: the scaffold writes only keys
+// that have no default. An id no rule answers to, and a severity outside error/warn/off, are both
+// refused by name (ADR 0066, F) -- a line that reads like permission and silently does nothing is
+// the failure that check exists to prevent. Both goccy and encoding/json sort map keys, measured,
+// so the printed set needs no marshaller of its own.
+//
 // Connection strings are held in a Secret, whose String, MarshalYAML, and
 // MarshalJSON all redact. Printing, logging, or serializing a config is
 // therefore safe by default, and obtaining the usable value requires a

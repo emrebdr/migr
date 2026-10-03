@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/checksum"
+	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/history"
@@ -109,6 +110,8 @@ var codes = []coded{
 		args: []string{"--connect"}, stage: stagedDeclined, want: ExitValidation},
 	{name: "a database that cannot be reached", command: "validate",
 		args: []string{"--connect"}, stage: stagedUnreachable, want: ExitRuntime},
+	{name: "a rule this build does not ship", command: "validate", stage: stagedUnknownRule,
+		want: ExitValidation},
 	{name: "a migration nothing can undo", command: "validate", stage: stagedOneWay,
 		want: ExitValidation},
 	{name: "resolve over a database with nothing between states", command: "resolve",
@@ -455,6 +458,18 @@ func stagedDeclined(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
 	return declining(t)
+}
+
+// stagedUnknownRule is a project naming a lint rule nothing ships, which must fail rather than pass.
+func stagedUnknownRule(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := project(t, twoTables()...)
+	write(t, filepath.Join(dir, config.DefaultFilename),
+		strings.Replace(projectConfig, allowingRaw,
+			allowingRaw+"\n  rules:\n    no-such-rule: off\n", 1))
+
+	return dir, f, drivers
 }
 
 // stagedUnreachable is a project whose database answers nothing, which --connect must fail over.

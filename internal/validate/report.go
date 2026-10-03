@@ -25,6 +25,8 @@ type Unchecked struct {
 type Report struct {
 	// problems are the problems found, ordered by migration and then by where in it each sits.
 	problems []Problem
+	// warnings are what a lint rule set to warn found, which are judged but fail nothing.
+	warnings []Problem
 	// unchecked are the halves this run could not judge at all, which are not problems.
 	unchecked []Unchecked
 	// checked is how many migrations were looked at, which a report of no problems still states.
@@ -34,6 +36,11 @@ type Report struct {
 // Problems returns every problem found, in the order they were found, as a copy.
 func (r Report) Problems() []Problem {
 	return slices.Clone(r.problems)
+}
+
+// Warnings returns everything found that fails nothing, in the order it was found, as a copy.
+func (r Report) Warnings() []Problem {
+	return slices.Clone(r.warnings)
 }
 
 // Unchecked returns every half this run could not judge, in the order it reached them, as a copy.
@@ -68,6 +75,11 @@ func (r Report) Migrations() int {
 // add records one problem, keeping the order the checks found them in.
 func (r *Report) add(problem Problem) {
 	r.problems = append(r.problems, problem)
+}
+
+// warn records one finding that fails nothing, which is a lint rule set to warn and only that.
+func (r *Report) warn(problem Problem) {
+	r.warnings = append(r.warnings, problem)
 }
 
 // skip records one half nothing could judge, which is reported rather than counted as passing.

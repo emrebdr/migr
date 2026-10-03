@@ -177,5 +177,5 @@ func previewDirection(cmd *cobra.Command, opts *options, s *session, dir ir.Dire
 		return err
 	}
 
-	return writeResult(cmd.OutOrStdout(), opts, planOf(s.database, s.options.Allow, previewed))
+	return writeResult(cmd.OutOrStdout(), opts, planOf(s, previewed))
 }

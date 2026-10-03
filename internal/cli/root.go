@@ -19,6 +19,7 @@ type options struct {
 	jsonOut          bool
 	verbosity        int
 	allowDestructive bool
+	connect          bool
 	log              *slog.Logger
 	clock            func() time.Time
 	drivers          *driver.Registry
@@ -106,4 +107,10 @@ func registerGlobalFlags(cmd *cobra.Command, opts *options) {
 func registerAllowDestructive(cmd *cobra.Command, opts *options) {
 	cmd.Flags().BoolVar(&opts.allowDestructive, "allow-destructive", false,
 		"permit every operation that destroys data, for this run")
+}
+
+// registerConnect binds the flag that opens a database, on the one command that otherwise opens none.
+func registerConnect(cmd *cobra.Command, opts *options) {
+	cmd.Flags().BoolVar(&opts.connect, "connect", false,
+		"also run the checks that need the target database, failing if it cannot be reached")
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
@@ -162,17 +164,48 @@ func runGated(t *testing.T, allowed engine.Allowance, src source, c compiler,
 ) Report {
 	t.Helper()
 
-	report, err := Run(t.Context(), Options{
-		Migrations: found,
-		Source:     src,
-		Planner:    plan.Planner{Compiler: c},
-		Allow:      allowed,
-	})
+	return runOnline(t, Options{Allow: allowed}, src, c, found...)
+}
+
+// runOnline validates a staged project under options a test has already part-filled.
+func runOnline(t *testing.T, opts Options, src source, c driver.Compiler,
+	found ...migration.Migration,
+) Report {
+	t.Helper()
+
+	opts.Migrations = found
+	opts.Source = src
+	opts.Planner = plan.Planner{Compiler: c}
+
+	report, err := Run(t.Context(), opts)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
 	return report
+}
+
+// declaring returns a declaration refusing the kinds named with a reason, natively for the rest.
+func declaring(t *testing.T, refused ...ir.Kind) *capability.Set {
+	t.Helper()
+
+	rules := make(map[ir.Kind]capability.Rule, len(ir.Kinds()))
+
+	for _, kind := range ir.Kinds() {
+		verdict := capability.Native(capability.LockFree)
+		if slices.Contains(refused, kind) {
+			verdict = capability.Unsupported(serverReason)
+		}
+
+		rules[kind] = capability.Fixed(verdict)
+	}
+
+	set, err := capability.NewSet(capability.Facts{Driver: driverName, Server: "1.0"}, rules)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+
+	return &set
 }
 
 // checksFound returns the check each problem came from, in the order the run found them.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
@@ -16,8 +17,15 @@ import (
 	"github.com/emrebdr/migr/internal/validate"
 )
 
-// noDatabase is what every validation run says for itself, since the claim is the command's point.
+// noDatabase is what an offline validation run says for itself, since the claim is the command's point.
 const noDatabase = "no database was opened"
+
+// missedCheck is what an offline run owes about the check it could not make (ADR 0064).
+//
+// A capability verdict is resolved inside Open, so a run with no connection cannot ask what this
+// server will refuse -- and reporting "no problems found" without saying so would be the pass
+// ADR 0028 B2 rejected. The remedy is in the sentence, since the flag is what closes the gap.
+const missedCheck = "Nothing was checked against a server; --connect asks the one migr.yaml names."
 
 // newValidateCmd builds the `migr validate` subcommand.
 func newValidateCmd(opts *options) *cobra.Command {
@@ -34,11 +42,12 @@ func newValidateCmd(opts *options) *cobra.Command {
 	}
 
 	registerAllowDestructive(cmd, opts)
+	registerConnect(cmd, opts)
 
 	return cmd
 }
 
-// runValidate checks every migration and reports what is wrong with them, connecting to nothing.
+// runValidate checks every migration and reports what is wrong with them, connecting only if asked.
 func runValidate(cmd *cobra.Command, opts *options) (err error) {
 	t, err := resolve(opts)
 	if err != nil {
@@ -46,6 +55,11 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 	}
 
 	found, err := t.discovered(opts)
+	if err != nil {
+		return err
+	}
+
+	caps, err := t.declared(cmd.Context(), opts)
 	if err != nil {
 		return err
 	}
@@ -70,16 +84,17 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 	}
 
 	report, err := validate.Run(cmd.Context(), validate.Options{
-		Migrations: ordered,
-		Source:     read.source,
-		Planner:    plan.Planner{Compiler: d},
-		Allow:      allowanceFor(t, opts),
+		Migrations:   ordered,
+		Source:       read.source,
+		Planner:      plan.Planner{Compiler: d},
+		Allow:        allowanceFor(t, opts),
+		Capabilities: caps,
 	})
 	if err != nil {
 		return err
 	}
 
-	return finish(cmd, opts, validationOf(t.name, t.db.Driver, t.cfg.Migrations.Language, report))
+	return finish(cmd, opts, validationOf(t, caps, report))
 }
 
 // finish prints a validation report, and fails when the report is what a validation failure is.
@@ -135,6 +150,10 @@ type validation struct {
 	Database string `json:"database"`
 	// Driver is the engine every migration was compiled for.
 	Driver string `json:"driver"`
+	// Connected reports whether the checks needing the target database were made at all.
+	Connected bool `json:"connected"`
+	// Server is the version those checks were resolved against, absent where none was reached.
+	Server string `json:"server,omitempty"`
 	// Language is what this project's migrations are written in, which is how a remedy is phrased.
 	Language config.Language `json:"language"`
 	// Checked is how many migrations were looked at.
@@ -146,8 +165,7 @@ type validation struct {
 }
 
 // validationOf renders what a validation run found against one project.
-func validationOf(database, driverName string, lang config.Language,
-	report validate.Report) validation {
+func validationOf(t *target, caps *capability.Set, report validate.Report) validation {
 	problems := report.Problems()
 
 	found := make([]fault, 0, len(problems))
@@ -156,13 +174,24 @@ func validationOf(database, driverName string, lang config.Language,
 	}
 
 	return validation{
-		Database:  database,
-		Driver:    driverName,
-		Language:  lang,
+		Database:  t.name,
+		Driver:    t.db.Driver,
+		Connected: caps != nil,
+		Server:    serverOf(caps),
+		Language:  t.cfg.Migrations.Language,
 		Checked:   report.Checked(),
 		Problems:  found,
 		Unchecked: uncheckedOf(report.Unchecked()),
 	}
+}
+
+// serverOf names the server a declaration was resolved against, and nothing where none answered.
+func serverOf(caps *capability.Set) string {
+	if caps == nil {
+		return ""
+	}
+
+	return caps.Server()
 }
 
 // uncheckedOf renders every half a run could not judge, naming the migration each belongs to.
@@ -226,13 +255,31 @@ func (v validation) String() string {
 	return b.String()
 }
 
-// describeDatabase says what opening no database cost this run, which for most projects is nothing.
+// describeDatabase says what this run asked a database, and what it asked nothing at all.
 func (v validation) describeDatabase() string {
-	if len(v.Unchecked) == 0 {
-		return noDatabase + "."
+	if !v.Connected {
+		return fmt.Sprintf("%s%s. %s", noDatabase, v.describeUnmade("so"), missedCheck)
 	}
 
-	return fmt.Sprintf("%s, so %s could not be made.", noDatabase,
+	return fmt.Sprintf("%s%s.", v.describeServer(), v.describeUnmade("and"))
+}
+
+// describeServer says which server the capability check was resolved against, naming the driver otherwise.
+func (v validation) describeServer() string {
+	if v.Server == "" {
+		return fmt.Sprintf("every operation was checked against driver %q", v.Driver)
+	}
+
+	return fmt.Sprintf("every operation was checked against server %s", v.Server)
+}
+
+// describeUnmade counts the checks nothing could make, which is a migration's own reads and nothing else.
+func (v validation) describeUnmade(conjunction string) string {
+	if len(v.Unchecked) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf(", %s %s could not be made", conjunction,
 		describeUnchecked(len(v.Unchecked)))
 }
 

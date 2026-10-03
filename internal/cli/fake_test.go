@@ -40,6 +40,10 @@ type fake struct {
 	autoCommits bool
 	// unsupported is the SQL whose operation this driver will not compile at all.
 	unsupported string
+	// serverRefuses is the SQL this server declares it will not perform, having compiled it.
+	serverRefuses string
+	// openErr is what connecting reports, nil for a database that answers.
+	openErr error
 	// emulates names the strategy this driver achieves every operation by, empty when it is native.
 	emulates string
 	// expands makes the compiler ask for a session, the way a driver that reads a schema does.
@@ -196,10 +200,14 @@ func (f *fake) capabilities(t *testing.T) capability.Set {
 	return set
 }
 
-// verdict answers both axes, and must agree with Compile or the conformance biconditional is broken.
+// verdict answers both axes, refusing what the compiler refuses and what only this server would.
 func (f *fake) verdict(op ir.Operation) capability.Verdict {
 	if f.refuses(op) {
 		return capability.Unsupported(refusalReason)
+	}
+
+	if f.declines(op) {
+		return capability.Unsupported(serverRefusalReason)
 	}
 
 	if f.emulates != "" {
@@ -216,8 +224,19 @@ func (f *fake) refuses(op ir.Operation) bool {
 	return ok && f.unsupported != "" && raw.SQL == f.unsupported
 }
 
+// declines reports whether this server refuses an operation its compiler produced statements for.
+func (f *fake) declines(op ir.Operation) bool {
+	raw, ok := op.(ir.Raw)
+
+	return ok && f.serverRefuses != "" && raw.SQL == f.serverRefuses
+}
+
 // refusalReason is why the fake driver refuses the operation a test told it to refuse.
 const refusalReason = "this fake engine has no such thing"
+
+// serverRefusalReason is why the fake server refuses one it compiled, which only a version knows.
+const serverRefusalReason = "this release accepts the statement and discards it, so refusing is " +
+	"the only answer that is not a lie"
 
 // fakeDriver compiles raw SQL to itself and opens the one session a test reads afterwards.
 type fakeDriver struct {
@@ -260,9 +279,13 @@ func emulationStep(strategy string) string {
 	return "-- achieved by " + strategy
 }
 
-// Open hands back the session, which holds no connection to give away.
+// Open hands back the session, or whatever a test told this database to refuse connecting with.
 func (d *fakeDriver) Open(context.Context, string) (driver.Conn, error) {
 	d.fake.note("open")
+
+	if d.fake.openErr != nil {
+		return nil, d.fake.openErr
+	}
 
 	return &fakeConn{fake: d.fake, caps: d.caps}, nil
 }

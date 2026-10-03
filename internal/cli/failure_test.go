@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,9 +100,15 @@ var codes = []coded{
 	{name: "the migration lock", command: "plan", stage: stagedLocked, want: ExitLock},
 	{name: "a migration nothing permits", command: "up", stage: stagedUnpermitted,
 		want: ExitValidation},
+	{name: "an operation this server cannot perform", command: "up", stage: stagedDeclined,
+		want: ExitRuntime},
 	{name: "validate", command: "validate", stage: staged, want: ExitOK},
 	{name: "a migration nothing permits", command: "validate", stage: stagedUnpermitted,
 		want: ExitValidation},
+	{name: "an operation this server cannot perform", command: "validate",
+		args: []string{"--connect"}, stage: stagedDeclined, want: ExitValidation},
+	{name: "a database that cannot be reached", command: "validate",
+		args: []string{"--connect"}, stage: stagedUnreachable, want: ExitRuntime},
 	{name: "a migration nothing can undo", command: "validate", stage: stagedOneWay,
 		want: ExitValidation},
 	{name: "resolve over a database with nothing between states", command: "resolve",
@@ -441,6 +448,23 @@ func stagedUnpermitted(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
 	return refusing(t)
+}
+
+// stagedDeclined is a project whose server compiles one operation and declares it cannot perform it.
+func stagedDeclined(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	return declining(t)
+}
+
+// stagedUnreachable is a project whose database answers nothing, which --connect must fail over.
+func stagedUnreachable(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := project(t, twoTables()...)
+	f.openErr = errors.New("connection refused")
+
+	return dir, f, drivers
 }
 
 // stagedFresh is the project migr init writes: a config, a migrations directory, and no migrations.

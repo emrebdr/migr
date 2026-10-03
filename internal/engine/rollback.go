@@ -72,6 +72,10 @@ func (e *executor) reverse(ctx context.Context, item queued) (prepared, error) {
 		return prepared{}, e.fail(item, plan.Plan{}, err)
 	}
 
+	if err := e.capable(item.migration, ir.Down, emitted.Operations); err != nil {
+		return prepared{}, err
+	}
+
 	ready, err := e.prepare(ctx, item, ir.Down, emitted)
 	if err != nil {
 		return prepared{}, e.fail(item, plan.Plan{}, err)

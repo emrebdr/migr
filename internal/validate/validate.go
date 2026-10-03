@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
@@ -23,6 +24,8 @@ type Options struct {
 	Planner plan.Planner
 	// Allow is the destruction a run would be permitted, and an unset one permits none of it.
 	Allow engine.Allowance
+	// Capabilities is what the connected server declares, and is nil for a run that opened nothing.
+	Capabilities *capability.Set
 }
 
 // check reports what a validation run was not given, before it reports on anything else.
@@ -35,7 +38,16 @@ func (o Options) check() error {
 		return ErrNoSource
 	}
 
-	return nil
+	return o.checkCapabilities()
+}
+
+// checkCapabilities refuses a declaration no driver built, which would refuse every operation.
+func (o Options) checkCapabilities() error {
+	if o.Capabilities == nil || o.Capabilities.Driver() != "" {
+		return nil
+	}
+
+	return ErrUnbuiltCapabilities
 }
 
 // Run checks every migration and reports everything wrong with them, opening no database.
@@ -155,7 +167,7 @@ func (r *runner) derive(ctx context.Context, m migration.Migration, up engine.Em
 	r.compile(ctx, m, ir.Down, inverse)
 }
 
-// compile turns one half's operations into statements, reporting every one the driver refuses.
+// compile turns one half's operations into statements, reporting every one anything refuses.
 func (r *runner) compile(ctx context.Context, m migration.Migration, dir ir.Direction,
 	ops ir.Operations,
 ) {
@@ -164,19 +176,48 @@ func (r *runner) compile(ctx context.Context, m migration.Migration, dir ir.Dire
 	for _, op := range ops {
 		index++
 
-		err := r.errorFrom(ctx, m, index, op)
-		if err == nil {
-			continue
-		}
-
-		if errors.Is(err, driver.ErrNeedsSession) {
-			r.report.skip(uncheckedOperation(m, dir, index, op, err))
-
-			continue
-		}
-
-		r.report.add(compileProblem(m, dir, err))
+		r.operation(ctx, m, dir, index, op)
 	}
+}
+
+// operation reports what the compiler refuses about one operation, and then what the server does.
+func (r *runner) operation(ctx context.Context, m migration.Migration, dir ir.Direction,
+	index int32, op ir.Operation,
+) {
+	err := r.errorFrom(ctx, m, index, op)
+
+	switch {
+	case err == nil:
+	case errors.Is(err, driver.ErrNeedsSession):
+		r.report.skip(uncheckedOperation(m, dir, index, op, err))
+	default:
+		r.report.add(compileProblem(m, dir, err))
+
+		return
+	}
+
+	r.capable(m, dir, index, op)
+}
+
+// capable reports an operation the connected server declares it will not perform, where one answered.
+func (r *runner) capable(m migration.Migration, dir ir.Direction, index int32, op ir.Operation) {
+	if r.opts.Capabilities == nil {
+		return
+	}
+
+	verdict := r.opts.Capabilities.Resolve(op)
+	if verdict.Allowed() {
+		return
+	}
+
+	r.report.add(Problem{
+		Migration: m,
+		Check:     CheckCapability,
+		Direction: dir,
+		Operation: index,
+		Kind:      op.Kind(),
+		Detail:    verdict.Reason(),
+	})
 }
 
 // errorFrom compiles one operation and reports what stopped it, discarding the statements.

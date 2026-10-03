@@ -102,6 +102,10 @@ func TestTheConformanceSuitePassesWithoutAServer(t *testing.T) {
 		{version: serverVersion{variant: MySQL, major: 8, minor: 4}},
 		{version: serverVersion{variant: MariaDB, major: 11, minor: 4, patch: 13}},
 		{version: serverVersion{variant: MySQL, major: 8, minor: 0, patch: 46}, logBin: true},
+		{version: serverVersion{variant: MySQL, major: 8, minor: 0}},
+		{version: serverVersion{variant: MySQL, major: 8, minor: 0, patch: 15}},
+		{version: serverVersion{variant: MySQL, major: 8, minor: 0, patch: 18}},
+		{version: serverVersion{variant: MariaDB, major: 10, minor: 5}},
 	} {
 		t.Run(describeDeclaration(declaration), func(t *testing.T) {
 			d, err := New(driver.Options{})
@@ -119,9 +123,14 @@ func TestTheConformanceSuitePassesWithoutAServer(t *testing.T) {
 	t.Log("what invariant #13 asks for and one version cannot show it holding.")
 	t.Log("")
 	t.Log("The fourth case is the same server with its binary log on, which is the one fact besides")
-	t.Log("the release a verdict is keyed to. It refuses an add_column carrying a uuid default and")
-	t.Log("must disturb nothing else: checkCompiled fails a declaration that refuses an operation")
-	t.Log("Compile accepted, so a refusal reaching one fixture too many fails here.")
+	t.Log("the release a verdict is keyed to. It refuses an add_column carrying a uuid default.")
+	t.Log("")
+	t.Log("The last four are below this driver's version gates, and until M10-T2 they could not be")
+	t.Log("here at all: the suite called every version-dependent refusal a disagreement, so these")
+	t.Log("four servers produced five failures between them -- add_check and drop_check on 8.0.0,")
+	t.Log("drop_check on 8.0.15 and 8.0.18, rename_column on MariaDB 10.5.0. A declaration may")
+	t.Log("refuse more than Compile does, because it is resolved against a server Compile cannot")
+	t.Log("see; what it may never do is promise what Compile refuses (ADR 0064).")
 }
 
 // describeDeclaration names one declaration, since two cases may differ by configuration alone.

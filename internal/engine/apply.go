@@ -81,6 +81,10 @@ func (e *executor) forward(ctx context.Context, item queued) (prepared, error) {
 			fmt.Errorf("asking what this migration does: %w", err))
 	}
 
+	if err := e.capable(item.migration, ir.Up, emitted.Operations); err != nil {
+		return prepared{}, err
+	}
+
 	if err := e.permit(item.migration, emitted.Operations); err != nil {
 		return prepared{}, err
 	}

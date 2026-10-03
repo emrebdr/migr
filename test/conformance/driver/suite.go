@@ -121,7 +121,7 @@ func (s Suite) checkOperation(caps capability.Set, op ir.Operation, label string
 	}
 }
 
-// checkEmulated reports a driver that asks for a session for an operation it did not declare emulated.
+// checkEmulated reports a driver that asks for a session for an operation it declared it performs directly.
 func (s Suite) checkEmulated(op ir.Operation, label string, verdict capability.Verdict,
 	err error,
 ) []string {
@@ -131,6 +131,10 @@ func (s Suite) checkEmulated(op ir.Operation, label string, verdict capability.V
 	}
 
 	problems := s.checkNeedsSession(op, label, needs)
+
+	if !verdict.Allowed() {
+		return append(problems, checkServerRefusal(label, verdict)...)
+	}
 
 	if verdict.Support() != capability.SupportEmulated {
 		problems = append(problems, fmt.Sprintf("%s: Compile asks for a session, which is what an "+
@@ -144,7 +148,7 @@ func (s Suite) checkEmulated(op ir.Operation, label string, verdict capability.V
 			"declaration promises")
 	}
 
-	if verdict.Allowed() && !verdict.Lock().Valid() {
+	if !verdict.Lock().Valid() {
 		problems = append(problems, fmt.Sprintf("%s: the driver declares lock impact %q, which "+
 			"names no verdict this build recognizes, so it satisfies no safety ceiling at all",
 			label, verdict.Lock()))
@@ -179,8 +183,7 @@ func (s Suite) checkNeedsSession(op ir.Operation, label string,
 // checkCompiled reports an operation that compiled but disagrees with what the driver declared.
 func checkCompiled(label string, verdict capability.Verdict, stmts []driver.Statement) []string {
 	if !verdict.Allowed() {
-		return []string{fmt.Sprintf("%s: it compiles, but the driver declares it %q; the "+
-			"declaration is authoritative, so one of the two is wrong", label, verdict)}
+		return checkServerRefusal(label, verdict)
 	}
 
 	var problems []string
@@ -196,6 +199,16 @@ func checkCompiled(label string, verdict capability.Verdict, stmts []driver.Stat
 	}
 
 	return problems
+}
+
+// checkServerRefusal holds a refusal the compiler could not have reached to stating what it is.
+func checkServerRefusal(label string, verdict capability.Verdict) []string {
+	if strings.TrimSpace(verdict.Reason()) == "" {
+		return []string{label + ": it compiles and the driver declares it unsupported without " +
+			"giving a reason an operator can act on, so nothing says what this server cannot do"}
+	}
+
+	return nil
 }
 
 // describeEmptyOutput reports a compile that runs a migration nowhere while reporting no refusal.

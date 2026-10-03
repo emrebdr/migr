@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
@@ -319,6 +320,29 @@ func allEnding(stops []closer) closer {
 	return func(ctx context.Context) error {
 		return closeAll(ctx, stops)
 	}
+}
+
+// declared returns what the target server declares it can do, and nothing for a run not asked to connect.
+func (t *target) declared(ctx context.Context, opts *options) (*capability.Set, error) {
+	if !opts.connect {
+		return nil, nil
+	}
+
+	_, conn, err := dial(ctx, opts, t)
+	if err != nil {
+		return nil, err
+	}
+
+	caps := conn.Capabilities()
+
+	opts.log.Info("read the server's capabilities", "database", t.name, "driver", t.db.Driver,
+		"server", caps.Server())
+
+	if err := conn.Close(context.WithoutCancel(ctx)); err != nil {
+		return nil, fmt.Errorf("closing the session the capabilities were read from: %w", err)
+	}
+
+	return &caps, nil
 }
 
 // offlineSource returns what reads this project's migrations over sessions that open no database.

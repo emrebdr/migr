@@ -84,6 +84,8 @@ type operation struct {
 	Support capability.Support `json:"support"`
 	// Strategy is how an emulation is achieved, and nothing for an operation performed directly.
 	Strategy string `json:"strategy,omitempty"`
+	// Reason is why this server refuses the operation, and nothing for one it will perform.
+	Reason string `json:"reason,omitempty"`
 	// Destroys is what this operation would lose, and nothing for one that loses nothing.
 	Destroys string `json:"destroys,omitempty"`
 	// Refused reports an operation nothing permits, which migr up would stop at rather than run.
@@ -201,6 +203,7 @@ func operationOf(caps capability.Set, allowed engine.Allowance, step plan.Step) 
 		Kind:       step.Op.Kind(),
 		Support:    verdict.Support(),
 		Strategy:   verdict.Strategy(),
+		Reason:     verdict.Reason(),
 		Destroys:   destroyedSubject(step.Op),
 		Refused:    !allowed.Permits(step.Op),
 		Statements: stmts,
@@ -242,9 +245,38 @@ func (p compiledPlan) String() string {
 		describeStatements(p.Statements), describeSkipped(p.Skipped))
 
 	p.writeDirectNote(&b)
+	p.writeUnsupportedNote(&b)
 	p.writeRefusedNote(&b)
 
 	return b.String()
+}
+
+// writeUnsupportedNote says what this server will not perform, since a report finds without failing.
+func (p compiledPlan) writeUnsupportedNote(b *strings.Builder) {
+	unsupported := p.countUnsupported()
+	if unsupported == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\nmarked × above: %s this server declares it cannot perform, with the reason "+
+		"beneath each. migr %s refuses the migration they are in before sending anything; this plan "+
+		"prints what it would have sent. The verdict is resolved against the connected server, so "+
+		"another server may answer differently.\n", describeUnpermitted(unsupported), p.Direction)
+}
+
+// countUnsupported returns how many operations in the whole plan this server declares it cannot perform.
+func (p compiledPlan) countUnsupported() int {
+	total := 0
+
+	for _, m := range p.Migrations {
+		for _, op := range m.Operations {
+			if op.Reason != "" {
+				total++
+			}
+		}
+	}
+
+	return total
 }
 
 // writeRefusedNote says what migr up would refuse, since a report finds a problem without failing.
@@ -348,13 +380,24 @@ func describeArguments(n int) string {
 	return fmt.Sprintf("%d arguments", n)
 }
 
-// write renders one operation's heading and the statements it compiled to, indented beneath it.
+// write renders one operation's heading, why this server refuses it, and what it compiled to.
 func (o operation) write(b *strings.Builder) {
 	fmt.Fprintf(b, "       %d  %s  %s%s\n", o.Index, o.Kind, describeVerdict(o), o.describeDestroys())
+
+	o.writeReason(b)
 
 	for _, stmt := range o.Statements {
 		fmt.Fprintf(b, "%s\n", indented(stmt))
 	}
+}
+
+// writeReason renders why this server refuses an operation, above the statements it refuses.
+func (o operation) writeReason(b *strings.Builder) {
+	if o.Reason == "" {
+		return
+	}
+
+	fmt.Fprintf(b, "%s\n", indented("× "+o.Reason))
 }
 
 // describeDestroys says what an operation would lose, and marks the ones nothing has permitted.

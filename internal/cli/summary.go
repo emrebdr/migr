@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
@@ -55,6 +56,8 @@ type planned struct {
 	Statements int `json:"statements"`
 	// Refused is how many of its operations destroy what nothing permits, which migr up stops at.
 	Refused int `json:"refused,omitempty"`
+	// Unsupported is how many this server declares it cannot perform, which migr up also stops at.
+	Unsupported int `json:"unsupported,omitempty"`
 }
 
 // left is one migration an invocation did not act on, and the state it was left in.
@@ -130,9 +133,11 @@ func summaryOf(database string, dir ir.Direction, result engine.Result) runSumma
 }
 
 // planOf renders what an invocation would have done, and what it found standing in the way.
-func planOf(database string, allowed engine.Allowance, previewed engine.Previewed) planSummary {
+func planOf(s *session, previewed engine.Previewed) planSummary {
+	allowed, caps := s.options.Allow, s.conn.Capabilities()
+
 	summary := planSummary{
-		Database:  database,
+		Database:  s.database,
 		Direction: previewed.Direction,
 		DryRun:    true,
 		Recorded:  previewed.Recorded,
@@ -143,11 +148,12 @@ func planOf(database string, allowed engine.Allowance, previewed engine.Previewe
 
 	for _, step := range previewed.Steps {
 		summary.Steps = append(summary.Steps, planned{
-			Ordinal:    step.Ordinal,
-			Version:    step.Plan.Migration.Version,
-			File:       step.Plan.Migration.Filename(),
-			Statements: len(step.Plan.Statements()),
-			Refused:    refusedIn(allowed, step.Plan),
+			Ordinal:     step.Ordinal,
+			Version:     step.Plan.Migration.Version,
+			File:        step.Plan.Migration.Filename(),
+			Statements:  len(step.Plan.Statements()),
+			Refused:     refusedIn(allowed, step.Plan),
+			Unsupported: unsupportedIn(caps, step.Plan),
 		})
 	}
 
@@ -165,6 +171,21 @@ func refusedIn(allowed engine.Allowance, compiled plan.Plan) int {
 	}
 
 	return refused
+}
+
+// unsupportedIn counts the operations in one compiled migration this server declares it cannot perform.
+func unsupportedIn(caps capability.Set, compiled plan.Plan) int {
+	return len(engine.Unsupported(operationsIn(compiled), caps))
+}
+
+// operationsIn returns what a compiled migration emitted, since a plan holds them beside statements.
+func operationsIn(compiled plan.Plan) ir.Operations {
+	ops := make(ir.Operations, 0, len(compiled.Steps))
+	for _, step := range compiled.Steps {
+		ops = append(ops, step.Op)
+	}
+
+	return ops
 }
 
 // leftBehind renders the migrations an invocation did not act on, in the order it reported them.
@@ -244,9 +265,26 @@ func (s planSummary) String() string {
 		presentTense(s.Direction), describeMigrations(len(s.Steps)), describeSkipped(s.Skipped),
 		describePlanCommand(s.Direction))
 
+	s.writeUnsupported(&b)
 	s.writeRefused(&b)
 
 	return b.String()
+}
+
+// writeUnsupported says what this server will not perform, which migr up refuses before sending anything.
+func (s planSummary) writeUnsupported(b *strings.Builder) {
+	unsupported := 0
+	for _, step := range s.Steps {
+		unsupported += step.Unsupported
+	}
+
+	if unsupported == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\n%s this server declares it cannot perform, so migr %s refuses the migration "+
+		"they are in. `migr plan` names them and gives the driver's reason for each.\n",
+		describeUnpermitted(unsupported), s.Direction)
 }
 
 // writeRefused says what migr up would refuse, since a dry run that said nothing would mislead.

@@ -258,6 +258,7 @@ suite is what holds that true as both SDKs evolve.
 | `migr plan` | compiled statements per migration, either direction | **works today** |
 | `migr plan --safety` | the same, annotated with lock impact | planned |
 | `migr validate` | read, compile, and reverse every migration, connecting to nothing | **works today** |
+| `migr validate --connect` | the same, plus what the target server declares it cannot perform | **works today** |
 | `migr resolve` | settle the migration a stopped run left between states | **works today** |
 | `migr diff` | introspect, diff against the desired schema, emit a migration | planned |
 | `migr seed` | data seeds, kept separate from schema migrations | planned |
@@ -419,6 +420,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0061](docs/adr/0061-refusing-a-dirty-database.md) | Refusing a dirty database, and what the row may be asked to say |
 | [0062](docs/adr/0062-resolving-a-dirty-migration.md) | Resolving a dirty migration is an append, and a resume is an index into one list |
 | [0063](docs/adr/0063-destructive-operations.md) | Destructive operations: who refuses, and what a project may permit |
+| [0064](docs/adr/0064-capability-preflight.md) | Capability preflight: who reads the declaration, and when |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

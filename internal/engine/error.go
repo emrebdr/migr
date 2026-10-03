@@ -161,6 +161,62 @@ func Needed(found []Destruction) []ir.Kind {
 	return needed
 }
 
+// ErrUnsupported marks an operation the connected server declares it will not perform, for errors.Is.
+var ErrUnsupported = errors.New("this server cannot perform every operation in this migration")
+
+// UnsupportedError refuses a migration whose operations the connected server declares it cannot perform.
+type UnsupportedError struct {
+	// Migration is the file at fault, so the refusal names it (invariant #9).
+	Migration migration.Migration
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string
+	// Direction is the half that was asked for, since a rollback is refused for the same reason.
+	Direction ir.Direction
+	// Driver is the driver whose declaration refused, spelled as migr.yaml spells it.
+	Driver string
+	// Server is the version that declaration was resolved against, which is what makes it this one.
+	Server string
+	// Found is every operation this server refuses, in the order the migration emitted them.
+	Found []Refusal
+}
+
+// unsupportedTemplate names what this server will not do, and says what that cost this migration.
+//
+// "nothing in it ran" is as much as this error may claim: a migration refused partway through a
+// batch leaves the ones before it applied, and the run's own summary is what reports those.
+const unsupportedTemplate = `%s: %s will not perform %s in this migration's %s run,
+so nothing in it ran and nothing was recorded for it:
+
+%s
+
+The declaration is resolved against the connected server rather than read from documentation
+(invariant #13), so another server may answer differently.`
+
+// Error names the migration, the server, and every operation that server declares it cannot perform.
+func (e *UnsupportedError) Error() string {
+	return fmt.Sprintf(unsupportedTemplate,
+		describeMigration(e.Migration, e.Version),
+		describeServer(e.Driver, e.Server),
+		describeOperations(len(e.Found)),
+		e.Direction,
+		describeRefusals(e.Found),
+	)
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrUnsupported) succeeds, and nothing else.
+func (e *UnsupportedError) Unwrap() error {
+	return ErrUnsupported
+}
+
+// describeOperations counts refused operations with the right noun.
+func describeOperations(n int) string {
+	if n == 1 {
+		return "1 operation"
+	}
+
+	return fmt.Sprintf("%d operations", n)
+}
+
 // kindNames renders a list of kinds as the names migr.yaml and a message spell them with.
 func kindNames(kinds []ir.Kind) []string {
 	names := make([]string, 0, len(kinds))

@@ -394,6 +394,15 @@ What that commits to:
 
 ## Notes
 
+**Who reads a verdict was left open here, and M10-T2 closed it** ([ADR 0064](0064-capability-preflight.md)).
+Until then nothing on the run path read one: the engine asked a set only for its driver name and its
+transactional-DDL fact, so the declaration CLAUDE.md §7 calls *authoritative* was authoritative over
+`migr plan` and nothing else — and a server-specific refusal reached an operator as the server's own
+error, after the statement was sent. The declaration is now read before anything compiles, in both
+directions, and `migr validate --connect` reports it. That also narrowed the driver conformance
+suite, which had been treating *"it compiles and the declaration refuses it"* — the exact shape a
+version-dependent verdict has — as a disagreement between the two halves.
+
 The distinction that makes Question C tractable is that **"unknown" names the driver's confidence,
 not a different severity.** Treating it as a fifth rank forces a choice between failing open and
 removing the opt-out; treating it as a label attached to the pessimistic rank avoids both. If a

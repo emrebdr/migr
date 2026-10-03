@@ -13,6 +13,10 @@ import (
 // rebuildReason is the refusal both sides of an agreeing driver give for drop_column.
 const rebuildReason = "requires a full table rebuild before 3.35"
 
+// versionReason is a refusal only the connected server could have reached, which Compile cannot.
+const versionReason = "this release accepts the statement and discards it, so refusing is the only " +
+	"answer that is not a lie"
+
 // refusing returns rules that answer native everywhere but the one operation named.
 func refusing(name string, kind ir.Kind, reason string) map[ir.Kind]capability.Rule {
 	rules := declaring(name, native)
@@ -36,14 +40,37 @@ func TestEveryOperationIsCompilableOrRefusedWithAReason(t *testing.T) {
 	}
 }
 
-func TestCompilingAnOperationDeclaredUnsupportedFails(t *testing.T) {
-	s := suiteDeclaring(t, newFake("fake"), refusing("fake", ir.KindDropColumn, rebuildReason))
+func TestCompilingAnOperationDeclaredUnsupportedIsAllowed(t *testing.T) {
+	s := suiteDeclaring(t, newFake("fake"), refusing("fake", ir.KindDropColumn, versionReason))
 
-	problems := joined(s.check())
-	if !strings.Contains(problems, "drop_column: it compiles, but the driver declares it") {
-		t.Errorf("problems %q do not report the disagreement", problems)
-		t.Log("The declaration is what the validator reads before execution, so an operator")
-		t.Log("would be told the operation is impossible while the driver would have run it.")
+	if problems := s.check(); problems != nil {
+		t.Errorf("a declaration that refuses what the compiler accepts was reported: %v", problems)
+		t.Log("Compile is pure and version-blind, so this is the only shape a version-dependent")
+		t.Log("refusal has: MySQL 8.0.15 compiles a CHECK and discards it, which is why that")
+		t.Log("driver declares add_check unsupported there (invariant #13). Four constructed")
+		t.Log("servers in internal/driver/mysql produce five of these, and this suite called")
+		t.Log("every one of them a disagreement until M10-T2 (ADR 0064).")
+	}
+}
+
+func TestAServerRefusalWithNoReasonFails(t *testing.T) {
+	problems := joined(checkServerRefusal("drop_column", capability.Verdict{}))
+
+	if !strings.Contains(problems, "it compiles and the driver declares it unsupported without "+
+		"giving a reason") {
+		t.Errorf("problems %q accept a server refusal that explains nothing", problems)
+		t.Log("This reason is the only thing that says what the server cannot do, since the")
+		t.Log("compiler produced statements and nothing else disagrees with them: migr validate")
+		t.Log("and the engine gate both print it verbatim.")
+	}
+
+	s := suiteDeclaring(t, newFake("fake"), refusing("fake", ir.KindDropColumn, ""))
+	if reported := s.check(); reported != nil {
+		t.Errorf("a blank declared reason was reported through the suite: %v", reported)
+		t.Log("capability.Unsupported substitutes text for a blank reason and Set.checked")
+		t.Log("substitutes for an unusable verdict, so no driver can reach this through the")
+		t.Log("package -- which is why the guard is tested by calling it. If either")
+		t.Log("substitution is ever removed, this is what holds the suite to catching it.")
 	}
 }
 

@@ -53,27 +53,33 @@ func TestAnOperationCompiledAgainstASessionMayBeDeclaredEmulated(t *testing.T) {
 	t.Log("first is the live schema, which Compile has no connection to read.")
 }
 
-func TestAnEmulationTheDeclarationDoesNotClaimIsADisagreement(t *testing.T) {
+func TestAnEmulationDeclaredNativeIsADisagreement(t *testing.T) {
 	d := emulating("fake", ir.KindAlterColumn)
+	caps := verdicts(t, "fake", ir.KindAlterColumn, capability.Native(capability.BriefExclusive))
 
-	for name, verdict := range map[string]capability.Verdict{
-		"native":      capability.Native(capability.BriefExclusive),
-		"unsupported": capability.Unsupported("this driver does not do that"),
-	} {
-		t.Run(name, func(t *testing.T) {
-			caps := verdicts(t, "fake", ir.KindAlterColumn, verdict)
-
-			problems := Suite{Driver: d, Conn: &expandingConn{&fakeConn{caps: caps}}}.check()
-			if !reports(problems, "asks for a session") {
-				t.Errorf("declaring it %s went unreported: %v", name, problems)
-			}
-		})
+	problems := Suite{Driver: d, Conn: &expandingConn{&fakeConn{caps: caps}}}.check()
+	if !reports(problems, "asks for a session") {
+		t.Errorf("declaring an emulation native went unreported: %v", problems)
 	}
 
-	t.Log("The compiler and the declaration are two statements of one fact, and this is the")
-	t.Log("direction that reaches production: a driver that declares an emulation unsupported")
-	t.Log("refuses a migration it could have run, and one that declares it native passes")
-	t.Log("validation and then has nothing to produce the statements with.")
+	t.Log("This is the direction that reaches production: migr plan reports the operation as")
+	t.Log("performed directly, and a table rebuild happens anyway. A capability is never")
+	t.Log("silently degraded (CLAUDE.md §4.2), so the strategy has to be declared.")
+}
+
+func TestAnEmulationThisServerRefusesIsAllowed(t *testing.T) {
+	d := emulating("fake", ir.KindAlterColumn)
+	caps := verdicts(t, "fake", ir.KindAlterColumn, capability.Unsupported(versionReason))
+
+	problems := Suite{Driver: d, Conn: &expandingConn{&fakeConn{caps: caps}}}.check()
+	if problems != nil {
+		t.Errorf("a server refusing an emulation was reported as a disagreement: %v", problems)
+	}
+
+	t.Log("An emulation is compiled against the database and still declared against the server, so")
+	t.Log("a release that cannot perform it refuses it here rather than halfway through a rebuild.")
+	t.Log("No driver reaches this today -- MySQL's version gates name no operation it emulates --")
+	t.Log("and the next one to grow such a gate must not have to edit this suite (ADR 0064).")
 }
 
 func TestAnEmulationWithNoSessionToExpandItIsADisagreement(t *testing.T) {

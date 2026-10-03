@@ -388,3 +388,83 @@ func reconciledState(t *testing.T, c *mysqlConn, opts engine.Options) (history.S
 
 	return statuses[0].State, statuses[0].Recorded
 }
+
+// The one operation these two servers answer differently, which both of them compile.
+//
+// MySQL writes a uuid default into every existing row, so it refuses the statement outright with
+// error 1674 while a binary log is written -- which the compose server has on. MariaDB performs it.
+// This is the only version- or configuration-dependent refusal any server in test/docker-compose.yml
+// can produce, PostgreSQL 16 and 17 both having gen_random_uuid in core (M10-T2).
+const defaultedColumn = "token"
+
+// uuidDefaulted stages a table and then the column above, which is one migration of two operations.
+func uuidDefaulted(t *testing.T, table string) engine.Options {
+	t.Helper()
+
+	return staged(t, ir.Operations{
+		ir.CreateTable{
+			Table:      table,
+			Columns:    []ir.Column{{Name: "id", Type: mustType(t, "int64")}},
+			PrimaryKey: []string{"id"},
+		},
+		ir.AddColumn{Table: table, Column: ir.Column{
+			Name: defaultedColumn, Type: mustType(t, "uuid"), Nullable: true,
+			Default: &ir.Default{Function: ir.FuncUUID},
+		}},
+	})
+}
+
+func TestTheDeclarationAndTheRunNeverDisagreeAboutWhatThisServerPerforms(t *testing.T) {
+	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
+		table := siblingName(t)
+		fresh(t, c, table)
+
+		opts := uuidDefaulted(t, table)
+
+		declared := c.Capabilities().Resolve(ir.AddColumn{Table: table, Column: ir.Column{
+			Name: defaultedColumn, Type: mustType(t, "uuid"), Nullable: true,
+			Default: &ir.Default{Function: ir.FuncUUID},
+		}})
+
+		_, err := engine.Apply(t.Context(), c, opts)
+
+		if declared.Allowed() {
+			if err != nil {
+				t.Fatalf("this server declares it performs the column and the run failed: %v", err)
+			}
+
+			return
+		}
+
+		var refusal *engine.UnsupportedError
+		if !errors.As(err, &refusal) {
+			t.Fatalf("Apply returned %v, want the refusal this server's own declaration asks for", err)
+		}
+
+		if len(refusal.Found) != 1 || refusal.Found[0].Reason != declared.Reason() {
+			t.Errorf("the refusal carries %+v, want the declaration's own reason", refusal.Found)
+		}
+
+		if refusal.Server != c.ServerVersion() || refusal.Found[0].Operation != 2 {
+			t.Errorf("the refusal reports server %q at operation %d, want %q at 2",
+				refusal.Server, refusal.Found[0].Operation, c.ServerVersion())
+		}
+
+		if tableExists(t, c, table) {
+			t.Error("the table the first operation creates is in the catalog, so the run reached it")
+			t.Log("The gate gets its answer with no I/O at all, before anything compiles -- which is")
+			t.Log("what this engine makes load-bearing: its DDL commits, so a run that reached the")
+			t.Log("second operation would leave the first one applied and the migration dirty.")
+		}
+
+		if runs, listErr := c.History().List(t.Context()); listErr != nil || len(runs) != 0 {
+			t.Errorf("the history holds %d rows (err %v), want none for a migration that never ran",
+				len(runs), listErr)
+		}
+
+		t.Log("Measured before the gate existed: this same run applied the first operation, sent")
+		t.Log("the second, and was refused by the server with error 1674 -- leaving the table in")
+		t.Log("the catalog and the migration recorded dirty at statement 1, which then refused")
+		t.Log("both directions until migr resolve. That is what reading the declaration first buys.")
+	})
+}

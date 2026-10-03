@@ -73,6 +73,12 @@ an operator fixing one refusal sees the other in the same pass.
 - B3: a `--drift` flag that fails if it cannot connect. **Rejected on timing, not merit** — it is a
   real second mode, and worth revisiting once M10 has filled in the offline checks.
 
+*(M10-T2 revisited it and took the shape rather than the subject: `--connect` runs the checks that
+need the target database, and an unreachable one **fails** the command rather than skipping a check,
+which is B2's rule applied here. Drift is still `migr status`'s and `migr up`'s. See
+[ADR 0064](0064-capability-preflight.md) §B — and §C for why the connection buys the capability set
+alone, leaving this package unable to touch a database at all.)*
+
 Opening no database is not the same as needing no configuration: which engine to compile for comes
 from `migr.yaml`, and there is no answer without one.
 
@@ -84,6 +90,12 @@ from `migr.yaml`, and there is no answer without one.
   inside `Open` — and compile-refusal is the free half of a biconditional the driver conformance
   suite already asserts. Deferring it would leave the offline command unable to answer the question
   it is best placed to answer.
+
+*(The two halves turned out to be the right split for a second reason, and M10-T2 is where it
+surfaced: a driver builds its verdict from `Compile`'s own refusal first, so the capability check
+must report only what compiling cannot see — otherwise one defect is two problems, under a name that
+changes with the flag. The "biconditional" also lost a direction there, since a declaration resolved
+against a server may refuse more than a version-blind compiler does: ADR 0064 §E.)*
 
 A **derived** down is compiled too, not assumed. An inverse can be refused by a driver that accepted
 what it inverts, and stopping at "it inverted" would pass a rollback nothing can run.
@@ -159,9 +171,12 @@ should not.
 
 ### Negative
 
-- **`migr validate` cannot see a version-dependent refusal.** A migration using a default function
+- ~~**`migr validate` cannot see a version-dependent refusal.** A migration using a default function
   the connected server lacks passes validation and fails at `migr up`. That is M10-T2, and until it
-  lands the gate is weaker than it looks.
+  lands the gate is weaker than it looks.~~ **Answered in M10-T2** (ADR 0064): `--connect` adds a
+  fifth check that reports exactly those, with the driver's own reason, and the offline report now
+  says in a sentence of its own that the check was not made — because *"no problems found"* on its
+  own was the pass B2 above rejects. Run with no flag, this command still opens nothing.
 - **It cannot validate a Go or TypeScript project**, since `sourceFor` refuses a language whose
   runtime does not exist (M6-T10, M7-T8). The command reports that rather than passing vacuously.
 - **Discovery is still fail-fast.** A directory with three misnamed files reports the first, because

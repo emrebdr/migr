@@ -14,15 +14,33 @@
 // disagree, and the capability declaration wins, because it is what migr validate and migr plan
 // read before anything touches a database.
 //
-// So the suite asserts the biconditional: Resolve(op).Allowed() is false exactly when
-// errors.Is(compileErr, driver.ErrUnsupported), both carrying a reason. Each direction fails a
-// different way. A driver that compiles what it declared unsupported tells an operator the change
-// is impossible when it is not. A driver that refuses what it declared native passes validation
-// and fails at apply time, which is the direction that reaches production.
+// So the suite asserts the implication that is a contract: a declaration never promises what the
+// compiler refuses, and whichever side refuses must give a reason. A driver that refuses what it
+// declared native passes validation and fails at apply time, which is the direction that reaches
+// production.
+//
+// The other direction is deliberately not asserted, and M10-T2 is where that changed (ADR 0064).
+// A declaration may refuse *more* than Compile does, because it is resolved against a server
+// Compile cannot see: MySQL 8.0.15 compiles a CHECK constraint and discards it, so that driver
+// declares add_check unsupported there (invariant #13). Asserted as a biconditional, this suite
+// called every such verdict a disagreement -- five of them across four constructed MySQL servers,
+// which is why internal/driver/mysql could only list releases where every gate passes.
+//
+// What the dropped half was standing in for is now structural. It mattered because the declaration
+// was read by migr validate while the run read the compiler, so an operator could be told an
+// operation was impossible and have the driver run it anyway. internal/engine now reads the
+// declaration before anything compiles, in both directions, so nothing executes what a driver has
+// declared it cannot perform. The two changes may not be separated.
 //
 // It takes both a Driver and a Conn because neither alone can be asked. Compile lives on the
 // driver and needs no database; the capability set is built inside Open against a detected server
 // version and lives on the session (ADR 0012). A Conn has no Compile method.
+//
+// An emulation is the third answer on the compiler's side, and the same rule governs it: Compile
+// asking for a session while the declaration says native is a hidden table rebuild and fails,
+// while a server refusing an operation its driver emulates is legal and must carry a reason. No
+// driver reaches that today -- MySQL's version gates name no operation it emulates -- and the next
+// one to grow such a gate must not have to edit this suite.
 //
 // # There are two third possibilities, not one
 //

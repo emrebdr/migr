@@ -424,6 +424,31 @@
 // schema that is already half-changed; refusing there would leave a database between states with
 // nothing but the asserted repairs to settle it. See ADR 0063.
 //
+// # What this server has declared it cannot perform
+//
+// Unsupported is the other half of the same shape, and the same two callers read it: a verdict
+// resolved against the connected server is asked of every operation a migration emits, and one it
+// refuses stops that migration with the driver's own reason, the operation's index, and the object
+// it names. Nothing here resolves a verdict for itself -- Capabilities() is the session's, built
+// inside Open against a server it detected (ADR 0012) -- so the check costs no I/O and needs no
+// configuration at all. There is no flag and no opt-out: a refusal an operator can switch off is
+// not one.
+//
+// capable sits beside permit in forward and again in reverse, and reads the mode the same way, so a
+// preview marks what a run refuses. Where the two gates differ is direction: permission is asked of
+// the up half alone, because the inverse of CreateTable is DropTable, while an operation the server
+// will not perform is just as unrunnable backwards. A rollback inverts its whole queue before
+// running any of it, so migr down is preflighted whole; an apply cannot be, because migration N may
+// depend on N-1 having been applied and may branch on live query results (ADR 0009).
+//
+// A resume is not gated, for the reason the destructive gate is not: the statements it runs are the
+// ones the stopped run reached rather than ones a verdict was asked about.
+//
+// What this buys is sharpest on an engine whose DDL commits. Measured on MySQL 8.0 before the gate
+// existed: a migration whose second operation that server refuses applied the first, sent the
+// second, took error 1674, and was recorded dirty -- which then refused both directions until migr
+// resolve. See ADR 0064.
+//
 // # An obligation the contract cannot express
 //
 // ADR 0013's record-before-commit rests on a driver's history store writing through the session's

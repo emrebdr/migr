@@ -15,11 +15,12 @@ const (
 	CheckFormat      Check = "format"
 	CheckDestructive Check = "destructive"
 	CheckCompile     Check = "compile"
+	CheckCapability  Check = "capability"
 	CheckReverse     Check = "reverse"
 )
 
 // checks lists every check a run performs, in the order it performs them.
-var checks = []Check{CheckFormat, CheckDestructive, CheckCompile, CheckReverse}
+var checks = []Check{CheckFormat, CheckDestructive, CheckCompile, CheckCapability, CheckReverse}
 
 // Checks returns every check a validation run performs, in order, as a copy.
 func Checks() []Check {

@@ -30,6 +30,34 @@ type failure struct {
 	Dirty *halted `json:"dirty,omitempty"`
 	// Destructive is what a refused migration would have destroyed, present only on that refusal.
 	Destructive *destroys `json:"destructive,omitempty"`
+	// Capability is what this server will not perform, present only on that refusal.
+	Capability *refused `json:"capability,omitempty"`
+}
+
+// refused is what the connected server declares it will not perform, and what asked it.
+type refused struct {
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string `json:"version"`
+	// Direction is the half that was asked for, since a rollback is refused for the same reason.
+	Direction ir.Direction `json:"direction"`
+	// Driver is the driver whose declaration refused.
+	Driver string `json:"driver"`
+	// Server is the version that declaration was resolved against, absent where none was detected.
+	Server string `json:"server,omitempty"`
+	// Operations is every operation this server refuses, in the order the migration emitted them.
+	Operations []unperformable `json:"operations"`
+}
+
+// unperformable is one operation the server declares it will not perform, as fields.
+type unperformable struct {
+	// Operation is its 1-based place in the half the migration emitted.
+	Operation int32 `json:"operation"`
+	// Kind is the operation at fault.
+	Kind ir.Kind `json:"kind"`
+	// Subject is the object it acts on, named the way the operation names it.
+	Subject string `json:"subject"`
+	// Reason is the driver's own stated reason, carried as the driver wrote it.
+	Reason string `json:"reason"`
 }
 
 // destroys is what a refused migration would have lost, and what already permits what.
@@ -138,8 +166,52 @@ func failureOf(err error) failure {
 	found.describeDirty(err)
 	found.describeDirtyState(err)
 	found.describeDestructive(err)
+	found.describeCapability(err)
 
 	return found
+}
+
+// describeCapability replaces the paragraph a server's refusal renders with what it will not perform.
+func (f *failure) describeCapability(err error) {
+	var unsupported *engine.UnsupportedError
+	if !errors.As(err, &unsupported) {
+		return
+	}
+
+	f.Error = engine.ErrUnsupported.Error()
+	f.Migration = describeFile(unsupported.Migration)
+	f.Operation = firstRefused(unsupported.Found)
+	f.Capability = &refused{
+		Version:    unsupported.Version,
+		Direction:  unsupported.Direction,
+		Driver:     unsupported.Driver,
+		Server:     unsupported.Server,
+		Operations: unperformableIn(unsupported.Found),
+	}
+}
+
+// firstRefused names the operation a refusal reached first, which invariant #9 asks every failure for.
+func firstRefused(found []engine.Refusal) ir.Kind {
+	if len(found) == 0 {
+		return ""
+	}
+
+	return found[0].Kind
+}
+
+// unperformableIn renders every operation a server refuses, in the order the migration emitted them.
+func unperformableIn(found []engine.Refusal) []unperformable {
+	out := make([]unperformable, 0, len(found))
+	for _, r := range found {
+		out = append(out, unperformable{
+			Operation: r.Operation,
+			Kind:      r.Kind,
+			Subject:   r.Subject,
+			Reason:    r.Reason,
+		})
+	}
+
+	return out
 }
 
 // describeDestructive replaces the paragraph a refused migration renders with what it would destroy.

@@ -327,15 +327,37 @@
 //
 // # What validate checks, and what it opens
 //
-// migr validate is the only command that reaches no database at all: a driver
-// is built from migr.yaml and asked to compile, and nothing calls Open. It
-// reads every migration, compiles both directions for the configured engine,
-// and checks that something can undo each one -- reporting every problem rather
-// than the first (ADR 0028).
+// migr validate reaches no database unless it is asked to: a driver is built
+// from migr.yaml and asked to compile, and nothing calls Open. It reads every
+// migration, compiles both directions for the configured engine, and checks
+// that something can undo each one -- reporting every problem rather than the
+// first (ADR 0028).
 //
 // Opening no database is not the same as needing no configuration. Which engine
 // to compile for comes from migr.yaml, so a config it cannot read is still a
 // failure.
+//
+// --connect adds the checks that need the target server, and is registered here
+// and nowhere else: every other command either opens a database already or is a
+// report that must not. It opens the session before anything else runs, so a DSN
+// that points nowhere fails before a runtime is spawned, reads Capabilities(),
+// and closes -- a verdict performs no I/O (ADR 0012), so the declaration outlives
+// the connection that produced it. It takes no migration lock and reads no
+// history: this is the command an operator reaches for during a deploy.
+//
+// An unreachable database fails the command rather than skipping the check, which
+// is ADR 0028 B2's rule: a gate that silently drops a check reports a pass it did
+// not earn. Without the flag the report says so in a sentence of its own, because
+// "no problems found" alone would make the two runs indistinguishable. It names
+// the server it did reach, which is also what --json carries beside connected.
+// See docs/adr/0064-capability-preflight.md.
+//
+// The migrations themselves are still asked over driver.Offline even with the
+// flag, and that is deliberate rather than unfinished: answering a migration's
+// own reads live would make its verdict depend on how far that database happens
+// to be migrated, so a read of a table an earlier migration creates would fail
+// against an empty CI database and the report would call the migration broken.
+// Unchecked is the honest answer there (ADR 0040), and it stays the answer.
 //
 // A language needing a runtime keeps that promise rather than trading it away
 // (ADR 0040). The process is started -- so a module that will not build, and the
@@ -358,6 +380,20 @@
 //
 // It exits 2 where migr status exits 0 over the same project. They answer
 // different questions: one reports state, the other judges the repository.
+//
+// # What this server will not perform
+//
+// The capability refusal renders three ways, the same split the destructive one
+// does. migr up fails with exit 1 -- the world is not ready rather than the
+// argument being wrong, since an operator upgrades the server, changes a
+// variable, or rewrites the migration -- and --json carries a capability
+// sub-document naming the driver, the server, and each operation with its
+// subject and the driver's own reason. migr validate --connect reports each as a
+// capability problem. And migr plan marks them ×, prints the reason beneath the
+// operation, and exits 0; --dry-run counts them.
+//
+// The plan's reason is new rather than reformatted: before M10-T2 that column
+// printed the word "unsupported" alone, beside the statement it would have sent.
 //
 // Status: init, create, up, down, status, history, plan, validate, version, and
 // config -- which is M5 complete. diff is M11-T4, seed is M12-T1, and cutover is

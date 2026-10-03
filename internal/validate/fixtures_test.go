@@ -149,14 +149,24 @@ func table(t *testing.T, name string) ir.CreateTable {
 	return ir.CreateTable{Table: name, Columns: []ir.Column{{Name: "id", Type: int64Type}}}
 }
 
-// run validates a staged project, failing the test rather than the code under test on a setup error.
+// run validates a staged project with every destruction permitted, since most cases judge the rest.
 func run(t *testing.T, src source, c compiler, found ...migration.Migration) Report {
+	t.Helper()
+
+	return runGated(t, engine.Allowance{All: true}, src, c, found...)
+}
+
+// runGated validates a staged project under one allowance, failing the test on a setup error.
+func runGated(t *testing.T, allowed engine.Allowance, src source, c compiler,
+	found ...migration.Migration,
+) Report {
 	t.Helper()
 
 	report, err := Run(t.Context(), Options{
 		Migrations: found,
 		Source:     src,
 		Planner:    plan.Planner{Compiler: c},
+		Allow:      allowed,
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)

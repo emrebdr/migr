@@ -50,6 +50,26 @@ func Kinds() []Kind {
 	return slices.Clone(kinds)
 }
 
+// destructiveKinds lists the operations some payload of which can lose data, in declaration order.
+//
+// A kind rather than a verdict, because alter_column is destructive only when it retypes and this
+// is the set an operator may permit by name. Destructive() on each operation is still what decides
+// one, and a test holds this list to that method over the whole fixture set -- so a twenty-first
+// destructive operation fails rather than being quietly unlistable.
+var destructiveKinds = []Kind{
+	KindDropTable, KindDropColumn, KindAlterColumn, KindDropView, KindRaw,
+}
+
+// DestructiveKinds returns every operation kind that can lose data, in declaration order, as a copy.
+func DestructiveKinds() []Kind {
+	return slices.Clone(destructiveKinds)
+}
+
+// CanDestroy reports whether some payload of this kind loses data, which is not whether one does.
+func (k Kind) CanDestroy() bool {
+	return slices.Contains(destructiveKinds, k)
+}
+
 // Valid reports whether a kind is part of the v1 operation set.
 func (k Kind) Valid() bool {
 	return slices.Contains(kinds, k)

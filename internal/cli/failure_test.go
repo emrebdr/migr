@@ -97,7 +97,11 @@ var codes = []coded{
 	{name: "a step count naming nothing", command: "plan", args: []string{"--step", "-1"},
 		stage: staged, want: ExitValidation},
 	{name: "the migration lock", command: "plan", stage: stagedLocked, want: ExitLock},
+	{name: "a migration nothing permits", command: "up", stage: stagedUnpermitted,
+		want: ExitValidation},
 	{name: "validate", command: "validate", stage: staged, want: ExitOK},
+	{name: "a migration nothing permits", command: "validate", stage: stagedUnpermitted,
+		want: ExitValidation},
 	{name: "a migration nothing can undo", command: "validate", stage: stagedOneWay,
 		want: ExitValidation},
 	{name: "resolve over a database with nothing between states", command: "resolve",
@@ -430,6 +434,13 @@ func staged(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
 	return project(t, twoTables()...)
+}
+
+// stagedUnpermitted is a project that permits no destruction, which every hand-written config is.
+func stagedUnpermitted(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	return refusing(t)
 }
 
 // stagedFresh is the project migr init writes: a config, a migrations directory, and no migrations.

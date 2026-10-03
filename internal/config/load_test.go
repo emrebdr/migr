@@ -4,11 +4,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
 
@@ -60,13 +62,16 @@ func TestExampleFromClaudeMDLoads(t *testing.T) {
 		{field: "safety.lock_retries", got: cfg.Safety.LockRetries, want: 5},
 		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: capability.BriefExclusive},
 		{field: "safety.auto_rewrite", got: cfg.Safety.AutoRewrite, want: true},
-		{field: "validation.allow_destructive", got: cfg.Validation.AllowDestructive, want: false},
 	}
 
 	for _, c := range checks {
 		if c.got != c.want {
 			t.Errorf("%s = %v, want %v", c.field, c.got, c.want)
 		}
+	}
+
+	if got := cfg.Validation.AllowDestructive; !slices.Equal(got, []ir.Kind{ir.KindRaw}) {
+		t.Errorf("validation.allow_destructive = %v, want [raw]", got)
 	}
 
 	if got := cfg.Databases["default"].DSN.Reveal(); got != "postgres://u:p@localhost:5432/db" {
@@ -172,6 +177,104 @@ func TestAnUnresolvedLockVerdictIsNotAValidCeiling(t *testing.T) {
 		t.Log("\"Block anything worse than unknown\" has no meaning. Unknown is a verdict a driver")
 		t.Log("reports, never a threshold an operator sets, and keeping Ceilings() separate from")
 		t.Log("Impacts() is what enforces that here without a special case.")
+	}
+}
+
+// loadWithAllowance parses a minimal valid document carrying one allow_destructive setting.
+func loadWithAllowance(t *testing.T, allowed string) (*Config, error) {
+	t.Helper()
+
+	src := []byte(`
+version: 1
+migrations:
+  language: go
+databases:
+  default:
+    driver: postgres
+    dsn: postgres://localhost/db
+validation:
+  allow_destructive: ` + allowed + "\n")
+
+	return parse(src, "inline.yaml", env(nil))
+}
+
+func TestEveryKindThatCanDestroyMayBePermittedByName(t *testing.T) {
+	for _, kind := range ir.DestructiveKinds() {
+		cfg, err := loadWithAllowance(t, "["+string(kind)+"]")
+		if err != nil {
+			t.Errorf("allow_destructive: [%s] was rejected: %v", kind, err)
+
+			continue
+		}
+
+		if !slices.Equal(cfg.Validation.AllowDestructive, []ir.Kind{kind}) {
+			t.Errorf("allow_destructive: [%s] loaded as %v", kind, cfg.Validation.AllowDestructive)
+		}
+	}
+
+	t.Log("Config validates against ir.DestructiveKinds() rather than a list of its own, so an")
+	t.Log("operation that stops or starts being destructive fails here instead of leaving")
+	t.Log("migr.yaml accepting a word that permits nothing.")
+}
+
+func TestAProjectThatSaysNothingPermitsNoDestruction(t *testing.T) {
+	cfg, err := loadWithAllowance(t, "[]")
+	if err != nil {
+		t.Fatalf("an empty allowance was rejected: %v", err)
+	}
+
+	if got := cfg.Validation.AllowDestructive; len(got) != 0 || got == nil {
+		t.Errorf("allow_destructive = %v, want an empty list", got)
+		t.Log("The resolved value is an empty list rather than nil, so migr config --json prints")
+		t.Log("[] rather than null for a project that permits nothing.")
+	}
+}
+
+func TestAnAllowanceThatPermitsNothingIsRefused(t *testing.T) {
+	for _, tt := range []struct{ allowed, says string }{
+		{"[create_table]", "destroys nothing"},
+		{"[add_index]", "destroys nothing"},
+		{"[drop_index]", "destroys nothing"},
+		{"[nonsense]", "is not an operation"},
+		{"[raw, raw]", "permitted twice"},
+	} {
+		_, err := loadWithAllowance(t, tt.allowed)
+		if err == nil {
+			t.Errorf("allow_destructive: %s was accepted", tt.allowed)
+
+			continue
+		}
+
+		if !strings.Contains(err.Error(), "validation.allow_destructive") {
+			t.Errorf("allow_destructive: %s is refused without naming the field:\n%s",
+				tt.allowed, err)
+		}
+
+		if !strings.Contains(err.Error(), tt.says) {
+			t.Errorf("allow_destructive: %s is refused with the wrong reason (%q):\n%s",
+				tt.allowed, tt.says, err)
+			t.Log("A misspelled kind and a kind that destroys nothing are different mistakes, and")
+			t.Log("telling an operator that drop_tabel destroys nothing sends them looking for the")
+			t.Log("wrong thing.")
+		}
+	}
+
+	t.Log("Permitting an operation that destroys nothing, naming one that does not exist, and")
+	t.Log("naming one twice all mean nothing. A setting that reads as protection and is none is")
+	t.Log("worse than no setting, so each is refused at the path the operator wrote it at.")
+}
+
+func TestABooleanAllowanceIsRefusedWhereItUsedToBeOne(t *testing.T) {
+	_, err := loadWithAllowance(t, "false")
+	if err == nil {
+		t.Fatal("allow_destructive: false was accepted")
+	}
+
+	if !strings.Contains(err.Error(), "allow_destructive") {
+		t.Errorf("the refusal does not name the key:\n%s", err)
+		t.Log("Until M10-T1 this key was a bool, so a project written before it says false. The")
+		t.Log("parser's own diagnostic carries the line and a caret under the value, which is the")
+		t.Log("reason goccy was chosen over yaml.v3 (M0-T7).")
 	}
 }
 
@@ -369,7 +472,7 @@ databases:
 		t.Fatalf("load failed: %v", err)
 	}
 
-	if cfg.Validation.AllowDestructive {
+	if len(cfg.Validation.AllowDestructive) > 0 {
 		t.Error("an environment value must not be able to set other config fields")
 	}
 

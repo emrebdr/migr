@@ -48,6 +48,18 @@
 // worth stating where it is selected, not a reason to hide the selection. See
 // docs/adr/0025-sql-source-language.md.
 //
+// # What a project permits itself to destroy
+//
+// validation.allow_destructive is a list of operation kinds rather than a bool, and the reason is
+// a property of one source format: every .sql migration reaches the database as ir.Raw, which is
+// destructive by definition because migr cannot read what it does. A bool would therefore be
+// mandatory for an entire language, so such a project permits raw once -- here, in a file a review
+// sees -- while drop_table stays refused. It validates against ir.DestructiveKinds for the reason
+// max_lock_impact validates against capability.Ceilings, and refuses three things that mean
+// nothing: a name that is no operation, a kind that destroys nothing, and a kind named twice. An
+// absent key permits nothing and resolves to an empty list rather than nil, so migr config --json
+// prints [] rather than null. See docs/adr/0063-destructive-operations.md.
+//
 // # Lock impact
 //
 // internal/capability owns the LockImpact verdicts from M2-T2 onward; the four

@@ -34,13 +34,17 @@ func selected(err error) error {
 
 // newUpCmd builds the `migr up` subcommand.
 func newUpCmd(opts *options) *cobra.Command {
-	return directionCmd(opts, ir.Up, &cobra.Command{
+	cmd := directionCmd(opts, ir.Up, &cobra.Command{
 		Use:   "up",
 		Short: "Apply pending migrations",
 		Long: "Applies every pending migration in order, under the migration lock, recording\n" +
 			"each one before the transaction that ran it commits.",
 		Args: argsOf(cobra.NoArgs),
 	})
+
+	registerAllowDestructive(cmd, opts)
+
+	return cmd
 }
 
 // newDownCmd builds the `migr down` subcommand.
@@ -173,5 +177,5 @@ func previewDirection(cmd *cobra.Command, opts *options, s *session, dir ir.Dire
 		return err
 	}
 
-	return writeResult(cmd.OutOrStdout(), opts, planOf(s.database, previewed))
+	return writeResult(cmd.OutOrStdout(), opts, planOf(s.database, s.options.Allow, previewed))
 }

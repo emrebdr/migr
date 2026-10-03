@@ -100,6 +100,12 @@ what it inverts, and stopping at "it inverted" would pass a rollback nothing can
   for exactly the migrations it most wants to flag — a project with one legitimately one-way
   migration could never pass.
 
+*(M10-T1 picked a form for its own question and it was not this marker:
+[ADR 0063](0063-destructive-operations.md) §B found that a per-file declaration of destructive intent
+would be mandatory on **every** `.sql` file, additive ones included, because such a file holds
+nothing but `raw`. The irreversible marker escapes that only because the normal answer there is a
+`-- migr:down` section and the marker is for the exception.)*
+
 The declaration reaches the engine as `ErrDeclaredIrreversible`, beside `ErrNoDownAuthored`, because
 the executor is what acts on it: `undo` returns it rather than deriving, so the whole rollback halts
 before its first statement ([ADR 0022](0022-rollback-executor.md)). A migration that validates clean
@@ -167,9 +173,11 @@ should not.
 
 ### Neutral
 
-- A `.sql` migration remains destructive by definition (`ir.Raw.Destructive()` is true), so M10-T1
+- ~~A `.sql` migration remains destructive by definition (`ir.Raw.Destructive()` is true), so M10-T1
   still owes an answer for `--allow-destructive`. The marker added here is a candidate form for that
   declaration too, and the invariant's *"or the migration declares intent explicitly"* now has one
-  precedent to point at.
+  precedent to point at.~~ **Answered in M10-T1** (ADR 0063): permission is a list of operation
+  kinds in `migr.yaml`, so such a project permits `raw` once rather than per file, and this command
+  gained a fourth check that reports every one with the object it destroys.
 - `migr validate` exits 2 where `migr status` exits 0 over the same project. They answer different
   questions: one reports state, the other judges the repository.

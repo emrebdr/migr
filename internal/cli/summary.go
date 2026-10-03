@@ -10,6 +10,7 @@ import (
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/plan"
 )
 
 // stamp renders a recorded instant in a table, in UTC because a history row is read anywhere.
@@ -52,6 +53,8 @@ type planned struct {
 	File string `json:"file"`
 	// Statements is how many statements it would execute.
 	Statements int `json:"statements"`
+	// Refused is how many of its operations destroy what nothing permits, which migr up stops at.
+	Refused int `json:"refused,omitempty"`
 }
 
 // left is one migration an invocation did not act on, and the state it was left in.
@@ -127,7 +130,7 @@ func summaryOf(database string, dir ir.Direction, result engine.Result) runSumma
 }
 
 // planOf renders what an invocation would have done, and what it found standing in the way.
-func planOf(database string, previewed engine.Previewed) planSummary {
+func planOf(database string, allowed engine.Allowance, previewed engine.Previewed) planSummary {
 	summary := planSummary{
 		Database:  database,
 		Direction: previewed.Direction,
@@ -144,10 +147,24 @@ func planOf(database string, previewed engine.Previewed) planSummary {
 			Version:    step.Plan.Migration.Version,
 			File:       step.Plan.Migration.Filename(),
 			Statements: len(step.Plan.Statements()),
+			Refused:    refusedIn(allowed, step.Plan),
 		})
 	}
 
 	return summary
+}
+
+// refusedIn counts the operations in one compiled migration that destroy what nothing permits.
+func refusedIn(allowed engine.Allowance, compiled plan.Plan) int {
+	refused := 0
+
+	for _, step := range compiled.Steps {
+		if !allowed.Permits(step.Op) {
+			refused++
+		}
+	}
+
+	return refused
 }
 
 // leftBehind renders the migrations an invocation did not act on, in the order it reported them.
@@ -227,7 +244,26 @@ func (s planSummary) String() string {
 		presentTense(s.Direction), describeMigrations(len(s.Steps)), describeSkipped(s.Skipped),
 		describePlanCommand(s.Direction))
 
+	s.writeRefused(&b)
+
 	return b.String()
+}
+
+// writeRefused says what migr up would refuse, since a dry run that said nothing would mislead.
+func (s planSummary) writeRefused(b *strings.Builder) {
+	refused := 0
+	for _, step := range s.Steps {
+		refused += step.Refused
+	}
+
+	if refused == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\n%s that nothing has permitted, so migr %s refuses the migration they are "+
+		"in. `migr plan` names them; --allow-destructive permits them for one run, and "+
+		"validation.allow_destructive for the project.\n",
+		describeUnpermitted(refused), s.Direction)
 }
 
 // describePlanCommand points at the command that prints the statements this one only counted.

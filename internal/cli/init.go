@@ -12,12 +12,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/emrebdr/migr/internal/config"
+	"github.com/emrebdr/migr/internal/ir"
 )
 
 // scaffoldDir is the migrations directory init creates, and the one the config it writes names.
 const scaffoldDir = "migrations"
 
-// scaffoldConfig is a migr.yaml holding every key that has no default, and nothing that has one.
+// scaffoldConfig is a migr.yaml holding every key that has no default, plus the one decision it owes.
 const scaffoldConfig = `# Written by migr init. Every other setting has a default, and migr config
 # prints the resolved set with secrets redacted.
 version: 1
@@ -30,6 +31,12 @@ databases:
     # The environment wins; the fallback is a development database that does not
     # exist yet, so nothing connects anywhere by accident before you set this.
     dsn: ${DATABASE_URL:-` + scaffoldDSN + `}
+validation:
+  # Every statement in a .sql migration reaches the database as a raw operation,
+  # whose effect migr cannot read -- so this project permits that kind, or nothing
+  # it writes will run. The operations migr can read stay refused until named here:
+  # drop_table, drop_column, drop_view, alter_column.
+  allow_destructive: [` + string(ir.KindRaw) + `]
 `
 
 // scaffoldDSN is what the scaffold falls back to, and it is a placeholder rather than a database.

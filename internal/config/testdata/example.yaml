@@ -25,4 +25,4 @@ safety:
   auto_rewrite: true        # decompose unsafe ops into safe sequences where possible
   replica_lag_threshold: 5s # pause backfills above this lag
 validation:
-  allow_destructive: false
+  allow_destructive: [raw]  # drop_table | drop_column | drop_view | alter_column | raw

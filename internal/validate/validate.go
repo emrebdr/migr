@@ -21,6 +21,8 @@ type Options struct {
 	Source engine.Source
 	// Planner compiles those operations for one engine, and holds a compiler rather than a session.
 	Planner plan.Planner
+	// Allow is the destruction a run would be permitted, and an unset one permits none of it.
+	Allow engine.Allowance
 }
 
 // check reports what a validation run was not given, before it reports on anything else.
@@ -73,8 +75,23 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 		return
 	}
 
+	r.destructive(m, up.Operations)
 	r.compile(ctx, m, ir.Up, up.Operations)
 	r.undo(ctx, m, up)
+}
+
+// destructive reports every operation in a migration's up half that destroys what nothing permits.
+func (r *runner) destructive(m migration.Migration, ops ir.Operations) {
+	for _, found := range engine.Destructive(ops, r.opts.Allow) {
+		r.report.add(Problem{
+			Migration: m,
+			Check:     CheckDestructive,
+			Direction: ir.Up,
+			Operation: found.Operation,
+			Kind:      found.Kind,
+			Detail:    found.Detail,
+		})
+	}
 }
 
 // unanswered tells a migration this run judged and found wanting from one it could not judge at all.

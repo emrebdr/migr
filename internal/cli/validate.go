@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -20,7 +21,7 @@ const noDatabase = "no database was opened"
 
 // newValidateCmd builds the `migr validate` subcommand.
 func newValidateCmd(opts *options) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Check every migration without connecting to anything",
 		Long: "Reads every migration, compiles it for the configured engine, and checks that\n" +
@@ -31,6 +32,10 @@ func newValidateCmd(opts *options) *cobra.Command {
 			return runValidate(cmd, opts)
 		},
 	}
+
+	registerAllowDestructive(cmd, opts)
+
+	return cmd
 }
 
 // runValidate checks every migration and reports what is wrong with them, connecting to nothing.
@@ -68,6 +73,7 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 		Migrations: ordered,
 		Source:     read.source,
 		Planner:    plan.Planner{Compiler: d},
+		Allow:      allowanceFor(t, opts),
 	})
 	if err != nil {
 		return err
@@ -263,6 +269,19 @@ func describeUnchecked(n int) string {
 
 // describeRemedy says how this project's own format answers a problem, since a check cannot know.
 func (v validation) describeRemedy() string {
+	remedies := make([]string, 0, 2)
+
+	for _, remedy := range []string{v.describeReverseRemedy(), v.describeDestructiveRemedy()} {
+		if remedy != "" {
+			remedies = append(remedies, remedy)
+		}
+	}
+
+	return strings.Join(remedies, "\n\n")
+}
+
+// describeReverseRemedy says how a SQL migration answers the question of what undoes it.
+func (v validation) describeReverseRemedy() string {
 	if v.Language != config.LanguageSQL || !v.found(validate.CheckReverse) {
 		return ""
 	}
@@ -270,6 +289,44 @@ func (v validation) describeRemedy() string {
 	return fmt.Sprintf("A %s migration reaches the database as a raw operation, whose effect migr\n"+
 		"cannot read, so nothing can invert it: write a %q section, or declare\n"+
 		"%s <why it cannot be undone>.", sql.Ext, sql.MarkerDown, sql.MarkerIrreversible)
+}
+
+// describeDestructiveRemedy says how a project permits what it means to destroy, naming the kinds.
+func (v validation) describeDestructiveRemedy() string {
+	needed := v.destroying()
+	if len(needed) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("%smigr up refuses these. Permit them for one run with --allow-destructive, "+
+		"or for\nthis project by naming their kinds in migr.yaml:\n\n  validation:\n"+
+		"    allow_destructive: [%s]", v.describeRawFormat(), strings.Join(needed, ", "))
+}
+
+// describeRawFormat says why a SQL project meets this for every migration it has, not for some.
+func (v validation) describeRawFormat() string {
+	if v.Language != config.LanguageSQL {
+		return ""
+	}
+
+	return fmt.Sprintf("Every statement in a %s migration reaches the database as a raw operation, "+
+		"whose\neffect migr cannot read -- so a SQL project permits that kind once or runs "+
+		"nothing.\n\n", sql.Ext)
+}
+
+// destroying returns the kinds the destructive check found, each named once, in the order found.
+func (v validation) destroying() []string {
+	var needed []string
+
+	for _, problem := range v.Problems {
+		if problem.Check != validate.CheckDestructive || slices.Contains(needed, problem.Kind.String()) {
+			continue
+		}
+
+		needed = append(needed, problem.Kind.String())
+	}
+
+	return needed
 }
 
 // found reports whether any problem came from one check.

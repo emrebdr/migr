@@ -23,8 +23,9 @@ The reference implementation is `internal/ir`.
 - **Capabilities and lock impact.** Whether an engine supports an operation, and what it costs a
   live database, are separate axes owned by the capability model. *Destructive* is not the same
   claim as *unsafe* or *unsupported* — see [ADR 0004](adr/0004-safety-model.md).
-- **Policy.** The IR carries a destructiveness classification; refusing to run one is the
-  validator's job.
+- **Policy.** The IR carries a destructiveness classification; refusing to run one belongs to the
+  validator and to the engine, and what a project permits belongs to `migr.yaml`
+  ([ADR 0063](adr/0063-destructive-operations.md)).
 - **Transport.** How a document reaches the engine is `docs/protocol.md`.
 - **Engine limits.** PostgreSQL caps decimal precision at 1000 and MySQL at 65. Those belong to
   the capability model, not to a type system that has to hold for every engine at once.
@@ -402,7 +403,9 @@ The two never appear on the same operation, so the type is always determined by 
 
 Note that most drops are **not** destructive. Dropping an index, a unique constraint, a check, a
 foreign key, or a primary key removes a rule, not a row. Only `drop_table`, `drop_column`,
-`drop_view`, and `raw` can lose data.
+`drop_view`, and `raw` can lose data — plus `alter_column` when it retypes, which makes five kinds
+an operator may permit by name. `ir.DestructiveKinds()` is that list, and a test holds it to
+`Destructive()` over the whole fixture set so the two cannot disagree.
 
 > [ADR 0006](adr/0006-ir-operation-shape.md) settled the *shape* of an operation and named
 > seventeen. [ADR 0008](adr/0008-reverse-operations.md) added `drop_unique`, `drop_check`, and

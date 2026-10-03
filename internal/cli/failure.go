@@ -28,6 +28,32 @@ type failure struct {
 	Drift *drifted `json:"drift,omitempty"`
 	// Dirty is how far a run got before it stopped, present only on a dirty failure.
 	Dirty *halted `json:"dirty,omitempty"`
+	// Destructive is what a refused migration would have destroyed, present only on that refusal.
+	Destructive *destroys `json:"destructive,omitempty"`
+}
+
+// destroys is what a refused migration would have lost, and what already permits what.
+type destroys struct {
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string `json:"version"`
+	// Allowed is the kinds this project permits, which is empty where it permits none.
+	Allowed []ir.Kind `json:"allowed"`
+	// Needed is the kinds a run would have to permit for this migration, each named once.
+	Needed []ir.Kind `json:"needed"`
+	// Operations is every operation that destroys something, in the order the migration emitted them.
+	Operations []destroyed `json:"operations"`
+}
+
+// destroyed is one operation that destroys something, as fields rather than as a line of prose.
+type destroyed struct {
+	// Operation is its 1-based place in the half the migration emitted.
+	Operation int32 `json:"operation"`
+	// Kind is the operation, which is also the name that permits it.
+	Kind ir.Kind `json:"kind"`
+	// Subject is what it destroys, named the way the operation names it.
+	Subject string `json:"subject"`
+	// Detail states what would be lost, in one line.
+	Detail string `json:"detail"`
 }
 
 // drifted is what an applied migration moved between, as fields rather than as the paragraph.
@@ -111,8 +137,50 @@ func failureOf(err error) failure {
 	found.describeDrift(err)
 	found.describeDirty(err)
 	found.describeDirtyState(err)
+	found.describeDestructive(err)
 
 	return found
+}
+
+// describeDestructive replaces the paragraph a refused migration renders with what it would destroy.
+func (f *failure) describeDestructive(err error) {
+	var refused *engine.DestructiveError
+	if !errors.As(err, &refused) {
+		return
+	}
+
+	f.Error = engine.ErrDestructive.Error()
+	f.Migration = describeFile(refused.Migration)
+	f.Destructive = &destroys{
+		Version:    refused.Version,
+		Allowed:    permitted(refused.Allowed),
+		Needed:     engine.Needed(refused.Found),
+		Operations: destroyedBy(refused.Found),
+	}
+}
+
+// permitted renders what a project allows, as a list rather than as the null an empty one would be.
+func permitted(allowed []ir.Kind) []ir.Kind {
+	if allowed == nil {
+		return []ir.Kind{}
+	}
+
+	return allowed
+}
+
+// destroyedBy renders every operation a refusal found, in the order the migration emitted them.
+func destroyedBy(found []engine.Destruction) []destroyed {
+	out := make([]destroyed, 0, len(found))
+	for _, d := range found {
+		out = append(out, destroyed{
+			Operation: d.Operation,
+			Kind:      d.Kind,
+			Subject:   d.Subject,
+			Detail:    d.Detail,
+		})
+	}
+
+	return out
 }
 
 // name reports the migration and the operation a failure came from, where it names one.

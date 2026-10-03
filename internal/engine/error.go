@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -59,6 +60,115 @@ func unwantedReasonError(mode RepairMode) error {
 	return fmt.Errorf("%w, and --%s is not one: it runs the statements the dirty run never reached, "+
 		"so what it records is what it did rather than an account of what somebody else did",
 		ErrNoReason, mode)
+}
+
+// ErrDestructive marks a migration that destroys what this run was not allowed to destroy, for errors.Is.
+var ErrDestructive = errors.New("this migration may destroy data, and nothing permitted that")
+
+// DestructiveError refuses a migration whose operations lose data this run may not lose.
+type DestructiveError struct {
+	// Migration is the file at fault, so the refusal names it (invariant #9).
+	Migration migration.Migration
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string
+	// Found is every operation in its up half that destroys something, in the order it emitted them.
+	Found []Destruction
+	// Allowed is what this project already permits, which the remedy is phrased against.
+	Allowed []ir.Kind
+}
+
+// destructiveTemplate names what would be lost before it names the two ways to permit it.
+const destructiveTemplate = `%s: %s
+
+%s
+
+%s
+
+Permit it for one run with --allow-destructive, or for this project by naming the kinds in
+migr.yaml, which is a decision a review can see:
+
+  validation:
+    allow_destructive: [%s]`
+
+// Error names the migration, every operation that destroys something, and the two ways to allow it.
+func (e *DestructiveError) Error() string {
+	return fmt.Sprintf(destructiveTemplate,
+		describeMigration(e.Migration, e.Version),
+		describeHeadline(e.Found),
+		describeDestruction(e.Found),
+		describeAllowed(e.Allowed),
+		strings.Join(kindNames(Needed(e.Found)), ", "),
+	)
+}
+
+// The two things a refusal can honestly lead with, which depend on whether it found raw alone.
+//
+// A .sql migration compiles to nothing but raw, so leading every one of them with "this migration
+// destroys data" would assert of a CREATE TABLE something migr has no way of knowing -- which is
+// the one claim this whole refusal exists to avoid making on an operator's behalf.
+const (
+	destroysData  = "this migration destroys data."
+	unreadableSQL = "migr cannot read what this migration does, so it cannot say that it destroys " +
+		"nothing."
+)
+
+// describeHeadline states what is wrong, which for raw alone is what nothing can say about it.
+func describeHeadline(found []Destruction) string {
+	for _, d := range found {
+		if d.Kind != ir.KindRaw {
+			return destroysData
+		}
+	}
+
+	return unreadableSQL
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrDestructive) succeeds, and nothing else.
+func (e *DestructiveError) Unwrap() error {
+	return ErrDestructive
+}
+
+// describeDestruction lists what each operation destroys, one indented line apiece.
+func describeDestruction(found []Destruction) string {
+	lines := make([]string, 0, len(found))
+	for _, d := range found {
+		lines = append(lines, "  "+d.Describe())
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// describeAllowed says what this project does permit, since an incomplete allowance reads as none.
+func describeAllowed(allowed []ir.Kind) string {
+	if len(allowed) == 0 {
+		return "This project permits no destructive operation at all."
+	}
+
+	return fmt.Sprintf("This project permits %s, which does not cover every operation above.",
+		strings.Join(kindNames(allowed), ", "))
+}
+
+// Needed returns the kinds a run would have to permit for these operations, each named once.
+func Needed(found []Destruction) []ir.Kind {
+	var needed []ir.Kind
+
+	for _, d := range found {
+		if !slices.Contains(needed, d.Kind) {
+			needed = append(needed, d.Kind)
+		}
+	}
+
+	return needed
+}
+
+// kindNames renders a list of kinds as the names migr.yaml and a message spell them with.
+func kindNames(kinds []ir.Kind) []string {
+	names := make([]string, 0, len(kinds))
+	for _, kind := range kinds {
+		names = append(names, kind.String())
+	}
+
+	return names
 }
 
 // ErrSeveralDirty marks a database carrying more than one migration between states, for errors.Is.

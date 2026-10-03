@@ -15,6 +15,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
 
@@ -117,6 +118,10 @@ func applyDefaults(cfg *Config) {
 
 	if cfg.Safety.MaxLockImpact == "" {
 		cfg.Safety.MaxLockImpact = capability.BriefExclusive
+	}
+
+	if cfg.Validation.AllowDestructive == nil {
+		cfg.Validation.AllowDestructive = []ir.Kind{}
 	}
 }
 

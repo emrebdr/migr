@@ -402,6 +402,28 @@
 // before the operations are known writes nothing, because a run whose operations were never
 // produced is not a run and has no checksum to be recorded under.
 //
+// # What a run is permitted to destroy
+//
+// Destructive is the policy half of invariant #7 and lives here rather than in internal/validate,
+// because that package already imports this one to read its refusals -- and the reverse import
+// would be a cycle. An Allowance is what migr.yaml permits for the project plus what
+// --allow-destructive permits for the run, and Destructive reports every operation in a list it
+// does not cover, each with the object it destroys. Subject names that object and is total over the
+// twenty kinds; the exhaustive linter does not read a type switch, so a test over
+// drivertest.Operations is what holds it total.
+//
+// The gate is one call in forward, after the migration says what it does and before anything is
+// compiled, and it reads the mode: an apply refuses, a preview does not. That is not a shortcut --
+// migr plan and --dry-run share forward with migr up, and the command that reports what a run would
+// do is the only place an operator can find out what to permit. They mark those operations and exit
+// 0, which is the rule migr status already follows over drift while migr up exits 4.
+//
+// Two paths reach neither the gate nor forward, and both are deliberate. A rollback undoes what it
+// was asked to undo -- gating it would make the permission mandatory for migr down outright, since
+// the inverse of CreateTable is DropTable. And a resume finishes what a permitted run started, on a
+// schema that is already half-changed; refusing there would leave a database between states with
+// nothing but the asserted repairs to settle it. See ADR 0063.
+//
 // # An obligation the contract cannot express
 //
 // ADR 0013's record-before-commit rests on a driver's history store writing through the session's

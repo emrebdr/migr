@@ -465,8 +465,17 @@ func (s *session) attach(ctx context.Context, t *target, opts *options,
 	s.options.Clock = opts.clock
 	s.options.Runtime = runtimeOf
 	s.options.Scope = scope
+	s.options.Allow = allowanceFor(t, opts)
 
 	return nil
+}
+
+// allowanceFor reads what this project permits and what this run permits, which are two decisions.
+func allowanceFor(t *target, opts *options) engine.Allowance {
+	return engine.Allowance{
+		Kinds: t.cfg.Validation.AllowDestructive,
+		All:   opts.allowDestructive,
+	}
 }
 
 // sequence settles the order a run performs, which is what each migration declared over the timestamps.

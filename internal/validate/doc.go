@@ -2,10 +2,23 @@
 // that every operation it emits compiles for the target engine, and that something can undo it.
 //
 // Status: the framework and the three checks knowable with no database (M5-T5); a third outcome
-// for the halves nothing could judge (M6-T10). Destructive-operation detection is M10-T1,
-// capability preflight M10-T2, reference integrity M10-T3, and a pluggable lint rule set M10-T4 —
-// each of which adds a Check rather than a second report. See docs/adr/0028-validation-report.md
-// and docs/adr/0040-running-a-go-migration.md.
+// for the halves nothing could judge (M6-T10); destructive-operation detection (M10-T1). Capability
+// preflight is M10-T2, reference integrity M10-T3, and a pluggable lint rule set M10-T4 — each of
+// which adds a Check rather than a second report. See docs/adr/0028-validation-report.md,
+// docs/adr/0040-running-a-go-migration.md and docs/adr/0063-destructive-operations.md.
+//
+// # The destructive check is the one that reads something other than the migrations
+//
+// Options.Allow is what a run would be permitted to destroy — migr.yaml's list of operation kinds,
+// plus --allow-destructive — and engine.Destructive is the policy both this package and the
+// executor read, so a report and a run cannot disagree about one operation. It judges the up half
+// alone: ir.CreateTable inverts to DropTable, so judging a down would report every project that
+// ever created a table.
+//
+// It stops nothing. Being unpermitted is no reason to skip compiling the same operation, and the
+// rule below is that a check stops only the checks that depend on it. One problem is reported per
+// operation, carrying the object it destroys, because this is the command a project runs to find
+// out which kinds it has to permit before migr up refuses one of them.
 //
 // # It never opens a database
 //

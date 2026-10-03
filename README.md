@@ -62,7 +62,7 @@ safety:
   auto_rewrite: true
   replica_lag_threshold: 5s
 validation:
-  allow_destructive: false
+  allow_destructive: [raw]
 ```
 
 Eleven subcommands are registered in [root.go](internal/cli/root.go); the table further down says
@@ -418,6 +418,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0060](docs/adr/0060-the-mysql-migration-lock.md) | The MySQL migration lock, and a holder duration that says what it measures |
 | [0061](docs/adr/0061-refusing-a-dirty-database.md) | Refusing a dirty database, and what the row may be asked to say |
 | [0062](docs/adr/0062-resolving-a-dirty-migration.md) | Resolving a dirty migration is an append, and a resume is an index into one list |
+| [0063](docs/adr/0063-destructive-operations.md) | Destructive operations: who refuses, and what a project may permit |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

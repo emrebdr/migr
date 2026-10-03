@@ -84,6 +84,10 @@ type operation struct {
 	Support capability.Support `json:"support"`
 	// Strategy is how an emulation is achieved, and nothing for an operation performed directly.
 	Strategy string `json:"strategy,omitempty"`
+	// Destroys is what this operation would lose, and nothing for one that loses nothing.
+	Destroys string `json:"destroys,omitempty"`
+	// Refused reports an operation nothing permits, which migr up would stop at rather than run.
+	Refused bool `json:"refused,omitempty"`
 	// Statements are what it compiled to, in the order they would run.
 	Statements []string `json:"statements"`
 }
@@ -144,7 +148,7 @@ func compiledOf(s *session, previewed engine.Previewed) compiledPlan {
 	caps := s.conn.Capabilities()
 
 	for _, step := range previewed.Steps {
-		rendered.Migrations = append(rendered.Migrations, migrationOf(caps, step))
+		rendered.Migrations = append(rendered.Migrations, migrationOf(caps, s.options.Allow, step))
 		rendered.Statements += int(step.Plan.Len())
 		rendered.Direct += len(step.Direct)
 	}
@@ -153,10 +157,11 @@ func compiledOf(s *session, previewed engine.Previewed) compiledPlan {
 }
 
 // migrationOf renders one migration's operations, each with the verdict this engine gives it.
-func migrationOf(caps capability.Set, planned engine.Planned) compiledMigration {
+func migrationOf(caps capability.Set, allowed engine.Allowance,
+	planned engine.Planned) compiledMigration {
 	ops := make([]operation, 0, len(planned.Plan.Steps))
 	for _, step := range planned.Plan.Steps {
-		ops = append(ops, operationOf(caps, step))
+		ops = append(ops, operationOf(caps, allowed, step))
 	}
 
 	return compiledMigration{
@@ -183,7 +188,7 @@ func directOf(held []driver.Query) []direct {
 }
 
 // operationOf renders one operation, its verdict, and the statements the driver compiled it to.
-func operationOf(caps capability.Set, step plan.Step) operation {
+func operationOf(caps capability.Set, allowed engine.Allowance, step plan.Step) operation {
 	verdict := caps.Resolve(step.Op)
 
 	stmts := make([]string, 0, len(step.Statements))
@@ -196,8 +201,19 @@ func operationOf(caps capability.Set, step plan.Step) operation {
 		Kind:       step.Op.Kind(),
 		Support:    verdict.Support(),
 		Strategy:   verdict.Strategy(),
+		Destroys:   destroyedSubject(step.Op),
+		Refused:    !allowed.Permits(step.Op),
 		Statements: stmts,
 	}
+}
+
+// destroyedSubject names what an operation would lose, and nothing for raw, whose subject is its SQL.
+func destroyedSubject(op ir.Operation) string {
+	if !op.Destructive() || op.Kind() == ir.KindRaw {
+		return ""
+	}
+
+	return engine.Subject(op)
 }
 
 // String renders every statement the plan would send, grouped by migration and by operation.
@@ -226,8 +242,46 @@ func (p compiledPlan) String() string {
 		describeStatements(p.Statements), describeSkipped(p.Skipped))
 
 	p.writeDirectNote(&b)
+	p.writeRefusedNote(&b)
 
 	return b.String()
+}
+
+// writeRefusedNote says what migr up would refuse, since a report finds a problem without failing.
+func (p compiledPlan) writeRefusedNote(b *strings.Builder) {
+	refused := p.countRefused()
+	if refused == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\nmarked ? above: %s that nothing has permitted. migr %s refuses the migration "+
+		"they are in; this plan reports them. Permit them for one run with --allow-destructive, or "+
+		"for this project by naming their kinds in migr.yaml under validation.allow_destructive.\n",
+		describeUnpermitted(refused), p.Direction)
+}
+
+// countRefused returns how many operations in the whole plan destroy what nothing has permitted.
+func (p compiledPlan) countRefused() int {
+	total := 0
+
+	for _, m := range p.Migrations {
+		for _, op := range m.Operations {
+			if op.Refused {
+				total++
+			}
+		}
+	}
+
+	return total
+}
+
+// describeUnpermitted counts the operations a run would be refused over, with the right noun.
+func describeUnpermitted(n int) string {
+	if n == 1 {
+		return "1 operation"
+	}
+
+	return fmt.Sprintf("%d operations", n)
 }
 
 // writeDirectNote says what a preview could not hold back, since migr up commits those on their own.
@@ -296,11 +350,25 @@ func describeArguments(n int) string {
 
 // write renders one operation's heading and the statements it compiled to, indented beneath it.
 func (o operation) write(b *strings.Builder) {
-	fmt.Fprintf(b, "       %d  %s  %s\n", o.Index, o.Kind, describeVerdict(o))
+	fmt.Fprintf(b, "       %d  %s  %s%s\n", o.Index, o.Kind, describeVerdict(o), o.describeDestroys())
 
 	for _, stmt := range o.Statements {
 		fmt.Fprintf(b, "%s\n", indented(stmt))
 	}
+}
+
+// describeDestroys says what an operation would lose, and marks the ones nothing has permitted.
+func (o operation) describeDestroys() string {
+	switch {
+	case o.Refused && o.Destroys == "":
+		return "  ? migr cannot read what this does"
+	case o.Refused:
+		return fmt.Sprintf("  ? destroys %q", o.Destroys)
+	case o.Destroys != "":
+		return fmt.Sprintf("  destroys %q, permitted", o.Destroys)
+	}
+
+	return ""
 }
 
 // describeVerdict says what this engine makes of an operation, naming the strategy of an emulation.

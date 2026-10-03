@@ -83,7 +83,7 @@ func staging(item staged, dir ir.Direction) (engine.Emitted, error) {
 	return engine.Emitted{Operations: item.down}, nil
 }
 
-// queueOptions builds what an apply run is given from the migrations a test staged, in order.
+// queueOptions builds what an apply run is given from the migrations a test staged, permitting each.
 func queueOptions(t *testing.T, items ...staged) engine.Options {
 	t.Helper()
 
@@ -99,6 +99,7 @@ func queueOptions(t *testing.T, items ...staged) engine.Options {
 		Migrations: files,
 		Clock:      steadyClock(),
 		Runtime:    queueWritten,
+		Allow:      engine.Allowance{All: true},
 	}
 }
 

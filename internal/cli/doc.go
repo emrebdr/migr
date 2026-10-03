@@ -288,6 +288,34 @@
 // TestPlanRefusesAMigrationNothingCanRunInOneTransaction fails the day M13-T4
 // changes that, which is when the marker is worth adding.
 //
+// # What permits destruction, and what only reports it
+//
+// --allow-destructive is registered on migr up and migr validate, and on nothing
+// else. CLAUDE.md §5 listed it as a global flag; a rollback is not gated and a
+// report refuses nothing, so anywhere else it would be a flag accepted and
+// ignored, which is worse than one that is absent. allowanceFor reads it beside
+// validation.allow_destructive, so one invocation carries both the project's
+// standing decision and this run's.
+//
+// Three commands render the same policy three ways, and the split is CLAUDE.md
+// §5's rule rather than a preference. migr up refuses the migration it reached
+// and exits 2 -- the argument is wrong, and the operator retypes it or names the
+// kind. migr validate reports every one as a destructive problem with the object
+// it destroys, which is the list a project needs before the gate stops it. And
+// migr plan marks each operation with what it destroys, says which of them
+// nothing has permitted, and exits 0 -- as migr status reports drift at 0 while
+// migr up exits 4. --dry-run counts them in a line of its own, because a dry run
+// that said nothing would report two migrations it would apply and then watch
+// migr up refuse the first.
+//
+// migr init writes allow_destructive: [raw] into the scaffold, which is the one
+// defaulted key it writes. The scaffold commits to language: sql, and every
+// statement in such a migration is a raw operation migr cannot read -- so
+// without it a scaffolded project could not run its own first migration, which
+// is the failure the dsn fallback already exists to avoid. The comment beside it
+// is what makes it a decision rather than a restated default. See
+// docs/adr/0063-destructive-operations.md.
+//
 // # A plan prints before its error where a run does not
 //
 // A run that failed having done nothing prints no summary: "nothing to do" above

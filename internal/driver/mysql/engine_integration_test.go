@@ -58,7 +58,7 @@ func steadyClock() engine.Clock {
 	}
 }
 
-// staged builds what a run is given from one migration's operations, which is all these cases need.
+// staged builds what a run is given from one migration's operations, permitting every destruction.
 func staged(t *testing.T, ops ir.Operations) engine.Options {
 	t.Helper()
 
@@ -73,6 +73,7 @@ func staged(t *testing.T, ops ir.Operations) engine.Options {
 		Migrations: []history.File{history.NewFile(m, []byte("-- staged\n"))},
 		Clock:      steadyClock(),
 		Runtime:    func(migration.Migration) string { return runRuntime },
+		Allow:      engine.Allowance{All: true},
 	}
 }
 

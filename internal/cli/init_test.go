@@ -12,6 +12,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/ir"
 )
 
 // noon is the instant these tests create migrations at, in a zone two hours ahead of UTC.
@@ -122,12 +123,36 @@ func TestTheScaffoldNamesEveryKeyThatHasNoDefaultAndNothingThatHasOne(t *testing
 		t.Fatalf("reading the scaffold: %v", err)
 	}
 
-	for _, defaulted := range []string{"lock:", "safety:", "history:", "validation:"} {
+	for _, defaulted := range []string{"lock:", "safety:", "history:"} {
 		if strings.Contains(string(written), defaulted) {
 			t.Errorf("the scaffold writes %q, which applyDefaults already owns:\n%s",
 				defaulted, written)
 			t.Log("A scaffold restating a default is a second definition of it, frozen into every")
 			t.Log("project ever created. `migr config` prints the resolved set instead.")
+		}
+	}
+}
+
+func TestTheOneDefaultedKeyTheScaffoldWritesIsADecisionRatherThanARestatement(t *testing.T) {
+	dir := initialized(t)
+
+	written, err := os.ReadFile(filepath.Join(dir, config.DefaultFilename))
+	if err != nil {
+		t.Fatalf("reading the scaffold: %v", err)
+	}
+
+	if !strings.Contains(string(written), "allow_destructive: ["+string(ir.KindRaw)+"]") {
+		t.Errorf("the scaffold permits no destruction, so nothing it writes can run:\n%s", written)
+		t.Log("The scaffold names language: sql, and every statement in a .sql migration reaches")
+		t.Log("the database as a raw operation -- which migr cannot read and therefore refuses")
+		t.Log("until a project permits it. A scaffolded project that cannot run its own first")
+		t.Log("migration is the same failure as a dsn that requires a credential to write a file.")
+	}
+
+	for _, defaulted := range []string{"allow_destructive: []", "max_lock_impact"} {
+		if strings.Contains(string(written), defaulted) {
+			t.Errorf("the scaffold writes %q, which is a default rather than a decision:\n%s",
+				defaulted, written)
 		}
 	}
 }

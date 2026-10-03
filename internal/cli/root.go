@@ -14,14 +14,15 @@ import (
 
 // options holds the values bound to the root command's persistent flags.
 type options struct {
-	configPath string
-	database   string
-	jsonOut    bool
-	verbosity  int
-	log        *slog.Logger
-	clock      func() time.Time
-	drivers    *driver.Registry
-	runtimes   *runtime.Registry
+	configPath       string
+	database         string
+	jsonOut          bool
+	verbosity        int
+	allowDestructive bool
+	log              *slog.Logger
+	clock            func() time.Time
+	drivers          *driver.Registry
+	runtimes         *runtime.Registry
 }
 
 // Execute builds the root command and runs it against the given arguments.
@@ -99,4 +100,10 @@ func registerGlobalFlags(cmd *cobra.Command, opts *options) {
 	f.StringVar(&opts.database, "database", "", "database to target, by name in migr.yaml")
 	f.BoolVar(&opts.jsonOut, "json", false, "emit JSON results on stdout and JSON logs on stderr")
 	f.CountVarP(&opts.verbosity, "verbose", "v", "increase log detail (-v info, -vv debug)")
+}
+
+// registerAllowDestructive binds the permission flag, on the two commands that read it and no others.
+func registerAllowDestructive(cmd *cobra.Command, opts *options) {
+	cmd.Flags().BoolVar(&opts.allowDestructive, "allow-destructive", false,
+		"permit every operation that destroys data, for this run")
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/ir"
 )
 
 // FieldError is one problem, located by its path within the YAML document.
@@ -94,6 +95,7 @@ func validate(cfg *Config, source string) error {
 	validateLock(v, cfg.Lock)
 	validateRuntime(v, cfg.Runtime)
 	validateSafety(v, cfg.Safety)
+	validateValidation(v, cfg.Validation)
 
 	if len(v.errs) == 0 {
 		return nil
@@ -184,6 +186,24 @@ func validateSafety(v *validator, s Safety) {
 
 	if s.ReplicaLagThreshold <= 0 {
 		v.add("safety.replica_lag_threshold", "must be positive, got %s", s.ReplicaLagThreshold)
+	}
+}
+
+// validateValidation checks the destruction this project permits, which is a list of operation kinds.
+func validateValidation(v *validator, val Validation) {
+	for i, kind := range val.AllowDestructive {
+		path := fmt.Sprintf("validation.allow_destructive[%d]", i)
+
+		switch {
+		case !kind.Valid():
+			v.add(path, "%q is not an operation (expected: %s)", string(kind),
+				join(ir.DestructiveKinds()))
+		case !kind.CanDestroy():
+			v.add(path, "%q destroys nothing, so permitting it permits nothing (expected: %s)",
+				string(kind), join(ir.DestructiveKinds()))
+		case contains(val.AllowDestructive[:i], kind):
+			v.add(path, "%q is permitted twice, and once is what permits it", string(kind))
+		}
 	}
 }
 

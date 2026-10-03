@@ -299,3 +299,147 @@ func TestARebuiltTableIsStableAcrossASecondRoundTrip(t *testing.T) {
 	t.Log("the recorded wording once and every one after it is byte-identical. That is the strongest")
 	t.Log("form the done-when can take for an emulated operation.")
 }
+
+// notesMigration creates the table the dropping migration below takes a column from.
+const notesMigration = `package migrations
+
+import (
+	"context"
+
+	migr "github.com/emrebdr/migr/sdk/go"
+)
+
+func init() { migr.Register(AddNotes{}) }
+
+// AddNotes creates a table with a column nothing else names, so dropping it needs no rebuild.
+type AddNotes struct{}
+
+// Up creates it.
+func (m AddNotes) Up(ctx context.Context, s *migr.Schema) error {
+	return s.CreateTable("rebuilt_notes").
+		Column("id", migr.Int64()).
+		Column("body", migr.String(255)).
+		PrimaryKey("id").
+		Apply(ctx)
+}
+
+// Down drops it, recording what it held so the drop inverts exactly.
+func (m AddNotes) Down(ctx context.Context, s *migr.Schema) error {
+	return s.Table("rebuilt_notes").Drop().Was(migr.TableDef{
+		Columns: []migr.Column{
+			{Name: "id", Type: migr.Int64()},
+			{Name: "body", Type: migr.String(255)},
+		},
+		PrimaryKey: []string{"id"},
+	}).Apply(ctx)
+}
+`
+
+// droppingMigration is a Go migration whose up destroys a column, which the gate refuses by kind.
+const droppingMigration = `package migrations
+
+import (
+	"context"
+
+	migr "github.com/emrebdr/migr/sdk/go"
+)
+
+func init() { migr.Register(DropBody{}) }
+
+// DropBody removes a column, which is destruction migr can read rather than raw SQL it cannot.
+type DropBody struct{}
+
+// Up drops it, naming what it was so the drop inverts exactly.
+func (m DropBody) Up(ctx context.Context, s *migr.Schema) error {
+	return s.Table("rebuilt_notes").
+		DropColumn("body").Was(migr.Column{Name: "body", Type: migr.String(255)}).
+		Apply(ctx)
+}
+
+// Down puts it back, which is a rollback and is therefore not gated.
+func (m DropBody) Down(ctx context.Context, s *migr.Schema) error {
+	return s.Table("rebuilt_notes").
+		AddColumn("body", migr.String(255)).
+		Apply(ctx)
+}
+`
+
+// stageDropping writes the two migrations a typed drop needs, and permits what the test says.
+func stageDropping(t *testing.T, config, allowed string) {
+	t.Helper()
+
+	dir := filepath.Join(filepath.Dir(config), "migrations")
+
+	for _, m := range []struct{ name, body string }{
+		{"20260929T140200_add_rebuilt_notes.go", notesMigration},
+		{"20260929T140300_drop_rebuilt_body.go", droppingMigration},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, m.name), []byte(m.body), 0o600); err != nil {
+			t.Fatalf("staging %s: %v", m.name, err)
+		}
+	}
+
+	if allowed == "" {
+		return
+	}
+
+	body, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatalf("reading migr.yaml: %v", err)
+	}
+
+	amended := string(body) + "validation:\n  allow_destructive: [" + allowed + "]\n"
+	if err := os.WriteFile(config, []byte(amended), 0o600); err != nil {
+		t.Fatalf("staging the allowance: %v", err)
+	}
+}
+
+func TestATypedDropIsRefusedUntilItsKindIsPermitted(t *testing.T) {
+	config, database := sqliteGoProject(t)
+	stageDropping(t, config, "")
+
+	out := migrFailure(t, config, "up")
+
+	for _, fragment := range []string{
+		"drop_rebuilt_body.go",
+		"this migration destroys data",
+		"operation 1 (drop_column)",
+		`"rebuilt_notes.body"`,
+		"allow_destructive: [drop_column]",
+	} {
+		if !strings.Contains(out, fragment) {
+			t.Errorf("the refusal does not carry %q:\n%s", fragment, out)
+		}
+	}
+
+	if got := sqliteDigestOf(t, database, sqliteGoHistoryTable); !strings.Contains(got, `"body"`) {
+		t.Errorf("the refused migration changed the schema:\n%s", got)
+	}
+
+	if err := migr(t, config, "up", "--allow-destructive"); err != nil {
+		t.Fatalf("up --allow-destructive: %v", err)
+	}
+
+	if got := sqliteDigestOf(t, database, sqliteGoHistoryTable); strings.Contains(got, `"body"`) {
+		t.Errorf("the column is still there after a permitted drop:\n%s", got)
+	}
+
+	t.Log("A typed operation is destruction migr can read, so the refusal names the column rather")
+	t.Log("than a statement -- which is the half a .sql project can never reach, every statement")
+	t.Log("in one being a raw operation whose effect nothing here can read.")
+}
+
+func TestTheProjectsOwnAllowanceRunsTheSameMigration(t *testing.T) {
+	config, _ := sqliteGoProject(t)
+	stageDropping(t, config, "drop_column")
+
+	if err := migr(t, config, "up"); err != nil {
+		t.Fatalf("up over a project that permits drop_column: %v", err)
+	}
+
+	if err := migr(t, config, "down"); err != nil {
+		t.Log("Rolling this back adds the column again, and the earlier migrations' downs drop a")
+		t.Log("table -- which nothing permits, because a rollback is not gated.")
+		t.Fatalf("down over a project that permits drop_column: %v", err)
+	}
+}

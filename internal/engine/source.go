@@ -65,6 +65,8 @@ type Options struct {
 	Runtime func(m migration.Migration) string
 	// Scope narrows what this run acts on, and an unset one acts on everything the direction can.
 	Scope Scope
+	// Allow is the destruction this run may perform, and an unset one permits none of it.
+	Allow Allowance
 }
 
 // check reports what an apply run was not given, before it takes a lock it could not use.

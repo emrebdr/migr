@@ -67,6 +67,8 @@ history:
   table: %s
 lock:
   timeout: 5s
+validation:
+  allow_destructive: [raw]
 `, database, sqliteHistoryTable)
 
 	if err := os.WriteFile(config, []byte(body), 0o600); err != nil {

@@ -155,6 +155,13 @@
 // direction: over-reporting costs an --allow-destructive flag, under-reporting costs data.
 // M11 introspection can compare against the live schema and refine it.
 //
+// DestructiveKinds names the five kinds some payload of which can destroy, because M10-T1
+// needed a set an operator can permit by name and a verdict needs a payload: AlterColumn
+// destroys only when it retypes. It is a declared list, which is the "table somewhere else"
+// this section warns about -- so a test holds it to Destructive() across the whole fixture
+// set, one operation per kind, and a twenty-first destructive operation fails that test on
+// the day it is added rather than being quietly unpermittable (ADR 0063).
+//
 // # Recording
 //
 // A Recorder collects the operations of one migration execution, in arrival order. It is what

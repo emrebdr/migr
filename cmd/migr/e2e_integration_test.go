@@ -67,6 +67,8 @@ databases:
     dsn: %s
 history:
   table: %s
+validation:
+  allow_destructive: [raw]
 `, dsn(), historyTable)
 
 	if err := os.WriteFile(config, []byte(body), 0o600); err != nil {

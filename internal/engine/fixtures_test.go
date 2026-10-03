@@ -382,7 +382,7 @@ func (s *source) emitDown(m migration.Migration) (Emitted, error) {
 // stagedTable is the table every staged operation names, since only the index names carry meaning.
 const stagedTable = "staged"
 
-// compiler turns a staged index operation into the one statement its index name spells.
+// compiler turns a staged operation into the one statement the object it names spells.
 type compiler struct{}
 
 // Compile renders the statement a staged operation stands for, refusing anything else.
@@ -392,6 +392,12 @@ func (compiler) Compile(op ir.Operation) ([]driver.Statement, error) {
 		return statement(typed.Name), nil
 	case ir.DropIndex:
 		return statement(typed.Name), nil
+	case ir.CreateTable:
+		return statement(typed.Table), nil
+	case ir.DropTable:
+		return statement(typed.Table), nil
+	case ir.DropView:
+		return statement(typed.View), nil
 	}
 
 	return nil, fmt.Errorf("the staged compiler was given %s", op.Kind())

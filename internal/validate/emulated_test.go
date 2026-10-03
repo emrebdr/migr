@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
@@ -32,6 +33,7 @@ func emulated(t *testing.T, ops ir.Operations) Report {
 		Migrations: []migration.Migration{m},
 		Source:     source{m.Version: {up: ops, down: ops}},
 		Planner:    plan.Planner{Compiler: emulating{}},
+		Allow:      engine.Allowance{All: true},
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)

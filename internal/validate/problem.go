@@ -10,15 +10,16 @@ import (
 // Check names what a problem was found by, which is also what it stopped this migration at.
 type Check string
 
-// The checks, in the order they run: a migration must be read before it can be compiled or reversed.
+// The checks, in the order they run: a migration must be read before anything can judge what it does.
 const (
-	CheckFormat  Check = "format"
-	CheckCompile Check = "compile"
-	CheckReverse Check = "reverse"
+	CheckFormat      Check = "format"
+	CheckDestructive Check = "destructive"
+	CheckCompile     Check = "compile"
+	CheckReverse     Check = "reverse"
 )
 
 // checks lists every check a run performs, in the order it performs them.
-var checks = []Check{CheckFormat, CheckCompile, CheckReverse}
+var checks = []Check{CheckFormat, CheckDestructive, CheckCompile, CheckReverse}
 
 // Checks returns every check a validation run performs, in order, as a copy.
 func Checks() []Check {

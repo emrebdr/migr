@@ -1,5 +1,5 @@
-export { defineMigration } from "./migration.ts";
-export type { Down, Migration, Up, Validate } from "./migration.ts";
+export { defineMigration, undone } from "./migration.ts";
+export type { Down, Migration, Undo, Undone, Up, Validate } from "./migration.ts";
 
 export { newSchema } from "./schema.ts";
 export type {

@@ -326,11 +326,11 @@ func (s *session) execute(ctx context.Context, id int64, params json.RawMessage)
 // emit opens the window this call acts through and reports how many operations it recorded.
 func (s *session) emit(ctx context.Context, id int64, entry *Registered,
 	run func(context.Context, *Schema) error, p wire.ExecuteParams) *wire.Message {
-	schema := newSchema(s, entry.Version, Direction(p.Direction), Mode(p.Mode))
+	window := NewWindow(entry.Version, Direction(p.Direction), Mode(p.Mode), s)
 
-	err := run(ctx, schema)
+	err := run(ctx, window.Schema())
 
-	emitted, forgotten := schema.seal()
+	emitted, forgotten := window.Seal()
 	if err == nil {
 		err = forgotten
 	}
@@ -348,7 +348,9 @@ func direction(entry *Registered, dir wire.Direction) (func(context.Context, *Sc
 		return entry.Migration.Up, nil
 	}
 
-	if reason, states := declared(entry.Migration); states {
+	undo, reason := Undone(entry.Migration)
+
+	if undo == UndoDeclared {
 		return nil, wire.WithReason(wire.CodeDeclaredIrreversible,
 			"this migration declares that it cannot be undone", reason)
 	}

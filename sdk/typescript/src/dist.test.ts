@@ -147,18 +147,75 @@ test("type declarations ship beside each format", () => {
 });
 
 test("every file the exports map names was built", () => {
-  const exported = manifest()["exports"] as unknown as Record<string, Record<string, unknown>>;
-  const entry = exported["."] as Record<string, Record<string, string>>;
+  const exported = manifest()["exports"] as unknown as Record<string, unknown>;
 
-  for (const condition of ["import", "require"]) {
-    const resolved = entry[condition];
+  for (const [subpath, entry] of Object.entries(exported)) {
+    if (typeof entry === "string") {
+      shipped(entry);
 
-    assert.ok(resolved, `package.json exports no "${condition}" condition`);
+      continue;
+    }
 
-    for (const named of Object.values(resolved)) {
-      shipped(named);
+    for (const condition of ["import", "require"]) {
+      const resolved = (entry as Record<string, Record<string, string>>)[condition];
+
+      assert.ok(resolved, `package.json exports no "${condition}" condition for "${subpath}"`);
+
+      for (const named of Object.values(resolved)) {
+        shipped(named);
+      }
     }
   }
+});
+
+test("the test helpers are their own subpath, and the library does not carry them", async () => {
+  const esm = (await import(join(root, "dist", "esm", "testing", "index.js"))) as Record<
+    string,
+    unknown
+  >;
+  const cjs = require(join(root, "dist", "cjs", "testing", "index.js")) as Record<
+    string,
+    unknown
+  >;
+
+  for (const exported of [
+    "capture",
+    "captureDown",
+    "reversal",
+    "project",
+    "found",
+    "documents",
+  ]) {
+    assert.equal(typeof esm[exported], "function", `dist/esm/testing ships no ${exported}`);
+    assert.equal(typeof cjs[exported], "function", `dist/cjs/testing ships no ${exported}`);
+  }
+
+  const library = (await import(join(root, "dist", "esm", "index.js"))) as Record<
+    string,
+    unknown
+  >;
+
+  for (const helper of ["capture", "reversal", "project"]) {
+    assert.equal(
+      helper in library,
+      false,
+      `"." exports ${helper}, and a migration's own import should not carry test helpers`,
+    );
+  }
+});
+
+test("the helpers import the library rather than bundling a second copy of it", () => {
+  assert.match(
+    shipped("dist/esm/testing/index.js"),
+    /from "\.\.\/index\.js"/,
+    "the ESM helpers do not import the library beside them",
+  );
+
+  assert.match(
+    shipped("dist/cjs/testing/index.js"),
+    /require\("\.\.\/index\.js"\)/,
+    "the CJS helpers do not require the library beside them",
+  );
 });
 
 test("the executable the bin field names was built, and it loads the bundle beside it", () => {

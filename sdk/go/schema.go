@@ -39,17 +39,9 @@ const (
 	LevelError Level = "error"
 )
 
-// host is what a Schema sends its callbacks through, which the runner supplies.
-type host interface {
-	// Call sends one request and waits for its answer, decoding the result into target.
-	Call(ctx context.Context, method string, params, target any) error
-	// Notify sends one notification, which nothing answers and nothing waits on.
-	Notify(method string, params any) error
-}
-
 // Schema is the window a migration acts through, and every callback it may make.
 type Schema struct {
-	host host
+	host Host
 	// migration is the version this window was opened for.
 	migration string
 	// direction is which way it is being run.
@@ -68,7 +60,7 @@ type Schema struct {
 }
 
 // newSchema opens the window one migration.execute acts through.
-func newSchema(h host, migration string, dir Direction, mode Mode) *Schema {
+func newSchema(h Host, migration string, dir Direction, mode Mode) *Schema {
 	return &Schema{host: h, migration: migration, direction: dir, mode: mode}
 }
 

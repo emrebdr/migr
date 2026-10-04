@@ -26,6 +26,20 @@ const root = dirname(fileURLToPath(import.meta.url));
 const dist = join(root, "dist");
 const entry = join(root, "src", "index.ts");
 
+// The test helpers, bundled apart from the library and importing it rather than copying it.
+//
+// Its one non-builtin import is "../index.ts", marked external so the library stays where it is: the
+// emitted file is a few hundred bytes. Node's self-reference ("@migr/sdk" from inside the package)
+// cannot do this job -- each format directory carries a package.json declaring its type, and that
+// manifest shadows the real one, so Node resolves no such package. A relative specifier does work in
+// both formats, and finishing the .ts -> .js rewrite for it is the same rewrite the declarations
+// already get. It emits into a directory of its own so that "../index.js" means dist/<format>/index.js.
+const helpers = {
+  entry: join(root, "src", "testing", "index.ts"),
+  out: join("testing", "index.js"),
+  external: ["../index.ts"],
+};
+
 // One directory per module format, each declaring its own flavour in a package.json of its own.
 //
 // That marker is what makes a plain .d.ts unambiguous. Copying one .d.ts into a package whose type
@@ -80,6 +94,9 @@ function emitDeclarations() {
 // finishes the rewrite tsc started, and dist.test.ts holds every shipped declaration to it.
 const DECLARED_SPECIFIER = /(from\s*|import\s*\(\s*)(['"])(\.\.?\/[^'"]*)\.ts\2/g;
 
+// The same specifier in emitted JavaScript, which also reaches a require() the CJS bundle writes.
+const EMITTED_SPECIFIER = /(from\s*|require\s*\(\s*|import\s*\(\s*)(['"])(\.\.?\/[^'"]*)\.ts\2/g;
+
 // rewriteDeclarations points every declaration at the JavaScript beside it rather than at a source.
 function rewriteDeclarations() {
   for (const path of declarationsUnder(declarationsIn)) {
@@ -113,6 +130,33 @@ function bundle(target) {
     sourcemap: true,
     logLevel: "warning",
   });
+}
+
+// bundleHelpers emits the testing subpath for one format, with the library left external.
+async function bundleHelpers(target) {
+  await build({
+    entryPoints: [helpers.entry],
+    outfile: join(target.dir, helpers.out),
+    format: target.format,
+    bundle: true,
+    external: [...helpers.external, "esbuild"],
+    platform: "node",
+    target: "node24",
+    sourcemap: true,
+    logLevel: "warning",
+  });
+
+  rewriteSpecifiers(join(target.dir, helpers.out));
+}
+
+// rewriteSpecifiers points an emitted file's external .ts import at the JavaScript beside it.
+function rewriteSpecifiers(path) {
+  writeFileSync(
+    path,
+    readFileSync(path, "utf8").replace(EMITTED_SPECIFIER, (_, lead, quote, specifier) => {
+      return `${lead}${quote}${specifier}.js${quote}`;
+    }),
+  );
 }
 
 // writeRuntime puts the executable beside the ESM bundle it loads, and marks it executable.
@@ -154,6 +198,7 @@ for (const target of targets) {
 emitDeclarations();
 rewriteDeclarations();
 await Promise.all(targets.map(bundle));
+await Promise.all(targets.map(bundleHelpers));
 shareDeclarations();
 writeRuntime();
 

@@ -14,7 +14,7 @@
 // the engine performs, and migration.execute deliberately has none at all -- a backfill over a large
 // table legitimately runs for hours.
 
-import { check, declared } from "./migration.ts";
+import { check, undone } from "./migration.ts";
 import type { Loaded, Registry } from "./load.ts";
 import type { Migration } from "./migration.ts";
 import type { Schema, Window } from "./schema.ts";
@@ -503,9 +503,9 @@ function chosen(entry: Loaded, direction: Direction): (s: Schema) => void | Prom
     return (s) => m.up(s);
   }
 
-  const reason = declared(m);
+  const { undo, reason } = undone(m);
 
-  if (reason !== undefined) {
+  if (undo === "declared") {
     throw new ProtocolError(
       DECLARED_IRREVERSIBLE,
       "this migration declares that it cannot be undone",
@@ -515,7 +515,7 @@ function chosen(entry: Loaded, direction: Direction): (s: Schema) => void | Prom
 
   const down = m.down;
 
-  if (down === undefined) {
+  if (undo === "derived" || down === undefined) {
     throw new ProtocolError(NO_DOWN_AUTHORED, `${entry.file} authors no down of its own`);
   }
 

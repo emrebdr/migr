@@ -266,6 +266,102 @@ Three tests hold the claim up rather than leaving it to a release checklist: `VE
 `package.json`, its major matches `PROTOCOL_VERSION`, and `PROTOCOL_VERSION` matches the version
 `docs/protocol.md` itself states.
 
+## Testing a migration
+
+`@migr/sdk/testing` is a subpath of its own, so the library a migration imports carries no test
+helpers. There are three, and what separates them is who can actually answer the question.
+
+**What IR did this half emit?** The SDK can answer that alone, in this process, reaching nothing:
+
+```ts
+import { capture } from "@migr/sdk/testing";
+
+const c = await capture(addUsers);
+
+c.is({
+  op: "create_table",
+  table: "users",
+  columns: [{ name: "id", type: t.uuid(), nullable: false }],
+  primary_key: ["id"],
+});
+```
+
+`is` renders what you expected through the SDK's own encoder and compares the documents, so member
+order counts; `c.kinds()` is the looser assertion, and `c.operations`, `c.reads`, `c.statements` and
+`c.logs` are there for anything else.
+
+A migration may read the database and branch on the answer, so a stage says what its questions are
+answered with. Three of them are **refused rather than guessed** when the stage is silent — a read, a
+capability question, and `info()` — because an empty value answered in place of a missing one sends
+the migration down a branch your test never meant to ask about:
+
+```ts
+await capture(addTier, {
+  mode: "plan",
+  reads: { "SELECT count(*) FROM users": answer(["count"], ["0"]) },
+});
+```
+
+Everything else is a copy of the engine's own host. `exec` is recorded and **never performed** —
+there is no database here — and answered the way the engine answers it: held under `plan`, reported
+performed under `apply` with whatever `affected` says it changed.
+
+**How is this migration undone?** Also the SDK's, because it is a fact about the migration's shape:
+
+```ts
+const r = await reversal(addUsers);
+
+r.undo; // "authored" | "declared" | "derived"
+r.reason; // the author's reason, where one is declared
+r.down.is(...); // empty exactly when the engine derives the inverse
+```
+
+It does not invert anything. Every inverse lives in the engine, so that two SDKs cannot reach two
+answers for one migration ([ADR 0022](../../docs/adr/0022-rollback-executor.md)) — whether an
+operation can be inverted at all is reported by `migr validate` below. The one rollback this can see
+is impossible it throws over: an up that sends statements of its own and authors no down, since a
+statement has no inverse to derive.
+
+**Does it run, and does the rollback leave anything behind?** That needs the engine, because nothing
+in this SDK can compile an operation into SQL:
+
+```ts
+const p = project({ dir: "./migrations" });
+
+t.after(() => p.remove());
+
+p.up();
+p.validate().problems; // the reverse check among them
+p.roundTrip(); // up, down, up, down
+p.dsn; // inspect the database with your own driver
+```
+
+The database is a throwaway SQLite file (`driver` and `dsn` together point it somewhere real), and
+the `migr.yaml` goes under `<project>/.migr/` rather than in a temp directory — the directory holding
+it is the runtime's working directory, and this runtime resolves `@migr/sdk` from there. The binary
+is `MIGR_BIN`, or `migr` on `PATH`; when there is neither this **fails rather than skipping**, and
+`found()` answers the same question without starting anything if you would rather skip deliberately.
+
+`roundTrip()` catches residue: a down that left a table behind makes the second up fail, and the
+server is what says so. It is not a comparison of two schema snapshots — that needs introspection the
+engine does not expose yet. See [ADR 0068](../../docs/adr/0068-sdk-test-helpers.md).
+
+**The test file does not go in the migrations directory.** Discovery is strict and dotfiles are its
+only exemption, so a `migrations.test.ts` sitting beside the migrations is refused by name and every
+command fails before a migration is loaded. `capture` and `reversal` do not care — they take a
+migration as a value — and `project` points at the directory from outside it:
+
+```
+migrations/20260301T090000_add_users.ts
+test/migrations.test.ts                  // project({ dir: "../migrations" })
+```
+
+A command that fails throws with what migr wrote on stderr. One case needs more than the exit code:
+`migr validate` exits 2 both for _the checks found problems_, whose report is on stdout, and for _this
+command was given something it refuses_, whose message is on stderr. `validate()` tells them apart by
+whether a document was printed, so a refused filename arrives as an error naming the file rather than
+as an empty report.
+
 ## Both module formats
 
 The package ships ESM and CommonJS side by side, each in a directory that declares its own flavour,
@@ -274,7 +370,15 @@ so a plain `.d.ts` beside each bundle is unambiguous:
 ```
 dist/esm/  index.js  index.d.ts  package.json {"type":"module"}     migr-runtime-node.js
 dist/cjs/  index.js  index.d.ts  package.json {"type":"commonjs"}
+dist/<fmt>/testing/index.js        # @migr/sdk/testing, which imports ../index.js
 ```
+
+The test helpers are a second entry point rather than a second bundle: their one non-builtin import
+is the library beside them, left external, so the package grows by the helpers and not by a copy of
+itself. Node's own package self-reference cannot do that job here — the `package.json` each format
+directory carries to declare its `type` shadows the real manifest, so `@migr/sdk` resolves to nothing
+from inside `dist/` — which is why the specifier is relative and the build finishes the `.ts` → `.js`
+rewrite for it.
 
 ```ts
 import { PROTOCOL_VERSION } from "@migr/sdk"; // ESM

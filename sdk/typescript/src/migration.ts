@@ -35,18 +35,44 @@ interface Change {
   dependencies?: readonly string[];
 }
 
-/** Undo is the three honest answers to how a migration is undone, as three shapes. */
-type Undo =
+/** UndoShape is the three honest answers to how a migration is undone, written as three shapes. */
+type UndoShape =
   | { down: Down; irreversible?: never }
   | { irreversible: string; down?: never }
   | { down?: never; irreversible?: never };
 
 /** Migration is one schema change, and up is the only member a migration must have. */
-export type Migration = Change & Undo;
+export type Migration = Change & UndoShape;
 
 /** defineMigration returns the migration it is given, typed so every part is checked and inferred. */
 export function defineMigration<const T extends Migration>(m: T): T {
   return m;
+}
+
+/** Undo is how a migration is undone, which docs/protocol.md §7.4 closes to three answers. */
+export type Undo = "authored" | "declared" | "derived";
+
+/** Undone is which of the three answers a migration gives, and the reason where it declares one. */
+export interface Undone {
+  /** Which answer this migration gives. */
+  undo: Undo;
+  /** The reason a rollback halts with, present only where the author declared one. */
+  reason?: string;
+}
+
+/** undone reports how a migration is undone, which the session and a test helper both read. */
+export function undone(m: Migration): Undone {
+  const reason = declared(m);
+
+  if (reason !== undefined) {
+    return { undo: "declared", reason };
+  }
+
+  if (authored(m) !== undefined) {
+    return { undo: "authored" };
+  }
+
+  return { undo: "derived" };
 }
 
 /** authored returns the down a migration writes itself, which no derived one replaces. */

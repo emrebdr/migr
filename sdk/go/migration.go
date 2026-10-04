@@ -32,6 +32,32 @@ type Dependent interface {
 	Dependencies() []string
 }
 
+// Undo is how a migration is undone, which docs/protocol.md §7.4 closes to three answers.
+type Undo string
+
+// The three answers, and a migration gives exactly one of them.
+const (
+	// UndoAuthored is a migration that writes its own down, which no derived inverse replaces.
+	UndoAuthored Undo = "authored"
+	// UndoDeclared is a migration whose author states it cannot be undone, and says why.
+	UndoDeclared Undo = "declared"
+	// UndoDerived is a migration that authors none, whose inverse the engine derives from its up.
+	UndoDerived Undo = "derived"
+)
+
+// Undone reports how a migration is undone, and the reason where its author declares one.
+func Undone(m Migration) (Undo, string) {
+	if reason, states := declared(m); states {
+		return UndoDeclared, reason
+	}
+
+	if _, writes := authored(m); writes {
+		return UndoAuthored, ""
+	}
+
+	return UndoDerived, ""
+}
+
 // authored reports whether a migration writes its own down, which no derived one replaces.
 func authored(m Migration) (Downer, bool) {
 	down, ok := m.(Downer)

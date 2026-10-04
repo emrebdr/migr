@@ -110,6 +110,22 @@
 // it -- and the alternative, redirecting from this package's init, would hijack
 // stdout for every program that imports the SDK, including the user's own tests.
 //
-// Status: the migration contract, the protocol client, and the whole v1 schema builder
-// (M6-T7, M6-T8). The runtime conformance fixtures are M6-T9 (see TASKS.md).
+// # Testing a migration
+//
+// Package migrtest, beside this one, holds three helpers: one that captures the IR a half
+// emits against a recording host, one that reports which of the three answers to "what
+// undoes this" a migration gives, and one that runs the real migr binary against a database
+// it throws away. None of them inverts an operation -- that is the engine's, for ADR 0022's
+// reason -- so whether a rollback can run at all is reported by migr validate through the
+// third helper rather than guessed by the first two.
+//
+//	migrtest.Up(t, AddUsers{}).Is(t, migr.CreateTable{Table: "users", ...})
+//
+// The seam those helpers stand on is exported here: NewWindow opens the window one
+// migration.execute acts through, over any Host, and is what the session itself uses. Seal
+// lives on the Window rather than on the Schema, so a migration handed a *Schema still
+// cannot close the call it is running in.
+//
+// Status: the migration contract, the protocol client, the whole v1 schema builder
+// (M6-T7, M6-T8), and the test helpers in migrtest (M10-T6).
 package migr

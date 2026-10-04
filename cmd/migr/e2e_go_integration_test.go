@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/emrebdr/migr/internal/rule"
 )
 
 // goHistoryTable keeps this suite's runs out of the tables the .sql suite and the driver use.
@@ -286,6 +288,20 @@ func TestStatusAndPlanReportAGoProject(t *testing.T) {
 	}
 }
 
+// assertWarnsOfTheDerivedDown holds the one lint rule this project's own fixtures trip (M10-T5).
+func assertWarnsOfTheDerivedDown(t *testing.T, out string) {
+	t.Helper()
+
+	for _, want := range []string{"1 warning", string(rule.MissingDown), "20260727T160100"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("validate does not warn that a migration authors no down (%q):\n%s", want, out)
+			t.Log("The second fixture omits its Down so invariant #10's derivation runs against a")
+			t.Log("real database. missing-down is what says so, and at warn rather than error")
+			t.Log("precisely because that omission is deliberate here.")
+		}
+	}
+}
+
 func TestValidateChecksAGoProjectWithoutOpeningADatabase(t *testing.T) {
 	config := goProject(t)
 
@@ -297,6 +313,8 @@ func TestValidateChecksAGoProjectWithoutOpeningADatabase(t *testing.T) {
 	if !strings.Contains(out, "no problems found") {
 		t.Fatalf("validate found something in migrations the stack then runs:\n%s", out)
 	}
+
+	assertWarnsOfTheDerivedDown(t, out)
 
 	if err := migr(t, config, "up"); err != nil {
 		t.Errorf("what validate passed, up refused: %v", err)

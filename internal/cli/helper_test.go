@@ -56,6 +56,10 @@ const (
 	actLoadsExtra = "loads-extra"
 	// actTypes emits typed operations rather than raw ones, which is what a lint rule can read.
 	actTypes = "types"
+	// actLints adds a NOT NULL column with no default and refuses the down, tripping two rules.
+	actLints = "lints"
+	// actMixes sends a statement of its own beside the one operation it declares, tripping a third.
+	actMixes = "mixes"
 )
 
 // The declarations a scripted runtime reports, which compose with every act above.
@@ -309,9 +313,13 @@ func (r *scriptedRuntime) execute(m *protocol.Message) bool {
 		r.callback(protocol.HostCapabilityGet, askedOperation)
 	}
 
-	if r.act == actDerives && p.Direction == ir.Down {
+	if (r.act == actDerives || r.act == actLints) && p.Direction == ir.Down {
 		return r.refuse(m, protocol.NewError(protocol.CodeNoDownAuthored,
 			"this migration authors no down of its own"))
+	}
+
+	if r.act == actMixes {
+		r.callback(protocol.HostDBExec, sentStatement)
 	}
 
 	r.callback(protocol.HostSchemaApply, r.operations(p.Direction))
@@ -319,13 +327,21 @@ func (r *scriptedRuntime) execute(m *protocol.Message) bool {
 	return r.reply(m, protocol.ExecuteResult{Operations: 1})
 }
 
+// sentStatement is what actMixes sends itself, which plan mode holds and apply mode performs.
+const sentStatement = `{"sql":"UPDATE scripted SET note = 'backfilled'","args":[]}`
+
 // operations renders the one operation this script emits for one direction.
 func (r *scriptedRuntime) operations(direction ir.Direction) string {
-	if r.act == actTypes {
+	switch r.act {
+	case actTypes:
 		return typedOperationsFor(direction)
+	case actLints:
+		return unfillableOperationsFor(direction)
+	case actMixes:
+		return columnOperationsFor(direction, true)
+	default:
+		return operationsFor(direction)
 	}
-
-	return operationsFor(direction)
 }
 
 // operationsFor renders the one operation a scripted migration emits for one direction.
@@ -350,6 +366,22 @@ func typedOperationsFor(direction ir.Direction) string {
 	return fmt.Sprintf(`{"operations":[{"op":"create_table","table":%q,"columns":`+
 		`[{"name":"id","type":"int64","nullable":false},`+
 		`{"name":"note","type":"text","nullable":false}]}]}`, scriptedTable)
+}
+
+// unfillableOperationsFor renders a NOT NULL column added with no default to a table it never creates.
+func unfillableOperationsFor(direction ir.Direction) string {
+	return columnOperationsFor(direction, false)
+}
+
+// columnOperationsFor renders one add_column of the given nullability, and the drop that undoes it.
+func columnOperationsFor(direction ir.Direction, nullable bool) string {
+	if direction == ir.Down {
+		return fmt.Sprintf(`{"operations":[{"op":"drop_column","table":%q,"column":"tier"}]}`,
+			scriptedTable)
+	}
+
+	return fmt.Sprintf(`{"operations":[{"op":"add_column","table":%q,"column":`+
+		`{"name":"tier","type":"int32","nullable":%t}}]}`, scriptedTable, nullable)
 }
 
 // callback makes one host request and waits for its answer, as an SDK that does not pipeline does.

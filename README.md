@@ -423,6 +423,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0064](docs/adr/0064-capability-preflight.md) | Capability preflight: who reads the declaration, and when |
 | [0065](docs/adr/0065-the-schema-snapshot.md) | The schema snapshot: what a driver-neutral schema can honestly claim |
 | [0066](docs/adr/0066-lint-rules.md) | Lint rules: what a severity may decide, and what it may not |
+| [0067](docs/adr/0067-the-shipped-lint-rules.md) | The shipped lint rules: what each reports, and what each declines |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -25,15 +25,38 @@ func column(t *testing.T, name, spelling string) ir.Column {
 func judging(t *testing.T, id ID, up Half) []Finding {
 	t.Helper()
 
+	return judgingAbout(t, id, Subject{Up: up, Undo: UndoDerived})
+}
+
+// judgingAbout returns what one shipped rule makes of a whole subject, filling in the migration.
+func judgingAbout(t *testing.T, id ID, s Subject) []Finding {
+	t.Helper()
+
+	s.Migration = subject(t).Migration
+
 	for _, r := range All() {
 		if r.ID == id {
-			return r.Judge(Subject{Migration: subject(t).Migration, Up: up, Undo: UndoDerived})
+			return r.Judge(s)
 		}
 	}
 
 	t.Fatalf("no rule is called %q", id)
 
 	return nil
+}
+
+// judgingAll returns what every shipped rule makes of one subject, which is what a run asks.
+func judgingAll(t *testing.T, s Subject) []Judgement {
+	t.Helper()
+
+	s.Migration = subject(t).Migration
+
+	set, err := NewSet(All(), nil)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+
+	return set.Judge(s)
 }
 
 // upOf returns an up half holding the given operations and no statements of its own.
@@ -169,46 +192,54 @@ func TestABoundedColumnIsNotReported(t *testing.T) {
 	}
 }
 
-func TestNeitherRuleJudgesWhatUndoesAMigration(t *testing.T) {
+func TestNoRuleJudgesWhatUndoesAMigration(t *testing.T) {
 	keyless := ir.CreateTable{Table: "users", Columns: []ir.Column{column(t, "id", "int64")}}
 	unbounded := ir.AddColumn{Table: "posts", Column: column(t, "body", "text")}
 
-	down := Half{Operations: ir.Operations{keyless, unbounded}}
+	down := Half{Operations: ir.Operations{keyless, unbounded},
+		Direct: []driver.Query{{SQL: "DELETE FROM audit"}}}
 
-	set, err := NewSet(All(), nil)
-	if err != nil {
-		t.Fatalf("NewSet: %v", err)
-	}
-
-	judged := set.Judge(Subject{Migration: subject(t).Migration, Down: down, Undo: UndoAuthored})
+	judged := judgingAll(t, Subject{Down: down, Undo: UndoAuthored})
 	if len(judged) != 0 {
 		t.Errorf("a down half was judged, reporting %d findings: %v", len(judged), judged)
 	}
+
+	t.Log("A down's own statements are the author undoing their own data change, and a down's")
+	t.Log("operations are an inverse: flagging either reports the up's columns a second time.")
 }
 
-func TestNeitherRuleReadsAMigrationsOwnStatements(t *testing.T) {
-	up := Half{Direct: []driver.Query{{SQL: "CREATE TABLE audit (note text)"}}}
+func TestAMigrationThatOnlySendsItsOwnStatementsIsNotMixingAnything(t *testing.T) {
+	up := Half{Direct: []driver.Query{{SQL: "UPDATE users SET verified = false"}}}
 
-	set, err := NewSet(All(), nil)
-	if err != nil {
-		t.Fatalf("NewSet: %v", err)
+	if judged := judgingAll(t, Subject{Up: up}); len(judged) != 0 {
+		t.Errorf("a migration declaring no schema change at all was reported: %v", judged)
 	}
 
-	if judged := set.Judge(Subject{Migration: subject(t).Migration, Up: up}); len(judged) != 0 {
-		t.Errorf("a raw statement was judged as though it were an operation: %v", judged)
-	}
+	t.Log("mixed-data-migration is about a migration doing both. One doing only the data half is a")
+	t.Log("data migration, which is M12's, and the engine refuses one that compiles to nothing.")
 }
 
-func TestARawOperationCarriesNothingEitherRuleCanRead(t *testing.T) {
-	set, err := NewSet(All(), nil)
-	if err != nil {
-		t.Fatalf("NewSet: %v", err)
+func TestNoRuleCanFireOnASqlProject(t *testing.T) {
+	raw := ir.Raw{Driver: "postgres", SQL: "CREATE TABLE users (id bigint)"}
+
+	for _, c := range []struct {
+		name string
+		s    Subject
+	}{
+		{"it authors a down", Subject{Up: upOf(raw),
+			Down: upOf(ir.Raw{Driver: "postgres", SQL: "DROP TABLE users"}), Undo: UndoAuthored}},
+		{"it declares itself irreversible", Subject{Up: upOf(raw), Undo: UndoDeclared}},
+		{"it authors no down at all", Subject{Up: upOf(raw), Undo: UndoNone}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if judged := judgingAll(t, c.s); len(judged) != 0 {
+				t.Errorf("a .sql migration was linted: %v", judged)
+			}
+		})
 	}
 
-	up := upOf(ir.Raw{Driver: "postgres", SQL: "CREATE TABLE users (id bigint)"})
-
-	if judged := set.Judge(Subject{Migration: subject(t).Migration, Up: up}); len(judged) != 0 {
-		t.Errorf("a raw operation was judged, so a .sql project would be linted on text it "+
-			"cannot read: %v", judged)
-	}
+	t.Log("Three shapes, and the five rules are silent for three different reasons: ir.Raw carries")
+	t.Log("no columns and no key, that format has no host.db.exec to send, and it can never reach")
+	t.Log("UndoDerived -- a raw operation has no inverse, so deriving one always fails and the")
+	t.Log("reverse check is what reports it.")
 }

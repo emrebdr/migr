@@ -79,8 +79,10 @@
 // set holding every rule and those two must not be one value.
 //
 // A migration whose up could not be read is not linted, which is the rule below applied without
-// exception. And no rule can fire on a .sql project at all: every statement there is ir.Raw, which
-// carries no columns and no key for a rule to read.
+// exception. And none of the five rules can fire on a .sql project, for three reasons rather than
+// one: every statement there is ir.Raw, which carries no columns and no key to read; that format has
+// no host.db.exec to send, so a half's Direct is always empty; and it can never reach UndoDerived,
+// a raw operation having no inverse, so what undo() hands a rule is authored, declared or none.
 //
 // # Every problem, in the order a run would meet them
 //

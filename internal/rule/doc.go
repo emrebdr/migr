@@ -1,7 +1,9 @@
 // Package rule holds the lint rules migr validate runs, and what a project decides each is worth.
 //
-// Status: the framework and two rules (M10-T4). The rest of the set is M10-T5. See
-// docs/adr/0066-lint-rules.md.
+// Status: the framework and two rules (M10-T4), then the three that complete the set (M10-T5). See
+// docs/adr/0066-lint-rules.md and docs/adr/0067-the-shipped-lint-rules.md, the second of which
+// states per rule what it reports and what it declines to. migr config prints the five with their
+// resolved severities, which is how an operator discovers them without reading this.
 //
 // # A rule is data with one function in it
 //
@@ -30,15 +32,27 @@
 //
 // Two things a rule deliberately cannot see:
 //
-// A database. M10-T5 wants a rule about adding a NOT NULL column with no default to a *non-empty*
-// table, and a row count is not something migr validate has: ADR 0064 settled that --connect buys
-// the capability set and nothing else, and that migrations are asked over driver.Offline. So that
-// rule will report what it can see and say it cannot know whether the table has rows, which is what
-// a warning is for.
+// A database. not-null-without-default is about adding a NOT NULL column with no default to a
+// *non-empty* table, and a row count is not something migr validate has: ADR 0064 settled that
+// --connect buys the capability set and nothing else, and that migrations are asked over
+// driver.Offline. So the rule reports what it can see and says in its own detail that it could not
+// count the table's rows, which is what a warning is for. There is exactly one case where it does
+// know: a table *this migration creates* holds nothing, so a column added to one is never reported.
+// That is the only inference about data anything here makes, and it is structural rather than a
+// guess.
 //
 // Another migration. A report names one migration, so a rule judges one -- which means
 // missing-primary-key reports a table whose key a later migration adds, and says in its own detail
 // that it judged this migration alone. A project doing that sets the rule to warn.
+//
+// # No rule can fire on a .sql project, and that is now three facts rather than one
+//
+// Every statement in that format reaches the database as ir.Raw, which carries no columns and no
+// key -- so missing-primary-key, unbounded-string and not-null-without-default have nothing to read.
+// mixed-data-migration is silent because Direct comes from host.db.exec, which only a runtime SDK
+// can call. And missing-down is silent because such a project never reaches UndoDerived at all: a
+// raw operation has no inverse, so deriving one always fails and CheckReverse is what reports it.
+// A test constructs all three shapes a .sql migration can take rather than asserting the sentence.
 //
 // # The three severities
 //

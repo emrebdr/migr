@@ -13,6 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver/postgres/pgtest"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/rule"
 )
 
 // The TypeScript half of the stack, driven the whole way down to a real server.
@@ -440,6 +441,28 @@ func TestStatusAndTheHistoryRowReportATypeScriptProject(t *testing.T) {
 	}
 }
 
+// assertWarnsOfTheTwoPatternsTheseFixturesUse holds the two lint rules these fixtures trip (M10-T5).
+func assertWarnsOfTheTwoPatternsTheseFixturesUse(t *testing.T, out string) {
+	t.Helper()
+
+	for _, want := range []string{"2 warnings",
+		string(rule.MissingDown), "20260727T170100",
+		string(rule.MixedDataMigration), "20260727T170300"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("validate does not warn about %q:\n%s", want, out)
+		}
+	}
+
+	t.Log("Both fixtures use their pattern deliberately: one omits its down so the engine derives")
+	t.Log("the inverse, and one execs a CREATE TABLE beside an addColumn to prove ADR 0032's")
+	t.Log("warning that the statement is committed on its own. That is why neither rule is an")
+	t.Log("error -- a legitimate use of a pattern is what a warning is for.")
+
+	if strings.Contains(out, "problem") && !strings.Contains(out, "no problems found") {
+		t.Errorf("a warning was counted as a problem:\n%s", out)
+	}
+}
+
 func TestValidateChecksATypeScriptProjectWithoutOpeningADatabase(t *testing.T) {
 	cfg := tsProject(t)
 
@@ -455,6 +478,8 @@ func TestValidateChecksATypeScriptProjectWithoutOpeningADatabase(t *testing.T) {
 	if !strings.Contains(out, "20260727T170200") {
 		t.Errorf("validate does not name the migration it could not check:\n%s", out)
 	}
+
+	assertWarnsOfTheTwoPatternsTheseFixturesUse(t, out)
 
 	t.Cleanup(func() {
 		if err := migr(t, cfg, "down"); err != nil {

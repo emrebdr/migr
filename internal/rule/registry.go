@@ -10,6 +10,9 @@ func builtIn() []Rule {
 	return []Rule{
 		missingPrimaryKey(),
 		unboundedString(),
+		missingDown(),
+		notNullWithoutDefault(),
+		mixedDataMigration(),
 	}
 }
 

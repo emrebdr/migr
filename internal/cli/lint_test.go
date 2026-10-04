@@ -24,6 +24,26 @@ func linting(t *testing.T) (string, *driver.Registry) {
 	return dir, drivers
 }
 
+// allRules returns every rule this build ships at one severity, so "every rule" survives a new one.
+func allRules(severity rule.Severity) map[rule.ID]rule.Severity {
+	severities := make(map[rule.ID]rule.Severity, len(rule.IDs()))
+	for _, id := range rule.IDs() {
+		severities[id] = severity
+	}
+
+	return severities
+}
+
+// everyRuleOff renders a validation.rules block switching off every rule this build ships.
+func everyRuleOff() string {
+	block := "  rules:\n"
+	for _, id := range rule.IDs() {
+		block += "    " + string(id) + ": " + string(rule.SeverityOff) + "\n"
+	}
+
+	return block
+}
+
 // configuring adds rule severities to a staged project's own config, whatever else that config says.
 func configuring(t *testing.T, dir string, severities map[rule.ID]rule.Severity) {
 	t.Helper()
@@ -115,10 +135,7 @@ func TestEveryRuleTurnedDownLeavesValidationPassingWithWarnings(t *testing.T) {
 
 func TestEveryRuleTurnedOffLeavesNothingToReport(t *testing.T) {
 	dir, drivers := linting(t)
-	configuring(t, dir, map[rule.ID]rule.Severity{
-		rule.MissingPrimaryKey: rule.SeverityOff,
-		rule.UnboundedString:   rule.SeverityOff,
-	})
+	configuring(t, dir, allRules(rule.SeverityOff))
 
 	stdout, _, err := runScripted(t, dir, actTypes, drivers, "validate")
 	if err != nil {
@@ -212,10 +229,7 @@ func TestANonRuleProblemCarriesNoRuleInTheDocument(t *testing.T) {
 
 func TestACleanRunStillRendersProblemsAsAList(t *testing.T) {
 	dir, drivers := linting(t)
-	configuring(t, dir, map[rule.ID]rule.Severity{
-		rule.MissingPrimaryKey: rule.SeverityOff,
-		rule.UnboundedString:   rule.SeverityOff,
-	})
+	configuring(t, dir, allRules(rule.SeverityOff))
 
 	stdout, _, err := runScripted(t, dir, actTypes, drivers, "validate", "--json")
 	if err != nil {
@@ -269,9 +283,8 @@ func TestNoSeverityCanPermitDestruction(t *testing.T) {
 	dir, f, drivers := refusing(t)
 
 	write(t, filepath.Join(dir, config.DefaultFilename),
-		strings.Replace(projectConfig, allowingRaw, "allow_destructive: []\n  rules:\n"+
-			"    "+string(rule.MissingPrimaryKey)+": off\n"+
-			"    "+string(rule.UnboundedString)+": off\n", 1))
+		strings.Replace(projectConfig, allowingRaw, "allow_destructive: []\n"+
+			everyRuleOff(), 1))
 
 	stdout, _, err := runWith(t, dir, noon, drivers, "validate")
 	if got := ExitCode(err); got != ExitValidation {
@@ -331,6 +344,88 @@ func TestMigrConfigListsEveryRuleAndWhatItIsSetTo(t *testing.T) {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("migr config does not say %q:\n%s", want, stdout)
 		}
+	}
+}
+
+func TestAMigrationWithNoDownAndAnUnfillableColumnWarnsTwiceAndFailsNothing(t *testing.T) {
+	dir, drivers := linting(t)
+
+	stdout, _, err := runScripted(t, dir, actLints, drivers, "validate")
+	if err != nil {
+		t.Fatalf("migr validate failed over warnings alone: %v\n%s", err, stdout)
+	}
+
+	for _, want := range []string{
+		"no problems found, 2 warnings",
+		string(rule.MissingDown),
+		"authors no down",
+		string(rule.NotNullWithoutDefault),
+		`column "tier" is added to "scripted"`,
+		"count that table's rows",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("the report does not say %q:\n%s", want, stdout)
+		}
+	}
+
+	t.Log("The runtime answered no_down_authored, so the engine derived the inverse -- which is the")
+	t.Log("one Undo answer missing-down reports, and the only way this rule is expressible at all.")
+}
+
+func TestAMigrationThatSendsItsOwnStatementIsReportedWithNothingOpened(t *testing.T) {
+	dir, f, drivers := goProject(t, "add_scripted")
+
+	stdout, _, err := runScripted(t, dir, actMixes, drivers, "validate")
+	if err != nil {
+		t.Fatalf("migr validate failed over a warning: %v\n%s", err, stdout)
+	}
+
+	for _, want := range []string{string(rule.MixedDataMigration), "1 statement",
+		"1 schema operation", noDatabase} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("the report does not say %q:\n%s", want, stdout)
+		}
+	}
+
+	if f.asked("open") {
+		t.Error("migr validate opened a database to read a statement it was only shown")
+	}
+
+	t.Log("ADR 0036's half of what a migration does, reaching a rule in a command that opened")
+	t.Log("nothing: host.db.exec under mode plan is held rather than run, so Direct is populated")
+	t.Log("with no session to send it to. This fake's Perform refuses outright, so a run that")
+	t.Log("executed the statement instead of holding it could not have exited 0.")
+}
+
+func TestARuleThatDefaultsToWarnFailsTheRunWhenAProjectSaysError(t *testing.T) {
+	for _, c := range []struct {
+		act   string
+		rules []rule.ID
+	}{
+		{actLints, []rule.ID{rule.MissingDown, rule.NotNullWithoutDefault}},
+		{actMixes, []rule.ID{rule.MixedDataMigration}},
+	} {
+		t.Run(c.act, func(t *testing.T) {
+			dir, drivers := linting(t)
+
+			severities := make(map[rule.ID]rule.Severity, len(c.rules))
+			for _, id := range c.rules {
+				severities[id] = rule.SeverityError
+			}
+
+			configuring(t, dir, severities)
+
+			stdout, _, err := runScripted(t, dir, c.act, drivers, "validate")
+			if got := ExitCode(err); got != ExitValidation {
+				t.Fatalf("migr validate exited %d, want %d:\n%s", got, ExitValidation, stdout)
+			}
+
+			for _, id := range c.rules {
+				if !strings.Contains(stdout, string(id)+": warn") {
+					t.Errorf("the remedy does not offer to turn %s down:\n%s", id, stdout)
+				}
+			}
+		})
 	}
 }
 

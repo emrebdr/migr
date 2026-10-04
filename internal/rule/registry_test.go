@@ -39,7 +39,8 @@ func TestEveryShippedRuleSaysWhatItIsAndWhatItChecks(t *testing.T) {
 }
 
 func TestTheShippedRulesAreTheOnesThisTaskClaims(t *testing.T) {
-	want := []ID{MissingPrimaryKey, UnboundedString}
+	want := []ID{MissingDown, MissingPrimaryKey, MixedDataMigration, NotNullWithoutDefault,
+		UnboundedString}
 
 	if got := IDs(); !slices.Equal(got, want) {
 		t.Errorf("IDs() = %v, want %v", got, want)

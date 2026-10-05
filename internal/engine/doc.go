@@ -9,7 +9,10 @@
 //
 // Status: both queues are complete — apply in M4-T5 and rollback in M4-T6 — with drift reporting in
 // M4-T7, narrowing in M4-T8, the dirty-state model in M4-T9, and previewing in M5-T2. The
-// transaction opt-out is completed in M13-T4. See docs/adr/0021-apply-executor.md,
+// transaction opt-out is completed in M13-T4. The live-schema gate arrived with M11-T2: restorable.go
+// reads a snapshot before each half runs and refuses a migration whose record of the schema this
+// database contradicts, which is where ADR 0008's from trust problem closed. See
+// docs/adr/0069-per-driver-introspection.md, docs/adr/0021-apply-executor.md,
 // docs/adr/0022-rollback-executor.md, docs/adr/0023-batch-narrowing.md,
 // docs/adr/0024-dirty-runs.md and docs/adr/0026-dry-run-and-sql-sources.md.
 //
@@ -122,8 +125,10 @@
 // The hazard is stated rather than hidden. Deriving re-emits a migration's up against a database
 // where it is already applied, and ADR 0009 permits a migration to branch on live query results, so
 // one that emits differently the second time yields an inverse of something that never ran. The
-// history records only a digest, so nothing can catch it after the fact; verifying an inverse
-// against the live schema needs introspection and is M11-T2's. Authoring a down avoids it entirely.
+// history records only a digest, so nothing can catch it after the fact. Verifying an inverse
+// against the live schema is what closed it (M11-T2): restorable.go reads a snapshot immediately
+// before each half runs, and an inverse of something that never ran lands there as an operation
+// naming an object that is already present or already gone. Authoring a down avoids it entirely.
 //
 // That re-emission is asked for as a question, and it is the reason Mode exists.
 //

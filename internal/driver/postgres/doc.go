@@ -7,8 +7,23 @@
 //
 // Status: complete through M3-T7, plus M4-T4 — connections, compilation, the capability
 // declaration, the migration lock and its configured bounds, transactional execution, the history
-// store, and the round-trip proof that every operation this driver compiles can be rolled back
-// against PostgreSQL 16 and 17.
+// store, the round-trip proof that every operation this driver compiles can be rolled back against
+// PostgreSQL 16 and 17, and M11-T2's Introspect.
+//
+// # Reading a snapshot back
+//
+// Four probes over current_schema(), which is asked for rather than assumed: migr.yaml need not
+// name a schema, and an unset one leaves the search path to the server. Every type this driver emits
+// reads back exactly -- this is the only one of the three engines whose native map has no
+// collisions, and only because it refuses enum outright. Two measurements decided the SQL. Joining
+// pg_constraint on conindid alone double-counts, because a foreign key's conindid names the index on
+// the *referenced* side, so the parent's own key comes back twice; and generate_subscripts over
+// indkey is 0-based, int2vector's lower bound being zero.
+//
+// What it will not compare is what this server rewrites: a check condition asked for as "n" > 0
+// reads back as (n > 0), and a view asked for as SELECT * comes back with an expanded column list.
+// Both are carried as the engine text ADR 0065 says they are. See
+// docs/adr/0069-per-driver-introspection.md.
 //
 // # The migration lock
 //
@@ -337,8 +352,11 @@
 //
 // Neither is fixable by widening a from payload: the first destroys more than the operation
 // names, and the second inverts by name, where a name says nothing about what the constraint
-// implied. Both are ADR 0008's open trust problem, and both close the same way — M11-T2 can
-// introspect the live schema and refuse a rollback whose recorded prior state disagrees with it.
+// implied. Both are ADR 0008's open trust problem, and both closed the same way — M11-T2 reads the
+// live schema before either operation runs and refuses it, because by rollback time the index is
+// gone and the nullability was never recorded anywhere. What this driver owes that refusal is
+// Introspect: the engine reasons about what the IR records against what the snapshot holds, and
+// names no engine at all.
 //
 // The practical consequence for a migration author is an ordering rule: drop dependents before
 // their subjects, the way the M3-T7 fixture does. PostgreSQL enforces the loud half of that

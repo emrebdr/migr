@@ -9,6 +9,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // fakeDriver compiles to a comment, so no golden file can be generated from it by accident.
@@ -57,6 +58,11 @@ func (c *fakeConn) Exec(context.Context, Statement) error {
 // Query reports that this fake has no database to read from.
 func (c *fakeConn) Query(context.Context, Query) (Rows, error) {
 	return Rows{}, errors.New("the fake connection has no database")
+}
+
+// Introspect reports that this fake has no catalog to read a snapshot out of.
+func (c *fakeConn) Introspect(context.Context) (*schema.Snapshot, error) {
+	return nil, errors.New("the fake connection has no database")
 }
 
 // Perform reports that this fake has no database to run a migration's own statement against.

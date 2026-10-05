@@ -487,7 +487,15 @@
 // The nullability ADD PRIMARY KEY implied. It converts a nullable column to NOT NULL and DROP
 // PRIMARY KEY leaves it that way, on both servers -- PostgreSQL's gap exactly, reached from the same
 // direction. A name says nothing about what the constraint implied, so a wider from payload would
-// not help either. Both are left for introspection to close (M11-T2).
+// not help either. That one closed with M11-T2: engine.Unrestorable reads the live schema and
+// refuses an add_primary_key over a nullable column before it runs.
+//
+// The foreign key's own index did not, and that is deliberate rather than unfinished. It is residue
+// this server adds rather than a definition the operation set cannot record, so refusing it would
+// be an engine difference inside the engine, which CLAUDE.md §11 puts in the capability system.
+// Introspection suppresses it instead: an index named after a foreign key over that key's own
+// columns is not reported, because no other engine creates one and reporting it would make two
+// equivalent schemas compare unequal.
 //
 // The dirty state is proved at the engine rather than at the CLI, and a CLI-level version would buy
 // nothing: engine_integration_test.go drives engine.Apply, engine.Rollback and engine.Resolve over a
@@ -497,6 +505,25 @@
 // mean a third driver child package and the paired depguard rule sets one owes.
 //
 // Status: connection handling, the two methods a migration's own SQL needs, transactions, the
-// history store, and the compiler for the two operations that store is built on. Implemented across
-// M9, with online DDL in M13-T10 (see TASKS.md).
+// history store, the compiler for the two operations that store is built on, and M11-T2's
+// Introspect. Implemented across M9, with online DDL in M13-T10 (see TASKS.md).
+//
+// # Reading a snapshot back, on two variants
+//
+// Three catalog columns exist on one variant and not the other, each error 1054 on the wrong one:
+// CHECK_CONSTRAINTS.TABLE_NAME and TABLE_CONSTRAINTS.ENFORCED are MySQL's, and MariaDB has neither.
+// So the check probe has two spellings and nothing else does.
+//
+// Two readings are this engine's own. MariaDB appends a display width where MySQL 8.0 strips one
+// server-side, so int(11) normalizes to int -- which is what keeps an int32 column comparable
+// between the two; tinyint(1) is the one width that survives, being how both spell a boolean. And
+// MariaDB has no json type: a json column is a longtext plus a check named after the column whose
+// clause is exactly json_valid(`col`), so absorbing that check is what tells its json from its text.
+//
+// The sharpest difference is a referential action. MariaDB answers RESTRICT for an omitted clause
+// and its own SHOW CREATE drops an explicit one, so the distinction is not in the catalog -- this
+// driver reads RESTRICT as no_action there and as restrict on MySQL, which is what lets a key with
+// no actions declared compare equal across all four servers. The index this server creates for a
+// foreign key over an unindexed column is suppressed, no other engine creating one. See
+// docs/adr/0069-per-driver-introspection.md.
 package mysql

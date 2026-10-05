@@ -77,19 +77,49 @@ func staged(t *testing.T, ops ir.Operations) engine.Options {
 	}
 }
 
-// stopsPartway stages three statements where the second names a table nothing created.
+// Both servers refuse a foreign key whose two sides are different types -- error 3780 on MySQL 8.0
+// and 1005/150 on MariaDB 11.4, measured -- and the operation set carries no types for either side,
+// so ir.AddForeignKey over a mismatch is a statement a pure compiler cannot refuse and no server
+// will perform. It is what these fixtures fail at. A table nothing created was what they failed at
+// until M11-T2, which engine.Unrestorable now refuses before anything compiles, and these cases are
+// about what a failure the *server* produces does to a run.
+//
+// An index over a text column with no prefix length would have done on MySQL (ADR 0058, error 1170)
+// and MariaDB accepts one -- measured here, and the first variant difference these fixtures met.
+
+// refusedKey is the foreign key both servers reject, since its two sides are different types.
+func refusedKey(table string) ir.AddForeignKey {
+	return ir.AddForeignKey{
+		Table: table, Name: table + "_mismatched",
+		Columns:         []string{"pid"},
+		ReferencesTable: table, ReferencesColumns: []string{"id"},
+	}
+}
+
+// stopsAfterOne stages two statements against a table that is already there, the second refused.
+func stopsAfterOne(t *testing.T, table string) engine.Options {
+	t.Helper()
+
+	return staged(t, ir.Operations{
+		ir.AddIndex{Table: table, Name: table + "_idx", Columns: []string{"id"}},
+		refusedKey(table),
+	})
+}
+
+// stopsPartway stages three statements where the second is one no server will perform.
 func stopsPartway(t *testing.T, table string) engine.Options {
 	t.Helper()
 
 	return staged(t, ir.Operations{
 		ir.CreateTable{
-			Table:      table,
-			Columns:    []ir.Column{{Name: "id", Type: mustType(t, "int64")}},
+			Table: table,
+			Columns: []ir.Column{
+				{Name: "id", Type: mustType(t, "int64")},
+				{Name: "pid", Type: mustType(t, "string(36)"), Nullable: true},
+			},
 			PrimaryKey: []string{"id"},
 		},
-		ir.AddColumn{Table: table + "_absent", Column: ir.Column{
-			Name: "orphan", Type: mustType(t, "int32"), Nullable: true,
-		}},
+		refusedKey(table),
 		ir.AddIndex{Table: table, Name: table + "_idx", Columns: []string{"id"}},
 	})
 }
@@ -233,11 +263,13 @@ func TestAFirstStatementFailureIsFailedRatherThanDirtyOnAnEngineThatAutoCommits(
 		table := siblingName(t)
 		fresh(t, c, table)
 
+		exec(t, c, "CREATE TABLE "+quote(table)+
+			" (id bigint NOT NULL PRIMARY KEY, pid varchar(36))")
+		dropLater(t, c, table)
+
 		_, err := engine.Apply(t.Context(), c, staged(t, ir.Operations{
-			ir.AddColumn{Table: table + "_absent", Column: ir.Column{
-				Name: "orphan", Type: mustType(t, "int32"), Nullable: true,
-			}},
-			ir.DropTable{Table: table + "_absent"},
+			refusedKey(table),
+			ir.AddIndex{Table: table, Name: table + "_idx", Columns: []string{"id"}},
 		}))
 		if err == nil {
 			t.Fatal("Apply succeeded over a statement the server refuses")
@@ -255,7 +287,7 @@ func TestAFirstStatementFailureIsFailedRatherThanDirtyOnAnEngineThatAutoCommits(
 			t.Log("that names no statement.")
 		}
 
-		_, next := engine.Apply(t.Context(), c, stopsPartway(t, table))
+		_, next := engine.Apply(t.Context(), c, stopsAfterOne(t, table))
 		if !errors.Is(next, engine.ErrDirty) {
 			t.Errorf("the next Apply returned %v, want a run that reached the database", next)
 			t.Log("A failed run leaves the migration pending, so the next up proceeds -- and this")
@@ -304,8 +336,7 @@ func TestResumingADirtyRunAgainstARealServerFinishesTheMigration(t *testing.T) {
 			t.Fatalf("Apply returned %v, want a failure reporting ErrDirty", err)
 		}
 
-		exec(t, c, "CREATE TABLE "+quote(table+"_absent")+" (id bigint)")
-		dropLater(t, c, table+"_absent")
+		exec(t, c, "ALTER TABLE "+quote(table)+" MODIFY `pid` bigint")
 
 		settled := settles(t, c, opts, engine.Repair{Mode: engine.RepairResume})
 

@@ -57,15 +57,15 @@
 //
 // # Deferred, but decided
 //
-// Two methods are not written yet. They are recorded here so the tasks that add them inherit a
-// decision rather than a blank page:
+// One method is not written yet. It is recorded here so the task that adds it inherits a decision
+// rather than a blank page:
 //
-//	Conn.Introspect(ctx) (*schema.Snapshot, error)       M11-T2
 //	Driver.Capture(ctx, capture.Request) (capture.Stream, error)   M13-T9
 //
-// Introspect's return type arrived with M11-T1 and the method did not, which is this rule applied
-// rather than an exception to it: three drivers producing a snapshot is M11-T2's own done-when, so
-// adding the method first would mean three implementations returning a plausible empty value.
+// Introspect's return type arrived with M11-T1 and the method with M11-T2, which is this rule
+// applied rather than an exception to it: three drivers producing a snapshot was M11-T2's own
+// done-when, so adding the method first would have meant three implementations returning a
+// plausible empty value.
 //
 // Capture hangs off Driver rather than Conn deliberately. Reading a replication log — MySQL's
 // row-format binlog, PostgreSQL's logical decoding — is a second connection of a different kind

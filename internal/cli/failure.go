@@ -32,6 +32,18 @@ type failure struct {
 	Destructive *destroys `json:"destructive,omitempty"`
 	// Capability is what this server will not perform, present only on that refusal.
 	Capability *refused `json:"capability,omitempty"`
+	// Unrestorable is what this database's schema contradicts, present only on that refusal.
+	Unrestorable *contradicted `json:"unrestorable,omitempty"`
+}
+
+// contradicted is what a migration records about the schema that the live schema denies.
+type contradicted struct {
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string `json:"version"`
+	// Direction is the half that was asked for, since a rollback is checked for the same reason.
+	Direction ir.Direction `json:"direction"`
+	// Operations is every disagreement, in the order the migration emitted the operations.
+	Operations []disagreed `json:"operations"`
 }
 
 // refused is what the connected server declares it will not perform, and what asked it.
@@ -167,8 +179,35 @@ func failureOf(err error) failure {
 	found.describeDirtyState(err)
 	found.describeDestructive(err)
 	found.describeCapability(err)
+	found.describeUnrestorable(err)
 
 	return found
+}
+
+// describeUnrestorable replaces the paragraph a contradicted record renders with what disagrees.
+func (f *failure) describeUnrestorable(err error) {
+	var unrestorable *engine.UnrestorableError
+	if !errors.As(err, &unrestorable) {
+		return
+	}
+
+	f.Error = engine.ErrUnrestorable.Error()
+	f.Migration = describeFile(unrestorable.Migration)
+	f.Operation = firstDisagreement(unrestorable.Found)
+	f.Unrestorable = &contradicted{
+		Version:    unrestorable.Version,
+		Direction:  unrestorable.Direction,
+		Operations: disagreementsOf(unrestorable.Found),
+	}
+}
+
+// firstDisagreement names the operation a refusal reached first, which invariant #9 asks for.
+func firstDisagreement(found []engine.Disagreement) ir.Kind {
+	if len(found) == 0 {
+		return ""
+	}
+
+	return found[0].Kind
 }
 
 // describeCapability replaces the paragraph a server's refusal renders with what it will not perform.

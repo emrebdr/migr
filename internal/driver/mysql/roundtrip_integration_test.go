@@ -765,9 +765,11 @@ func TestAReversedDropRestoresOnlyWhatItRecorded(t *testing.T) {
 	t.Log("one operation records a key and MySQL creates more than a key, the other inverts by")
 	t.Log("name and a name says nothing about what the constraint implied. PostgreSQL has the")
 	t.Log("second of these exactly and the first in a different shape -- a reversed drop_column")
-	t.Log("not restoring an index -- so both engines leave the same hole for introspection to")
-	t.Log("close: M11-T2 can compare recorded prior state against the live schema before a")
-	t.Log("rollback runs and refuse when they disagree.")
+	t.Log("not restoring an index. The second closed with M11-T2: engine.Unrestorable refuses an")
+	t.Log("add_primary_key over a nullable column before it runs. The first did not, and that is")
+	t.Log("deliberate -- the index is one this server adds for a key over an unindexed column, so")
+	t.Log("it is residue a server creates rather than a definition the operation set cannot record,")
+	t.Log("and CLAUDE.md §11 puts an engine difference in the capability system. It stays pinned.")
 }
 
 // checkTheForeignKeysOwnIndexIsNotRecorded shows a dropped foreign key leaving the index MySQL made.

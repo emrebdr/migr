@@ -114,6 +114,39 @@ type compiledMigration struct {
 	Direct []direct `json:"direct,omitempty"`
 	// Operations are what it emitted, each beside the statements it became.
 	Operations []operation `json:"operations"`
+	// Unrestorable is what its record and this database's own schema disagree about, where judged.
+	Unrestorable []disagreed `json:"unrestorable,omitempty"`
+}
+
+// disagreed is one operation whose record of the schema this database contradicts, as fields.
+type disagreed struct {
+	// Operation is its 1-based place in the half the migration emitted.
+	Operation int32 `json:"operation"`
+	// Kind is the operation at fault.
+	Kind ir.Kind `json:"kind"`
+	// Subject is the object it acts on, named the way the operation names it.
+	Subject string `json:"subject"`
+	// Sense is which way it and the live schema disagree: stated or implied.
+	Sense engine.Sense `json:"sense"`
+	// Detail states the disagreement in terms the migration's author can act on.
+	Detail string `json:"detail"`
+}
+
+// disagreementsOf renders what a migration's record and the live schema disagree about.
+func disagreementsOf(found []engine.Disagreement) []disagreed {
+	if len(found) == 0 {
+		return nil
+	}
+
+	rendered := make([]disagreed, 0, len(found))
+	for _, one := range found {
+		rendered = append(rendered, disagreed{
+			Operation: one.Operation, Kind: one.Kind, Subject: one.Subject,
+			Sense: one.Sense, Detail: one.Detail,
+		})
+	}
+
+	return rendered
 }
 
 // compiledPlan is what one direction would send to one database, in the form --json reports it.
@@ -167,11 +200,12 @@ func migrationOf(caps capability.Set, allowed engine.Allowance,
 	}
 
 	return compiledMigration{
-		Ordinal:    planned.Ordinal,
-		Version:    planned.Plan.Migration.Version,
-		File:       planned.Plan.Migration.Filename(),
-		Direct:     directOf(planned.Direct),
-		Operations: ops,
+		Ordinal:      planned.Ordinal,
+		Version:      planned.Plan.Migration.Version,
+		File:         planned.Plan.Migration.Filename(),
+		Direct:       directOf(planned.Direct),
+		Operations:   ops,
+		Unrestorable: disagreementsOf(planned.Unrestorable),
 	}
 }
 
@@ -246,6 +280,7 @@ func (p compiledPlan) String() string {
 
 	p.writeDirectNote(&b)
 	p.writeUnsupportedNote(&b)
+	p.writeUnrestorableNote(&b)
 	p.writeRefusedNote(&b)
 
 	return b.String()
@@ -262,6 +297,30 @@ func (p compiledPlan) writeUnsupportedNote(b *strings.Builder) {
 		"beneath each. migr %s refuses the migration they are in before sending anything; this plan "+
 		"prints what it would have sent. The verdict is resolved against the connected server, so "+
 		"another server may answer differently.\n", describeUnpermitted(unsupported), p.Direction)
+}
+
+// writeUnrestorableNote says what this database's schema contradicts, since a report finds without failing.
+func (p compiledPlan) writeUnrestorableNote(b *strings.Builder) {
+	found := p.countUnrestorable()
+	if found == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\nmarked ~ above: %s whose record of the schema this database contradicts, "+
+		"which migr %s refuses the migration they are in over. Only the first migration is judged: "+
+		"a preview applies nothing, so the schema every later one would run against is the one its "+
+		"predecessors leave.\n", describeUnpermitted(found), p.Direction)
+}
+
+// countUnrestorable returns how many disagreements the whole plan found.
+func (p compiledPlan) countUnrestorable() int {
+	total := 0
+
+	for _, m := range p.Migrations {
+		total += len(m.Unrestorable)
+	}
+
+	return total
 }
 
 // countUnsupported returns how many operations in the whole plan this server declares it cannot perform.
@@ -345,6 +404,16 @@ func (m compiledMigration) write(b *strings.Builder) {
 
 	for _, op := range m.Operations {
 		op.write(b)
+	}
+
+	m.writeUnrestorable(b)
+}
+
+// writeUnrestorable renders what this migration's record and the live schema disagree about.
+func (m compiledMigration) writeUnrestorable(b *strings.Builder) {
+	for _, one := range m.Unrestorable {
+		fmt.Fprintf(b, "       ~  operation %d (%s) on %q: %s\n",
+			one.Operation, one.Kind, one.Subject, one.Detail)
 	}
 }
 

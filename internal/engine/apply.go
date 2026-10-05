@@ -89,6 +89,10 @@ func (e *executor) forward(ctx context.Context, item queued) (prepared, error) {
 		return prepared{}, err
 	}
 
+	if err := e.restorable(ctx, item.migration, ir.Up, emitted.Operations); err != nil {
+		return prepared{}, err
+	}
+
 	ready, err := e.prepare(ctx, item, ir.Up, emitted)
 	if err != nil {
 		return prepared{}, e.fail(item, plan.Plan{}, err)

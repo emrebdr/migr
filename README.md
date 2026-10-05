@@ -425,6 +425,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0066](docs/adr/0066-lint-rules.md) | Lint rules: what a severity may decide, and what it may not |
 | [0067](docs/adr/0067-the-shipped-lint-rules.md) | The shipped lint rules: what each reports, and what each declines |
 | [0068](docs/adr/0068-sdk-test-helpers.md) | SDK test helpers: capture the IR, read the undo answer, and let the engine judge the rest |
+| [0069](docs/adr/0069-per-driver-introspection.md) | Per-driver introspection, and what a live schema is allowed to refuse |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -243,3 +243,11 @@ is standalone and its `DROP INDEX` is not. So a migration that applied cleanly m
 
 M4-T8's narrowing lands in both `classify` and `classifyDown`, after the state switch and before
 `number` — `--step 2` means "the first two pending" one way and "the last two applied" the other.
+
+G's hazard closed with M11-T2, and not by comparing digests. `engine.Unrestorable` reads the live
+schema immediately before each half runs, so a derived inverse of an up that emitted differently the
+second time lands there as an operation naming something already present or already gone. One thing
+that followed does not fit the shape above: that check is read per migration rather than for the
+whole queue in advance, because the schema each inverse runs against is the one its predecessors
+leave. A refusal knowable in advance still fires in advance; this one is not knowable in advance.
+See [0069](0069-per-driver-introspection.md), E and G.

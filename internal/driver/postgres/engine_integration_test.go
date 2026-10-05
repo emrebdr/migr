@@ -186,7 +186,15 @@ func addNickname(t *testing.T) staged {
 	}
 }
 
-// alterNothing names a table nothing created, so its third statement is rejected by the server.
+// invalidTextRepresentation is what this server answers for a default it cannot cast to the type.
+const invalidTextRepresentation = "22P02"
+
+// It named a table nothing created until M11-T2, which is a thing engine.Unrestorable now refuses
+// before anything compiles -- and these cases are about what a failure the *server* produces does
+// to a queue, so the fixture has to reach the server to be one. A uuid column defaulting to text
+// that is not a uuid is accepted by ir.AddColumn, passes that gate, and is error 22P02 at DDL time.
+
+// alterNothing adds a column whose default this server cannot cast, so it rejects the statement.
 func alterNothing(t *testing.T) staged {
 	t.Helper()
 
@@ -195,10 +203,11 @@ func alterNothing(t *testing.T) staged {
 		name:    "alter_nothing",
 		ops: ir.Operations{
 			ir.AddIndex{Table: "accounts", Name: "idx_accounts_id", Columns: []string{"id"}},
-			ir.AddColumn{Table: "no_such_table", Column: ir.Column{
+			ir.AddColumn{Table: "accounts", Column: ir.Column{
 				Name:     "orphan",
-				Type:     probeType(t, "int32"),
+				Type:     probeType(t, "uuid"),
 				Nullable: true,
+				Default:  ir.Literal("not-a-uuid"),
 			}},
 		},
 	}
@@ -450,9 +459,9 @@ func TestAFailureNamesTheMigrationTheOperationAndTheStatementThatCausedIt(t *tes
 			"would leave the server never having entered an aborted transaction", err)
 	}
 
-	if pgErr.Code != undefinedTable {
+	if pgErr.Code != invalidTextRepresentation {
 		t.Errorf("the server rejected the statement with SQLSTATE %s, want %s",
-			pgErr.Code, undefinedTable)
+			pgErr.Code, invalidTextRepresentation)
 	}
 
 	t.Log("Invariant #9 wants the migration and the offending operation. A driver reports a")

@@ -9,6 +9,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // ErrNoDatabase marks a database call made by a check that deliberately opened none.
@@ -85,6 +86,11 @@ func (o *OfflineConn) Exec(context.Context, Statement) error {
 // Query refuses, which leaves a migration's own read unanswered rather than answered wrongly.
 func (o *OfflineConn) Query(context.Context, Query) (Rows, error) {
 	return Rows{}, o.refuse("reading from the database")
+}
+
+// Introspect refuses, since there is no catalog to read a snapshot out of.
+func (o *OfflineConn) Introspect(context.Context) (*schema.Snapshot, error) {
+	return nil, o.refuse("introspecting the schema")
 }
 
 // Perform refuses, since a statement a migration sends itself reaches the database directly.

@@ -84,7 +84,8 @@ func TestEachRunIsRecordedInsideTheTransactionThatRanIt(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 
-	want := []string{"open", "lock", "ensure", "list", "latest", "begin", "record", "commit",
+	want := []string{"open", "lock", "ensure", "list", "latest", "introspect", "begin", "record",
+		"commit",
 		"unlock", "close"}
 
 	if !slices.Equal(f.calls, want) {

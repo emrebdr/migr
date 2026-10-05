@@ -227,6 +227,50 @@ func kindNames(kinds []ir.Kind) []string {
 	return names
 }
 
+// ErrUnrestorable marks a migration the live schema shows cannot be undone as recorded, for errors.Is.
+var ErrUnrestorable = errors.New("this migration cannot be undone as it records itself")
+
+// UnrestorableError refuses a migration whose record of the schema the live schema contradicts.
+type UnrestorableError struct {
+	// Migration is the file at fault, so the refusal names it (invariant #9).
+	Migration migration.Migration
+	// Version is the migration's UTC timestamp, which names it when no file carries one.
+	Version string
+	// Direction is the half that was asked for, since a rollback is checked for the same reason.
+	Direction ir.Direction
+	// Found is every disagreement, in the order the migration emitted the operations.
+	Found []Disagreement
+}
+
+// unrestorableTemplate names what this migration records, what the schema says, and the cost.
+//
+// "nothing in it ran" is as much as this error may claim, for UnsupportedError's reason: a migration
+// refused partway through a batch leaves the ones before it applied, and the run's own summary is
+// what reports those.
+const unrestorableTemplate = `%s: the schema this database holds contradicts what this migration's
+%s run records about it, so nothing in it ran and nothing was recorded for it -- %s:
+
+%s
+
+A rollback restores what an operation recorded, so an operation recording the wrong thing restores
+the wrong schema -- which is the trust problem docs/adr/0008-reverse-operations.md left open and
+introspection closes. This is read before anything is compiled, against this database and no other.`
+
+// Error names the migration and every way its record and the live schema disagree.
+func (e *UnrestorableError) Error() string {
+	return fmt.Sprintf(unrestorableTemplate,
+		describeMigration(e.Migration, e.Version),
+		e.Direction,
+		describeFindings(len(e.Found)),
+		describeDisagreements(e.Found),
+	)
+}
+
+// Unwrap reports the sentinel so errors.Is(err, ErrUnrestorable) succeeds, and nothing else.
+func (e *UnrestorableError) Unwrap() error {
+	return ErrUnrestorable
+}
+
 // ErrSeveralDirty marks a database carrying more than one migration between states, for errors.Is.
 var ErrSeveralDirty = errors.New("this database carries more than one migration between states")
 

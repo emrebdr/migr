@@ -84,6 +84,9 @@ var ErrHistoryRace = errors.New("another process created the migration history t
 // ErrAlreadyRecorded marks a run already written under the batch and ordinal it claims.
 var ErrAlreadyRecorded = errors.New("this run is already recorded")
 
+// ErrIntrospect marks a catalog this driver could not read a snapshot out of, for errors.Is.
+var ErrIntrospect = errors.New("reading the schema")
+
 // ErrRedefine marks a column change this driver compiles against the database but cannot, for errors.Is.
 var ErrRedefine = errors.New("redefining a column")
 

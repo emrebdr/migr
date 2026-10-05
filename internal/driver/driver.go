@@ -8,6 +8,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // Statement is one compiled unit of work, ready to run against the engine that produced it.
@@ -94,6 +95,8 @@ type Conn interface {
 	Exec(ctx context.Context, stmt Statement) error
 	// Query runs a migration's own read, which the server enforces read-only, and returns text.
 	Query(ctx context.Context, q Query) (Rows, error)
+	// Introspect reads this session's own namespace as a snapshot, less migr's own history table.
+	Introspect(ctx context.Context) (*schema.Snapshot, error)
 	// Perform runs a migration's own statement and reports how many rows it changed.
 	Perform(ctx context.Context, q Query) (int64, error)
 	// Lock acquires the migration lock, returning the release that must always run.

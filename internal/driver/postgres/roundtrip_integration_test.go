@@ -518,9 +518,12 @@ func TestAReversedDropRestoresOnlyWhatItRecorded(t *testing.T) {
 
 	t.Log("Neither of these is a compiler bug, and neither is fixable with a wider from payload:")
 	t.Log("one operation records a column and PostgreSQL destroys more than a column, the other")
-	t.Log("inverts by name and a name says nothing about what the constraint implied. ADR 0008")
-	t.Log("leaves both to introspection -- M11-T2 can compare the recorded prior state against")
-	t.Log("the live schema before a rollback runs and refuse when they disagree.")
+	t.Log("inverts by name and a name says nothing about what the constraint implied. Both still")
+	t.Log("hold, because both are facts about this server rather than about migr -- and both are")
+	t.Log("why engine.Unrestorable refuses either operation before it runs rather than at rollback")
+	t.Log("time, when the index is already gone and the nullability was never recorded (M11-T2).")
+	t.Log("The refusal itself is asserted in internal/engine and in cmd/migr, which may name a")
+	t.Log("driver; this package cannot, since internal/engine imports it.")
 }
 
 // checkTheIndexIsNotRecorded shows a reversed drop_column bringing back the column and not its index.

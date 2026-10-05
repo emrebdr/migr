@@ -22,6 +22,9 @@ var ErrPragma = errors.New("a session pragma did not take")
 // ErrSchema marks a configured schema, which SQLite has nothing to resolve one against.
 var ErrSchema = errors.New("SQLite has no schemas")
 
+// ErrIntrospect marks a catalog this driver could not read a snapshot out of, for errors.Is.
+var ErrIntrospect = errors.New("reading the schema")
+
 // ErrLockStrategy marks a migration lock strategy this driver does not implement, for errors.Is.
 var ErrLockStrategy = errors.New("this driver does not implement that migration lock strategy")
 

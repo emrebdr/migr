@@ -14,6 +14,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // errRefused is what the recording session reports for the statement a test told it to fail.
@@ -54,12 +55,14 @@ func backwards() Clock {
 
 // recorder is a session with no database that records what the executor asked it to do.
 type recorder struct {
-	caps    capability.Set
-	calls   []string
-	fail    string
-	inTx    bool
-	store   *journal
-	lockErr error
+	caps          capability.Set
+	calls         []string
+	fail          string
+	inTx          bool
+	store         *journal
+	lockErr       error
+	live          *schema.Snapshot
+	introspectErr error
 }
 
 // newRecorder builds a session whose declaration says whether its DDL is transactional.
@@ -98,6 +101,23 @@ func (r *recorder) Exec(_ context.Context, stmt driver.Statement) error {
 	}
 
 	return nil
+}
+
+// Nothing by default, which Unrestorable judges nothing against. These fixtures stage one index
+// name per migration against one table that is never created, so no single snapshot could satisfy
+// both halves of them -- an apply needs the index absent and the rollback of that same apply needs
+// it present. A test about the gate stages a schema; every other test here is about something else
+// and must not be refused by a fake's fiction.
+
+// Introspect records the read and answers with the snapshot this recorder was staged with.
+func (r *recorder) Introspect(context.Context) (*schema.Snapshot, error) {
+	r.note("introspect")
+
+	if r.introspectErr != nil {
+		return nil, r.introspectErr
+	}
+
+	return r.live, nil
 }
 
 // Query records a migration's own read, which nothing in this package drives yet.

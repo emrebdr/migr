@@ -12,6 +12,7 @@ import (
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // serverVersion is what the fake session reports, since host.info carries it to a migration.
@@ -105,6 +106,11 @@ func (c *conn) checkPerformed(label string, expectPerforms bool) []string {
 
 	return []string{fmt.Sprintf("%s: the migration sent %d of the %d statements this fixture "+
 		"states", label, c.performed, want)}
+}
+
+// Introspect is never reached: a fixture states its reads, and a snapshot is not one of them.
+func (c *conn) Introspect(context.Context) (*schema.Snapshot, error) {
+	return nil, errors.New("this fixture answers no introspection")
 }
 
 // Query answers the next read this fixture staged, reporting one it never said it would make.

@@ -31,6 +31,8 @@ type Planned struct {
 	Plan plan.Plan
 	// Direct are the statements it runs itself, which this preview held rather than ran (ADR 0036).
 	Direct []driver.Query
+	// Unrestorable is what this migration's record and the live schema disagree about, where judged.
+	Unrestorable []Disagreement
 }
 
 // Preview reports what a direction would run against this database, and executes none of it.
@@ -88,6 +90,35 @@ func (e *executor) previewAll(ctx context.Context, dir ir.Direction) (Previewed,
 	return previewed, err
 }
 
+// The first and no other, because a preview applies nothing: the schema every later migration will
+// run against is the one its predecessors leave, so judging one against the schema as it is now
+// would mark a correct migration for naming a table its predecessor creates. The one about to run
+// is the one an operator is deciding about, and it is the only one a preview can judge exactly.
+//
+// It goes through the same permission the run does, so what is marked here is what migr up will
+// refuse rather than everything that could be refused -- a migration that authors its own down
+// keeps the implied half, exactly as it does on the run path. A failure to read the schema marks
+// nothing: a preview refuses nothing and must not fail over a question it only asked to annotate.
+
+// judgedFirst reports what the first queued migration's record and the live schema disagree about.
+func (e *executor) judgedFirst(ctx context.Context, at int, ready prepared) []Disagreement {
+	if at > 0 {
+		return nil
+	}
+
+	found, err := e.disagreements(ctx, operationsOf(ready.compiled))
+	if err != nil {
+		return nil
+	}
+
+	kept, err := e.permitted(ctx, ready.item.migration, ready.compiled.Direction, found)
+	if err != nil {
+		return nil
+	}
+
+	return kept
+}
+
 // inspect reads the history and folds it, reporting a database with no history table as one.
 func (e *executor) inspect(ctx context.Context) (history.Report, bool, error) {
 	report, err := e.fold(ctx)
@@ -135,6 +166,7 @@ func (e *executor) compileAll(ctx context.Context, queue []queued, dir ir.Direct
 
 		steps = append(steps, Planned{
 			Ordinal: item.ordinal, Plan: ready.compiled, Direct: ready.direct,
+			Unrestorable: e.judgedFirst(ctx, len(steps), ready),
 		})
 	}
 

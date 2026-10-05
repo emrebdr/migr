@@ -4,9 +4,9 @@
 // own. Snapshots are driver-neutral and comparable, so an equivalent schema on
 // PostgreSQL and MySQL compares equal despite differing native names.
 //
-// Status: types complete (M1-T1); snapshot model complete (M11-T1). Per-driver
-// introspection, and Conn.Introspect itself, are M11-T2; the differ is M11-T3. See
-// docs/adr/0065-the-schema-snapshot.md.
+// Status: types complete (M1-T1); snapshot model complete (M11-T1); all three drivers
+// produce one and Conn.Introspect is on the contract (M11-T2). The differ is M11-T3. See
+// docs/adr/0065-the-schema-snapshot.md and docs/adr/0069-per-driver-introspection.md.
 //
 // # Grammar
 //
@@ -191,14 +191,15 @@
 // force a version: a snapshot sent over the runtime protocol, or one stored in the history
 // table as a baseline for a database whose earlier migrations migr did not run.
 //
-// # What M11-T2 inherits from here
+// # What M11-T2 did with what this model left it
 //
-// Three measurements that are a driver's problem rather than this model's. Two engines report a
-// unique constraint and a unique index as one object -- MySQL implements the former as a UNIQUE
-// KEY, and this project's SQLite driver compiles add_unique to CREATE UNIQUE INDEX -- so
-// introspection there must choose which element to report, and the model cannot choose for it.
-// Two engines attach a constraint nobody asked for, which a naive snapshot would report as real
-// and a differ would then propose dropping: MariaDB adds json_valid() to a json column, and
-// this project's SQLite driver renders an enum as an unnamed CHECK ... IN (...). And MySQL
-// creates an index for a foreign key over an unindexed column, named after the constraint.
+// Three measurements were a driver's problem rather than this model's, and all three are answered
+// in docs/adr/0069-per-driver-introspection.md. Two engines report a unique constraint and a unique
+// index as one object, so every driver reports every unique element as a Unique and no driver ever
+// sets Index.Unique -- which is the only vocabulary the operations have, ir.AddIndex having no such
+// field. Two engines attach a constraint nobody asked for, and each is absorbed into the element
+// that caused it rather than reported: SQLite's unnamed CHECK ("c" IN (...)) resolves that column
+// to an enum, and MariaDB's json_valid(c) resolves a longtext to json, which is also what tells
+// MariaDB's json from its text. And the index MySQL creates for a foreign key over an unindexed
+// column is suppressed, since no other engine creates one.
 package schema

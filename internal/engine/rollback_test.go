@@ -39,6 +39,7 @@ func TestARollbackRunsTheReverseOperationsInReverseOrder(t *testing.T) {
 
 	want := []string{
 		"lock", "ensure", "list", "latest",
+		"introspect",
 		"begin", "exec c2", "exec b1", "exec a0", "record " + versionAt(0), "commit",
 		"unlock",
 	}

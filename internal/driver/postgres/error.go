@@ -12,6 +12,9 @@ var ErrDSN = errors.New("connection string cannot be parsed")
 // ErrConnect marks a server this driver could not open a usable session against, for errors.Is.
 var ErrConnect = errors.New("cannot open a PostgreSQL session")
 
+// ErrIntrospect marks a catalog this driver could not read a snapshot out of, for errors.Is.
+var ErrIntrospect = errors.New("reading the schema")
+
 // ErrServerTooOld marks a server older than the release this driver can reason about.
 var ErrServerTooOld = errors.New("PostgreSQL server is older than this driver supports")
 

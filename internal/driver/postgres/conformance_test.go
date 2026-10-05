@@ -8,6 +8,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/schema"
 	conformance "github.com/emrebdr/migr/test/conformance/driver"
 )
 
@@ -21,6 +22,11 @@ type declaredConn struct {
 
 // Exec refuses: there is no server behind this session.
 func (declaredConn) Exec(context.Context, driver.Statement) error { return errNoServer }
+
+// Introspect refuses: there is no server behind this session.
+func (declaredConn) Introspect(context.Context) (*schema.Snapshot, error) {
+	return nil, errNoServer
+}
 
 // Query refuses: there is no server behind this session.
 func (declaredConn) Query(context.Context, driver.Query) (driver.Rows, error) {

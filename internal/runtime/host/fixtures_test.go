@@ -12,6 +12,7 @@ import (
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/runtime/protocol"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // errNoServer marks a fake asked for something only a real database could answer.
@@ -56,6 +57,9 @@ func newSession(t *testing.T, verdict capability.Verdict) *session {
 
 // Exec is never reached: the host serves a migration's own SQL, and compiled statements are the engine's.
 func (s *session) Exec(context.Context, driver.Statement) error { return errNoServer }
+
+// Introspect is never reached: no host callback reads a snapshot.
+func (s *session) Introspect(context.Context) (*schema.Snapshot, error) { return nil, errNoServer }
 
 // Query records a migration's read and answers with what the test set.
 func (s *session) Query(_ context.Context, q driver.Query) (driver.Rows, error) {

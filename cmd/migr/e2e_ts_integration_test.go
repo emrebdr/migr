@@ -496,12 +496,18 @@ func TestValidateChecksATypeScriptProjectWithoutOpeningADatabase(t *testing.T) {
 const orphanTable = "e2e_ts_orphan"
 
 // orphanMigration execs a statement and then emits an operation the server refuses.
+//
+// The operation names a table that is there and asks for something the server will not do: a NOT
+// NULL column with no default, added to a table that already holds a row. It named a table nothing
+// created until M11-T2, which engine.Unrestorable refuses before anything compiles -- and this case
+// is about what an exec leaves behind when the *server* refuses what follows it.
 const orphanMigration = `import { defineMigration, t } from "@migr/sdk";
 
 export default defineMigration({
   async up(s) {
     await s.exec("CREATE TABLE ` + orphanTable + ` (id bigint)");
-    await s.table("e2e_ts_no_such_table").addColumn("late", t.bool()).null().apply();
+    await s.exec("INSERT INTO ` + orphanTable + ` (id) VALUES (1)");
+    await s.table("` + orphanTable + `").addColumn("late", t.bool()).apply();
   },
 });
 `
@@ -520,8 +526,12 @@ func TestAStatementAMigrationRanItselfSurvivesTheFailureThatFollowedIt(t *testin
 	t.Log("So the statement is committed on its own and a later failure does not undo it -- the")
 	t.Log("compensation is somebody's to write, and here it is a probe rather than a migration.")
 
-	if !strings.Contains(reported, "e2e_ts_no_such_table") {
+	if !strings.Contains(reported, orphanTable) {
 		t.Errorf("the failure does not name what the server refused:\n%s", reported)
+	}
+
+	if !strings.Contains(reported, "contains null values") {
+		t.Errorf("the failure does not carry the server's own refusal:\n%s", reported)
 	}
 
 	if applied := digest(t); !strings.Contains(applied, orphanTable) {

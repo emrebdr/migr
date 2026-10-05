@@ -25,6 +25,7 @@ func TestAMigrationRunsAsOneTransaction(t *testing.T) {
 
 	want := []string{
 		"lock", "ensure", "list", "latest",
+		"introspect",
 		"begin", "exec a0", "exec b1", "exec c2", "record " + versionAt(0), "commit",
 		"unlock",
 	}
@@ -45,7 +46,9 @@ func TestEachMigrationIsRecordedBeforeItsTransactionCommits(t *testing.T) {
 
 	want := []string{
 		"lock", "ensure", "list", "latest",
+		"introspect",
 		"begin", "exec a0", "record " + versionAt(0), "commit",
+		"introspect",
 		"begin", "exec b0", "record " + versionAt(1), "commit",
 		"unlock",
 	}
@@ -152,6 +155,7 @@ func TestAFailurePartwayCommitsNothingAndRunsNothingFurther(t *testing.T) {
 
 	want := []string{
 		"lock", "ensure", "list", "latest",
+		"introspect",
 		"begin", "exec a0", "exec b1", "rollback",
 		"mark-failed-outside-any-transaction " + versionAt(0),
 		"unlock",
@@ -784,6 +788,7 @@ func TestASessionWithoutTransactionalDDLRunsRatherThanBeingRefused(t *testing.T)
 
 	want := []string{
 		"lock", "ensure", "list", "latest",
+		"introspect",
 		"begin", "exec a0", "exec b1", "exec c2", "record " + versionAt(0), "commit",
 		"unlock",
 	}

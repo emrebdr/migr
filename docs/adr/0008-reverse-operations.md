@@ -243,3 +243,13 @@ leaves it behind. The IR records that no index was asked for, so nothing derives
 an index of its own the server reuses it and the reversal is exact. That is two engines and four
 servers' worth of evidence for one note, and every case of it is an operation that records less than
 the engine does.)*
+
+**M11-T2 closed the trust problem, and the measurement that did it corrected this note.** Comparing a
+recorded prior definition against the live schema *before a rollback runs*, which is what this note
+proposed, catches neither gap above: by rollback time the index is gone, and nothing ever recorded
+the nullability. Both are losses only the pre-apply schema reveals, so `engine.Unrestorable` reads a
+snapshot before each half of a run and refuses — the trust half (a recorded `from` the live object
+contradicts) in both directions, and the implied half (what the schema shows an operation will change
+and no payload records) on the forward one, where an authored down permits it. Both server
+behaviours still hold and are still pinned, because both are facts about an engine rather than about
+migr. See [0069](0069-per-driver-introspection.md), E.

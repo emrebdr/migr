@@ -127,6 +127,11 @@ func (e *executor) rollbackQueue(ctx context.Context, queue []prepared, skipped 
 	result := Result{Batch: e.batch, Skipped: skipped}
 
 	for _, ready := range queue {
+		if err := e.restorable(ctx, ready.item.migration, ir.Down,
+			operationsOf(ready.compiled)); err != nil {
+			return result, err
+		}
+
 		reverted, err := e.perform(ctx, ready)
 		if err != nil {
 			return result, err

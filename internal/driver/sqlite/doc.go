@@ -416,7 +416,23 @@
 // the only other namespaces are the ones ATTACH creates, which nothing here opens -- and
 // lock.strategy is refused unless it is the file half this driver implements. Neither is a placeholder.
 //
-// Status: complete for M8. Connection handling, the compiler, the capability declaration, the table
-// rebuild, the file lock, and the history store. Introspect is M11-T1 and the lock axis in migr plan
-// is M13-T6 (see TASKS.md).
+// Status: complete for M8, plus M11-T2's Introspect. Connection handling, the compiler, the
+// capability declaration, the table rebuild, the file lock, the history store, and reading a
+// snapshot back. The lock axis in migr plan is M13-T6 (see TASKS.md).
+//
+// # What only the recorded CREATE TABLE holds
+//
+// This engine has no catalog for a check constraint at all, reports no name for a foreign key, and
+// records DEFERRABLE in neither -- all three exist only inside the statement sqlite_schema kept. So
+// declared.go reads that statement with the splitter the rebuild already needs, which is also where
+// the enum an unnamed CHECK ("c" IN (...)) stands for is recovered: this driver renders an enum that
+// way because SQLite has no enum type, so reporting the check as a constraint would have a differ
+// propose dropping the column's own type. The match is against this driver's exact rendering, so a
+// hand-written check that is byte-identical to it is absorbed too -- which is why the type stays
+// ambiguous. See docs/adr/0069-per-driver-introspection.md.
+//
+// Two more things the pragmas answer and the obvious one does not. pragma_table_info omits a
+// generated column entirely, so the columns come from table_xinfo. And a table-level PRIMARY KEY
+// over an integer column creates no index and no pragma_index_list row at all, because it is the
+// rowid -- so the key is read from table_xinfo's own pk ordering rather than from an index.
 package sqlite

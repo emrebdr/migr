@@ -13,6 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/runtime"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // fakeName is the driver name a staged project's migr.yaml points at.
@@ -54,6 +55,8 @@ type fake struct {
 	lockErr error
 	// inTx reports whether a transaction is open, which is what a history write must be inside.
 	inTx bool
+	// live is the snapshot this database answers an introspection with, empty for a fresh database.
+	live *schema.Snapshot
 
 	// mu guards the two fields below, which are the only ones a second goroutine could reach.
 	mu sync.Mutex
@@ -322,6 +325,18 @@ func (c *fakeConn) Expand(_ context.Context, op ir.Operation) ([]driver.Statemen
 		{SQL: "-- read the schema"},
 		{SQL: raw.SQL},
 	}, nil
+}
+
+// Nothing, rather than an empty database: engine.Unrestorable judges nothing against no snapshot,
+// and a scripted migration's operations name tables this fake never creates. A test about that
+// gate stages a schema; every other test here is about something else and must not be refused by
+// a fake's fiction. A .sql project reaches the gate as ir.Raw either way, which it never judges.
+
+// Introspect answers with the snapshot this fake was staged with, and nothing by default.
+func (c *fakeConn) Introspect(context.Context) (*schema.Snapshot, error) {
+	c.fake.note("introspect")
+
+	return c.fake.live, nil
 }
 
 // Query refuses: no command drives a migration's own SQL, since every .sql migration is ir.Raw.

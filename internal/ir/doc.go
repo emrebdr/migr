@@ -153,7 +153,9 @@
 // current type, which the operation does not carry, so it reports destructive whenever a
 // type change is requested. That is conservative and sometimes wrong in the safe
 // direction: over-reporting costs an --allow-destructive flag, under-reporting costs data.
-// M11 introspection can compare against the live schema and refine it.
+// Introspection does not refine that verdict and is not meant to: engine.Unrestorable
+// compares a recorded prior state against the live schema and refuses, where this is a
+// question about one operation's own payload (M11-T2).
 //
 // DestructiveKinds names the five kinds some payload of which can destroy, because M10-T1
 // needed a set an operator can permit by name and a verdict needs a payload: AlterColumn

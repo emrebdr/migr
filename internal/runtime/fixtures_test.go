@@ -14,6 +14,7 @@ import (
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // errNoServer marks a fake asked for something only a real database could answer.
@@ -48,6 +49,9 @@ func newConn(t *testing.T) *conn {
 
 // Exec is never reached: the host serves a migration's own SQL, and compiled statements are the engine's.
 func (c *conn) Exec(context.Context, driver.Statement) error { return errNoServer }
+
+// Introspect is never reached: no host callback reads a snapshot.
+func (c *conn) Introspect(context.Context) (*schema.Snapshot, error) { return nil, errNoServer }
 
 // Query records a migration's read and answers with one row, which is what the fake asks for.
 func (c *conn) Query(_ context.Context, q driver.Query) (driver.Rows, error) {

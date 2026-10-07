@@ -723,3 +723,52 @@ func TestAPreviewJudgesTheFirstMigrationOnly(t *testing.T) {
 		t.Log("mark a correct migration for naming a table its predecessor creates.")
 	}
 }
+
+func TestADroppedForeignKeyMovesTheSideItReferenced(t *testing.T) {
+	live := usersSchema(t)
+	live.Tables = append(live.Tables, schema.Table{
+		Name: "orders",
+		Columns: []schema.Column{
+			{Name: "user_id", Type: liveType(t, "int64", "bigint"), Nullable: true},
+		},
+		ForeignKeys: []schema.ForeignKey{{
+			Name: "orders_user_fk", Columns: []string{"user_id"},
+			ReferencesTable: "users", ReferencesColumns: []string{"id"},
+		}},
+	})
+
+	recorded := ir.Operations{
+		ir.DropForeignKey{Table: "orders", Name: "orders_user_fk", From: &ir.ForeignKeyDef{
+			Columns:         []string{"user_id"},
+			ReferencesTable: "users", ReferencesColumns: []string{"id"},
+		}},
+		ir.DropIndex{Table: "users", Name: "idx_users_email",
+			From: &ir.ColumnsDef{Columns: []string{"email"}}},
+		ir.DropTable{Table: "users", From: &ir.TableDef{
+			Columns: []ir.Column{
+				{Name: "id", Type: mustType(t, "int64")},
+				{Name: "email", Type: mustType(t, "string(255)")},
+				{Name: "note", Type: mustType(t, "text"), Nullable: true},
+			},
+			PrimaryKey: []string{"id"},
+		}},
+	}
+
+	if found := Unrestorable(recorded, live); len(found) != 0 {
+		t.Errorf("a list that dropped the referencing key first was refused: %v", details(found))
+		t.Log("Both implied findings read the referencing keys of the object they are about, so a")
+		t.Log("drop that recorded one has moved exactly the state a later drop of the referenced")
+		t.Log("table is judged against. ir.AddForeignKey already named both sides; this is the")
+		t.Log("other half of that, and M11-T3's differ is what found it missing.")
+	}
+
+	bare := ir.Operations{
+		ir.DropForeignKey{Table: "orders", Name: "orders_user_fk"},
+		ir.DropTable{Table: "users"},
+	}
+
+	if found := Unrestorable(bare, live); len(found) == 0 {
+		t.Error("a drop that recorded nothing of the key still moved the referenced side")
+		t.Log("An unrecorded drop names nothing extra, there being nothing to restore it from.")
+	}
+}

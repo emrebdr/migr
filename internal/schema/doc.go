@@ -5,8 +5,9 @@
 // PostgreSQL and MySQL compares equal despite differing native names.
 //
 // Status: types complete (M1-T1); snapshot model complete (M11-T1); all three drivers
-// produce one and Conn.Introspect is on the contract (M11-T2). The differ is M11-T3. See
-// docs/adr/0065-the-schema-snapshot.md and docs/adr/0069-per-driver-introspection.md.
+// produce one and Conn.Introspect is on the contract (M11-T2); the differ reads one back
+// into operations (M11-T3). See docs/adr/0065-the-schema-snapshot.md,
+// docs/adr/0069-per-driver-introspection.md and docs/adr/0070-the-snapshot-differ.md.
 //
 // # Grammar
 //
@@ -115,8 +116,10 @@
 // equality, so a round trip notices one appearing or vanishing.
 //
 // Unrepresentable lists every one of them in canonical order, so the rule is reachable rather
-// than remembered: M11-T3 refuses off that list and migr diff prints off it, the way
-// internal/engine's Destructive and Unsupported are read by a report and a run alike.
+// than remembered, the way internal/engine's Destructive and Unsupported are read by a report and a
+// run alike. internal/diff reads the markers themselves as a lookup rather than off that list, so
+// that an element nothing can express and identical in both schemas produces neither an operation
+// nor a refusal; what the list is for is a caller that wants the whole picture of one database.
 //
 // The sharpest case is a generated column, which is invisible unless it is marked. SQLite's
 // pragma_table_info omits one entirely -- it shows only in table_xinfo, hidden = 2 -- and

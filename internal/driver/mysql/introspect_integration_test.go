@@ -532,3 +532,17 @@ func TestTheSnapshotConformanceSuitePasses(t *testing.T) {
 	t.Log("which is what M11-T2's done-when asks for: equivalent schemas compare equal across")
 	t.Log("engines despite differing native type names.")
 }
+
+func TestTheDiffConformanceSuitePasses(t *testing.T) {
+	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
+		d, err := New(driver.Options{})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		conformance.Diff{Driver: d, Conn: c, Prefix: uniqueName(t)}.Run(t)
+	})
+
+	t.Log("This is the only engine that changes a column by restating its whole definition, so it")
+	t.Log("is the one that holds the differ to stating a default it is not changing (ADR 0058).")
+}

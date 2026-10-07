@@ -79,7 +79,7 @@ func identities(op ir.Operation) []string {
 		return append(objectIdentities(o.Table, o.Name, o.Columns),
 			tableIdentities(o.ReferencesTable, o.ReferencesColumns...)...)
 	case ir.DropForeignKey:
-		return objectIdentities(o.Table, o.Name, nil)
+		return append(objectIdentities(o.Table, o.Name, nil), referencedIdentities(o.From)...)
 	case ir.CreateView:
 		return []string{o.View}
 	case ir.DropView:
@@ -87,6 +87,21 @@ func identities(op ir.Operation) []string {
 	default:
 		return nil
 	}
+}
+
+// A dropped foreign key names the side it referenced as well, where it recorded one. Adding a key
+// already names both, and the asymmetry was a false positive M11-T3 found: both implied findings read
+// the referencing keys of the object they are about, so removing one of those keys moves exactly the
+// state a later drop of the referenced table or column is judged against. An unrecorded one names
+// nothing extra, there being nothing to restore it from either.
+
+// referencedIdentities names the far side of a dropped foreign key, where the drop recorded one.
+func referencedIdentities(from *ir.ForeignKeyDef) []string {
+	if from == nil {
+		return nil
+	}
+
+	return tableIdentities(from.ReferencesTable, from.ReferencesColumns...)
 }
 
 // tableIdentities names a table and the columns of it one operation acts on.

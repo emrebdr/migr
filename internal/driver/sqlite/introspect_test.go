@@ -645,3 +645,15 @@ func TestTheSnapshotConformanceSuitePasses(t *testing.T) {
 	t.Log("Untagged, for ADR 0050's reason: this engine's requirement is a t.TempDir() and a few")
 	t.Log("milliseconds, so one third of the cross-engine claim is inside make check.")
 }
+
+func TestTheDiffConformanceSuitePasses(t *testing.T) {
+	d, err := New(driver.Options{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	conformance.Diff{Driver: d, Conn: openFile(t), Prefix: "migr_diff"}.Run(t)
+
+	t.Log("Untagged for the same reason the snapshot suite is, which puts one third of M11-T3's")
+	t.Log("done-when -- a correct, ordered list an engine actually ran -- inside make check.")
+}

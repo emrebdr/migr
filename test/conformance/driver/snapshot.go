@@ -181,7 +181,17 @@ func render(t *testing.T, snapshot schema.Snapshot) string {
 
 // apply compiles the fixture and runs it, asking the session for anything the compiler cannot.
 func (s Snapshot) apply(ctx context.Context, t *testing.T) error {
-	for _, op := range s.fixture(t) {
+	return s.run(ctx, s.fixture(t))
+}
+
+// One operation is compiled and run before the next is compiled, which is load-bearing rather than
+// incidental: an emulated operation is compiled against the database (ADR 0053), so a list holding
+// two of them -- or one over a table an earlier operation creates -- is only compilable this way
+// until M11-T7 makes the engine do the same.
+
+// run compiles each operation and runs its statements before compiling the one after it.
+func (s Snapshot) run(ctx context.Context, ops ir.Operations) error {
+	for _, op := range ops {
 		stmts, err := s.statements(ctx, op)
 		if err != nil {
 			return fmt.Errorf("%s: %w", op.Kind(), err)

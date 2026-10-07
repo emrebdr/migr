@@ -117,10 +117,11 @@
 //
 // Operations that destroy information they do not otherwise record carry an optional From
 // payload holding what they replaced. Supplied, they invert exactly; absent, they are
-// irreversible with a reason naming the field that would fix it. A schema differ knows both
-// sides of a change and can always populate it; a hand-written migration often cannot, and then
-// says so rather than guessing. Note that From is trust rather than proof — nothing yet verifies
-// a recorded prior definition against the live schema.
+// irreversible with a reason naming the field that would fix it. A hand-written migration often
+// cannot populate it, and then says so rather than guessing; internal/diff knows both sides of a
+// change exactly, so it populates every one of them and declines to emit a drop whose prior
+// definition it cannot record (M11-T3). From is trust rather than proof, and engine.Unrestorable is
+// what checks it against the live schema before a run (M11-T2).
 //
 // Two cases are easy to get subtly wrong. Reversing "set a default" must restore "no default" as
 // an explicit DropDefault, because an omitted field means "leave the default alone" and would

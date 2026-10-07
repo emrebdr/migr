@@ -548,3 +548,16 @@ func TestTheSnapshotConformanceSuitePasses(t *testing.T) {
 	t.Log("MySQL runs it against both variants, so the cross-engine claim is four servers deep")
 	t.Log("without any test opening two connections at once -- which invariant #1 forbids anyway.")
 }
+
+func TestTheDiffConformanceSuitePasses(t *testing.T) {
+	eachMajor(t, func(t *testing.T, session *pgConn) {
+		conformance.Diff{
+			Driver: newDriver(t, driver.Options{}),
+			Conn:   session,
+			Prefix: "migr_diff",
+		}.Run(t)
+	})
+
+	t.Log("An index name is namespace-scoped on this engine, which is what makes the diff's own")
+	t.Log("rule -- every drop before every create -- something a server can disagree with.")
+}

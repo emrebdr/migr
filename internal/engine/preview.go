@@ -119,6 +119,39 @@ func (e *executor) judgedFirst(ctx context.Context, at int, ready prepared) []Di
 	return kept
 }
 
+// An emulated operation is rendered from the catalog, so a preview can only print the statements of
+// one whose catalog nothing in the preview would have changed: the first operation of the first
+// queued migration, and only where that migration sends nothing through the escape hatch first. That
+// is judgedFirst's own rule one level finer, and for the same reason -- a preview applies nothing, so
+// the schema every later operation would run against is the one its predecessors leave.
+//
+// Everything else is left deferred and marked, because printing what it compiles to now would print
+// SQL that is not the SQL that runs -- the reason migr plan counts a bound argument rather than
+// splicing it in. Expanding by executing into a transaction the preview discards was rejected: it
+// would take the rebuild's own exclusive lock and copy the table's rows for a report (invariants #12
+// and #13), and on an engine whose DDL commits it would not be discardable at all.
+//
+// A failed expansion is dropped rather than reported, as judgedFirst drops a failed read: a preview
+// refuses nothing, and must not fail over a question it only asked in order to print more.
+
+// expandExact fills in the one operation a preview can compile exactly, where the first one is deferred.
+func (e *executor) expandExact(ctx context.Context, at int, ready *prepared) {
+	if at > 0 || len(ready.compiled.Steps) == 0 || len(ready.direct) > 0 {
+		return
+	}
+
+	if !ready.compiled.Steps[0].Deferred {
+		return
+	}
+
+	expanded, err := e.opts.Planner.Expand(ctx, ready.compiled.Migration, ready.compiled.Steps[0])
+	if err != nil {
+		return
+	}
+
+	ready.compiled.Steps[0] = expanded
+}
+
 // inspect reads the history and folds it, reporting a database with no history table as one.
 func (e *executor) inspect(ctx context.Context) (history.Report, bool, error) {
 	report, err := e.fold(ctx)
@@ -163,6 +196,8 @@ func (e *executor) compileAll(ctx context.Context, queue []queued, dir ir.Direct
 		if err != nil {
 			return steps, err
 		}
+
+		e.expandExact(ctx, len(steps), &ready)
 
 		steps = append(steps, Planned{
 			Ordinal: item.ordinal, Plan: ready.compiled, Direct: ready.direct,

@@ -14,6 +14,9 @@ var ErrNoCompiler = errors.New("a planner needs a compiler")
 // ErrNoOperation marks a hole in an operation list, which is a caller's bug rather than a driver's.
 var ErrNoOperation = errors.New("this is not an operation")
 
+// ErrNoExpander marks a deferred step handed to a planner with no session to expand it through.
+var ErrNoExpander = errors.New("a deferred operation needs a session to compile against")
+
 // ErrNothingCompiled marks an operation that compiled to nothing which would run, for errors.Is.
 var ErrNothingCompiled = errors.New("this operation compiled to nothing that would run")
 

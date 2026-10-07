@@ -499,3 +499,176 @@ func TestTheDeclarationAndTheRunNeverDisagreeAboutWhatThisServerPerforms(t *test
 		t.Log("both directions until migr resolve. That is what reading the declaration first buys.")
 	})
 }
+
+// What M11-T7 changed, measured on the one engine in compose whose DDL commits as it goes.
+//
+// This driver emulates exactly one operation -- alter_column, which it performs by restating the
+// column's whole definition (ADR 0058) -- so two of them in one migration is the shape where an
+// expansion rendered from a stale catalog is observable: the second MODIFY restates the nullability
+// the catalog holds, which is the one the first MODIFY had just changed.
+//
+// It is also the only engine that can leave a run dirty with operations still uncompiled, since
+// every statement here auto-commits. That is what the two cases after this one are about.
+
+// stagedOver stages a migration the way a run with a session does, so an emulated operation reaches it.
+func stagedOver(t *testing.T, c *mysqlConn, ops ir.Operations) engine.Options {
+	t.Helper()
+
+	opts := staged(t, ops)
+	opts.Planner = plan.Planner{Compiler: compilerOnly{}, Expander: c}
+
+	return opts
+}
+
+// tightenedThenRetyped stages a table and then two redefinitions of one column, in that order.
+func tightenedThenRetyped(t *testing.T, c *mysqlConn, table string) engine.Options {
+	t.Helper()
+
+	narrow, wide := mustType(t, "string(64)"), mustType(t, "string(128)")
+
+	return stagedOver(t, c, ir.Operations{
+		ir.CreateTable{
+			Table: table,
+			Columns: []ir.Column{
+				{Name: "id", Type: mustType(t, "int64")},
+				{Name: "tag", Type: narrow, Nullable: true},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		ir.AlterColumn{Table: table, Column: "tag", Nullable: ptr(false),
+			From: &ir.ColumnState{Nullable: ptr(true)}},
+		ir.AlterColumn{Table: table, Column: "tag", Type: &wide,
+			From: &ir.ColumnState{Type: &narrow}},
+	})
+}
+
+// ptr returns a pointer to a value, for the operation fields that are tri-state.
+func ptr[T any](v T) *T {
+	return &v
+}
+
+// declaredColumn renders what the catalog holds about one column, which is what a redefinition reads.
+func declaredColumn(t *testing.T, c *mysqlConn, table, column string) string {
+	t.Helper()
+
+	rows, err := c.Query(t.Context(), driver.Query{
+		SQL: "SELECT concat(COLUMN_TYPE, ' ', IS_NULLABLE) FROM information_schema.COLUMNS " +
+			"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+		Args: []string{table, column},
+	})
+	if err != nil {
+		t.Fatalf("asking the catalog for %s.%s: %v", table, column, err)
+	}
+
+	if len(rows.Values) != 1 || len(rows.Values[0]) != 1 || rows.Values[0][0] == nil {
+		t.Fatalf("the catalog answered %v for %s.%s", rows.Values, table, column)
+	}
+
+	return *rows.Values[0][0]
+}
+
+func TestTwoRedefinitionsOfOneColumnInOneMigrationBothLand(t *testing.T) {
+	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
+		table := siblingName(t)
+		fresh(t, c, table)
+
+		if _, err := engine.Apply(t.Context(), c, tightenedThenRetyped(t, c, table)); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+
+		if got := declaredColumn(t, c, table, "tag"); got != "varchar(128) NO" {
+			t.Errorf("the column reads %q, want varchar(128) and NOT NULL", got)
+			t.Log("A redefinition restates every attribute it does not change, and it reads those")
+			t.Log("from the catalog. Rendered before the first MODIFY ran, the second one restates")
+			t.Log("the nullability the first had just tightened and the NOT NULL is gone.")
+		}
+	})
+}
+
+// retypedAfterARefusal stages a native statement, one no server performs, and an emulated one after.
+func retypedAfterARefusal(t *testing.T, c *mysqlConn, table string) engine.Options {
+	t.Helper()
+
+	narrow, wide := mustType(t, "string(36)"), mustType(t, "string(128)")
+
+	return stagedOver(t, c, ir.Operations{
+		ir.AddIndex{Table: table, Name: table + "_idx", Columns: []string{"id"}},
+		refusedKey(table),
+		ir.AlterColumn{Table: table, Column: "pid", Type: &wide,
+			From: &ir.ColumnState{Type: &narrow}},
+	})
+}
+
+func TestADirtyRunSaysWhichOfItsOperationsItNeverCompiled(t *testing.T) {
+	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
+		table := siblingName(t)
+		fresh(t, c, table)
+
+		exec(t, c, "CREATE TABLE "+quote(table)+
+			" (id bigint NOT NULL PRIMARY KEY, pid varchar(36))")
+		dropLater(t, c, table)
+
+		_, err := engine.Apply(t.Context(), c, retypedAfterARefusal(t, c, table))
+
+		var became *engine.DirtyError
+		if !errors.As(err, &became) {
+			t.Fatalf("Apply returned %T, want the run that just became dirty", err)
+		}
+
+		if became.Deferred != 1 || became.Statements != 2 {
+			t.Fatalf("the failure reports %d statements and %d uncompiled operations, want 2 and 1",
+				became.Statements, became.Deferred)
+		}
+
+		for _, want := range []string{"the 2 it had compiled", "compiles 1 of this migration's"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the failure does not say %q:\n%v", want, err)
+			}
+		}
+
+		t.Log("The row holds how far the run got, which is unchanged. What a run can no longer say")
+		t.Log("is how far it had to go, because the operations it never reached are compiled from a")
+		t.Log("catalog it never read -- so the total is what it had compiled, and it says so.")
+	})
+}
+
+func TestAResumeIsRefusedWhereAnOperationIsCompiledAsItRuns(t *testing.T) {
+	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
+		table := siblingName(t)
+		fresh(t, c, table)
+
+		exec(t, c, "CREATE TABLE "+quote(table)+
+			" (id bigint NOT NULL PRIMARY KEY, pid varchar(36))")
+		dropLater(t, c, table)
+
+		opts := retypedAfterARefusal(t, c, table)
+
+		if _, err := engine.Apply(t.Context(), c, opts); !errors.Is(err, engine.ErrDirty) {
+			t.Fatalf("Apply returned %v, want a failure reporting ErrDirty", err)
+		}
+
+		_, err := engine.Resolve(t.Context(), c, opts, engine.Repair{Mode: engine.RepairResume})
+		if !errors.Is(err, engine.ErrNotResumable) {
+			t.Fatalf("Resolve --resume returned %v, want %v", err, engine.ErrNotResumable)
+		}
+
+		for _, want := range []string{"--applied", "--rolled-back"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("the refusal does not name the repair %q:\n%v", want, err)
+			}
+		}
+
+		settles(t, c, opts, engine.Repair{
+			Mode: engine.RepairRolledBack, Reason: "dropped the index by hand",
+		})
+
+		if state, _ := reconciledState(t, c, opts); state != history.StatePending {
+			t.Errorf("the migration reconciled to %q, want pending", state)
+		}
+
+		t.Log("ADR 0062's own argument, one layer further in: the recorded index names a statement")
+		t.Log("in the list that run emitted, and an expansion's statements are a function of a")
+		t.Log("schema this run has already changed -- so re-rendering them here numbers a different")
+		t.Log("list. Before this it re-rendered them silently and resumed into the wrong place.")
+	})
+}

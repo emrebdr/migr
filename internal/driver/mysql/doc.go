@@ -322,7 +322,11 @@
 // supply the rest. The missing attributes live in the database and nowhere else.
 //
 // So alter_column answers driver.ErrNeedsSession and the session is a driver.Expander, declared
-// Emulated (ADR 0053, SQLite's precedent one engine over). Exactly one payload is exempt:
+// Emulated (ADR 0053, SQLite's precedent one engine over). internal/engine asks for the expansion
+// immediately before the operation runs rather than while compiling the migration (ADR 0071), which
+// is what makes a second redefinition of one column restate what the first one wrote: measured on
+// both servers, two in one migration land as varchar(128) NOT NULL where compiling both up front
+// restated the nullability the first had just changed. Exactly one payload is exempt:
 // DropDefault alone compiles to ALTER COLUMN ... DROP DEFAULT with no database, because dropping a
 // default names no value and so needs no type -- accepted on every native type this driver emits,
 // including a column that had no default to drop. That makes one ir.Kind carry two verdicts by

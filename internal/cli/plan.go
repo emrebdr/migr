@@ -90,6 +90,8 @@ type operation struct {
 	Destroys string `json:"destroys,omitempty"`
 	// Refused reports an operation nothing permits, which migr up would stop at rather than run.
 	Refused bool `json:"refused,omitempty"`
+	// Deferred reports an operation this engine compiles only as it runs, which has no statements here.
+	Deferred bool `json:"deferred,omitempty"`
 	// Statements are what it compiled to, in the order they would run.
 	Statements []string `json:"statements"`
 }
@@ -240,6 +242,7 @@ func operationOf(caps capability.Set, allowed engine.Allowance, step plan.Step) 
 		Reason:     verdict.Reason(),
 		Destroys:   destroyedSubject(step.Op),
 		Refused:    !allowed.Permits(step.Op),
+		Deferred:   step.Deferred,
 		Statements: stmts,
 	}
 }
@@ -276,14 +279,53 @@ func (p compiledPlan) String() string {
 
 	fmt.Fprintf(&b, "\n%s, %s, %s%s. nothing was executed and nothing was recorded.\n",
 		describeMigrations(len(p.Migrations)), describeOperations(p.countOperations()),
-		describeStatements(p.Statements), describeSkipped(p.Skipped))
+		p.describeCompiled(), describeSkipped(p.Skipped))
 
 	p.writeDirectNote(&b)
+	p.writeDeferredNote(&b)
 	p.writeUnsupportedNote(&b)
 	p.writeUnrestorableNote(&b)
 	p.writeRefusedNote(&b)
 
 	return b.String()
+}
+
+// describeCompiled counts the statements, saying so where that is not every statement a run sends.
+func (p compiledPlan) describeCompiled() string {
+	if p.countDeferred() == 0 {
+		return describeStatements(p.Statements)
+	}
+
+	return describeStatements(p.Statements) + " from the operations it could compile"
+}
+
+// writeDeferredNote says which operations this plan could not compile, and why that is not a failure.
+func (p compiledPlan) writeDeferredNote(b *strings.Builder) {
+	deferred := p.countDeferred()
+	if deferred == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\nmarked \u2192 above: %s this engine compiles against the database "+
+		"immediately before each one runs, so their statements are rendered from the schema the "+
+		"operations ahead of them leave. A preview applies nothing, so only the first operation of "+
+		"the first migration can be compiled exactly, and it is -- migr %s expands each of the "+
+		"rest as it reaches it.\n", describeUnpermitted(deferred), p.Direction)
+}
+
+// countDeferred returns how many operations in the whole plan are compiled only as they run.
+func (p compiledPlan) countDeferred() int {
+	total := 0
+
+	for _, m := range p.Migrations {
+		for _, op := range m.Operations {
+			if op.Deferred {
+				total++
+			}
+		}
+	}
+
+	return total
 }
 
 // writeUnsupportedNote says what this server will not perform, since a report finds without failing.
@@ -454,10 +496,20 @@ func (o operation) write(b *strings.Builder) {
 	fmt.Fprintf(b, "       %d  %s  %s%s\n", o.Index, o.Kind, describeVerdict(o), o.describeDestroys())
 
 	o.writeReason(b)
+	o.writeDeferred(b)
 
 	for _, stmt := range o.Statements {
 		fmt.Fprintf(b, "%s\n", indented(stmt))
 	}
+}
+
+// writeDeferred stands in for the statements of an operation nothing here can compile yet.
+func (o operation) writeDeferred(b *strings.Builder) {
+	if !o.Deferred {
+		return
+	}
+
+	fmt.Fprintf(b, "%s\n", indented("\u2192 compiled against the database when it runs"))
 }
 
 // writeReason renders why this server refuses an operation, above the statements it refuses.

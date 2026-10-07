@@ -126,22 +126,22 @@ func (m KeyPeople) Up(ctx context.Context, s *migr.Schema) error {
 
 // tighteningFirst is the remedy for the second case: the implied change, made explicit.
 //
-// A migration of its own rather than two operations in one, because this engine emulates both and
-// expands each from the catalog as it was before any of them ran, so the second rebuild re-renders
-// what the first changed. That is also why the rollback below is stepped one migration at a time:
-// the same thing happens across the migrations of one run, since every inverse in a rollback is
-// compiled before any of it runs (ADR 0022). TASKS.md records it as a finding of its own; it is
-// older than this suite and not what this suite is about.
+// Both operations are in one migration, and until M11-T7 they could not be: this engine emulates
+// each of them and expanded both from the catalog as it was before either ran, so the key's rebuild
+// re-rendered the table without the NOT NULL the alter had just written. The rollback below is one
+// migr down for the same reason -- every inverse in a run is compiled before any of it runs
+// (ADR 0022), which used to mean the older inverse re-created what the newer one had removed.
 const tighteningFirst = derivedPreamble + `
 func init() { migr.Register(TightenTag{}) }
 
-// TightenTag states the nullability change the key would otherwise imply, as an operation.
+// TightenTag states the nullability a primary key implies, and then adds the key over it.
 type TightenTag struct{}
 
-// Up makes the column NOT NULL, which this migration's inverse can undo because it is recorded.
+// Up tightens the column first, which is what makes the key's own rebuild keep it.
 func (m TightenTag) Up(ctx context.Context, s *migr.Schema) error {
 	return s.Table("people").
 		AlterColumn("tag").NotNull().WasNullable(true).
+		AddPrimaryKey("pk_people", "tag").
 		Apply(ctx)
 }
 `
@@ -216,7 +216,7 @@ func TestARunIsRefusedOverWhatOnlyTheLiveSchemaRevealsAndTheRemedyRoundTrips(t *
 		{
 			name:    "the nullability a primary key implies",
 			refused: []string{keyingANullableColumn},
-			remedy:  []string{tighteningFirst, keyingANullableColumn},
+			remedy:  []string{tighteningFirst},
 			says:    "makes it NOT NULL",
 		},
 	}
@@ -296,10 +296,8 @@ func checkRemedyRoundTrips(t *testing.T, rest ...string) {
 			restorableHistoryTable))
 	}
 
-	for range rest {
-		if err := migr(t, config, "down", "--step", "1"); err != nil {
-			t.Fatalf("down --step 1: %v", err)
-		}
+	if err := migr(t, config, "down"); err != nil {
+		t.Fatalf("down: %v", err)
 	}
 
 	if restored := sqliteSnapshotOf(t, database, restorableHistoryTable); !restored.Equal(*before) {

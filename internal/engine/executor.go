@@ -101,14 +101,12 @@ func (e *executor) fold(ctx context.Context) (history.Report, error) {
 	return history.Reconcile(e.opts.Migrations, log), nil
 }
 
-// prepared is one migration's operations, compiled for this driver, grouped, and hashed for its row.
+// prepared is one migration's operations, compiled for this driver and hashed for its row.
 type prepared struct {
 	// item is the migration this will run and the ordinal its row records.
 	item queued
 	// compiled is what the operations became for this engine, in the direction they were compiled in.
 	compiled plan.Plan
-	// groups are those statements split into the runs that execute them.
-	groups []Group
 	// sum is the checksum the run is recorded under, over the source and the emitted IR.
 	sum checksum.Checksum
 	// direct are the statements the migration runs itself, which only a question ever holds.
@@ -124,11 +122,11 @@ func (e *executor) prepare(ctx context.Context, item queued, dir ir.Direction,
 		return prepared{}, err
 	}
 
-	return e.grouped(ready)
+	return ready, e.checkRunnable(ready)
 }
 
-// compileFor hashes what a migration emitted and compiles it, leaving the grouping to the caller.
-func (e *executor) compileFor(ctx context.Context, item queued, dir ir.Direction,
+// compileFor hashes what a migration emitted and compiles it, leaving the refusals to the caller.
+func (e *executor) compileFor(_ context.Context, item queued, dir ir.Direction,
 	emitted Emitted,
 ) (prepared, error) {
 	sum, err := checksum.OfOperations(emitted.Operations)
@@ -136,7 +134,7 @@ func (e *executor) compileFor(ctx context.Context, item queued, dir ir.Direction
 		return prepared{}, fmt.Errorf("hashing the emitted operations: %w", err)
 	}
 
-	compiled, err := e.opts.Planner.Compile(ctx, item.migration, dir, emitted.Operations)
+	compiled, err := e.opts.Planner.Compile(item.migration, dir, emitted.Operations)
 	if err != nil {
 		return prepared{}, err
 	}
@@ -149,22 +147,12 @@ func (e *executor) compileFor(ctx context.Context, item queued, dir ir.Direction
 	}, nil
 }
 
-// grouped splits what a migration compiled to into the runs that execute it, skipping what has run.
-func (e *executor) grouped(ready prepared) (prepared, error) {
-	ready.groups = Groups(ready.compiled.Statements()[e.from:])
-	if err := e.checkRunnable(ready.groups); err != nil {
-		return prepared{}, err
-	}
-
-	return ready, nil
-}
-
-// perform runs one prepared migration, recording it inside the last transaction it runs in.
+// perform runs one prepared migration, recording it inside the transaction it runs in.
 func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 	rec := e.newRecord(ready)
-	e.position = e.from
+	e.position = 0
 
-	survived, err := e.runMigration(ctx, ready.groups, e.recorder(&rec))
+	survived, err := e.runMigration(ctx, &ready, e.recorder(&rec))
 	if err != nil {
 		return Run{}, e.fail(ready.item, ready.compiled, errors.Join(
 			e.leftDirty(ready, survived, err), e.recordFailure(ctx, rec, survived, err)))
@@ -180,21 +168,29 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 }
 
 // checkRunnable refuses a migration this executor cannot run atomically, naming the task that will.
-func (e *executor) checkRunnable(groups []Group) error {
-	if len(groups) == 0 {
+func (e *executor) checkRunnable(ready prepared) error {
+	groups := Groups(ready.compiled.Statements()[e.from:])
+
+	if len(groups) == 0 && ready.compiled.Deferred() == 0 {
 		return fmt.Errorf("%w, so running it would report success for a schema change that never "+
 			"happened", ErrNothingToRun)
 	}
 
+	return checkAtomic(groups)
+}
+
+// checkAtomic refuses statements that cannot be the one transaction a migration runs inside.
+func checkAtomic(groups []Group) error {
 	if len(groups) > 1 {
 		return fmt.Errorf("%w: it compiles to %d runs, because %d of its statements declare they "+
 			"cannot run inside a transaction, and nothing here splits a migration around one -- "+
-			"that is M13-T4's, which needs only to delete this refusal, since a failure partway "+
-			"through such a split already records how far it got",
+			"that is M13-T4's, which writes the loop that brackets each run: a failure partway "+
+			"through such a split already records how far it got, and an operation compiled "+
+			"against the database can no longer read the statements before it from inside one",
 			ErrNotAtomic, len(groups), countStandalone(groups))
 	}
 
-	if lastTransactional(groups) < 0 {
+	if len(groups) == 1 && lastTransactional(groups) < 0 {
 		return fmt.Errorf("%w: every statement in it declares it cannot run inside a transaction, "+
 			"so there is no transaction for its history row to be written inside -- running a "+
 			"migration outside one is M13-T4's", ErrNotAtomic)
@@ -229,27 +225,79 @@ func lastTransactional(groups []Group) int {
 	return last
 }
 
-// runMigration runs a migration's runs in order, reporting how many statements a failure left behind.
-func (e *executor) runMigration(ctx context.Context, groups []Group, record driver.Work) (int32, error) {
-	records := lastTransactional(groups)
+// The transaction brackets the whole step loop rather than one statement list, and that is what
+// this task bought: an emulated operation is compiled against the database, so the only schema it
+// can be rendered from correctly is the one the steps before it left -- which, inside a
+// transaction, means the statements those steps have already sent and not yet committed. Both
+// expanders read through the session's open transaction already, so this needed no driver change.
+//
+// It is also why M13-T4 writes a multi-run loop rather than deleting a precondition: a migration
+// split around a standalone statement has more than one transaction, and an expansion after the
+// split can no longer read what the statements before it did from inside one.
 
-	var committed int32
-
-	for i, group := range groups {
-		if err := e.runGroup(ctx, group, record, i == records); err != nil {
-			return e.durable(group, committed, err), err
+// runMigration runs a migration's steps in order, reporting how many statements a failure left behind.
+func (e *executor) runMigration(ctx context.Context, ready *prepared, record driver.Work) (int32, error) {
+	err := e.conn.Transact(ctx, func(ctx context.Context) error {
+		if err := e.runSteps(ctx, ready); err != nil {
+			return err
 		}
 
-		committed = e.position
+		return record(ctx)
+	})
+	if err != nil {
+		return e.durable(err), err
 	}
 
 	return 0, nil
 }
 
-// durable reports how many of a migration's statements survive a failure in the run that failed.
-func (e *executor) durable(group Group, committed int32, err error) int32 {
-	if group.Transactional && e.conn.Capabilities().TransactionalDDL() {
-		return committed
+// runSteps runs each operation's statements, compiling an emulated one against what the last left.
+func (e *executor) runSteps(ctx context.Context, ready *prepared) error {
+	for i := range ready.compiled.Steps {
+		if err := e.runStep(ctx, ready, i); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// runStep compiles one operation where it was deferred, and runs the statements it is.
+func (e *executor) runStep(ctx context.Context, ready *prepared, at int) error {
+	step := ready.compiled.Steps[at]
+
+	if step.Deferred {
+		expanded, err := e.expand(ctx, ready.compiled.Migration, step)
+		if err != nil {
+			return err
+		}
+
+		ready.compiled.Steps[at] = expanded
+		step = expanded
+	}
+
+	return e.exec(ctx, step.Statements)
+}
+
+// expand compiles one deferred operation, holding it to statements this migration's transaction takes.
+func (e *executor) expand(ctx context.Context, m migration.Migration, step plan.Step) (plan.Step, error) {
+	expanded, err := e.opts.Planner.Expand(ctx, m, step)
+	if err != nil {
+		return plan.Step{}, err
+	}
+
+	if err := checkAtomic(Groups(expanded.Statements)); err != nil {
+		return plan.Step{}, &plan.CompileError{Migration: m, Index: step.Index,
+			Kind: step.Op.Kind(), Err: err}
+	}
+
+	return expanded, nil
+}
+
+// durable reports how many of a migration's statements survive a failure in the transaction it ran in.
+func (e *executor) durable(err error) int32 {
+	if e.conn.Capabilities().TransactionalDDL() {
+		return e.from
 	}
 
 	return e.reached(err)
@@ -265,29 +313,14 @@ func (e *executor) reached(err error) int32 {
 	return e.position
 }
 
-// runGroup executes one run, bracketing it in a transaction when its statements can share one.
-func (e *executor) runGroup(ctx context.Context, group Group, record driver.Work, records bool) error {
-	if !group.Transactional {
-		return e.exec(ctx, group.Statements)
-	}
-
-	return e.conn.Transact(ctx, func(ctx context.Context) error {
-		if err := e.exec(ctx, group.Statements); err != nil {
-			return err
-		}
-
-		if !records {
-			return nil
-		}
-
-		return record(ctx)
-	})
-}
-
-// exec runs statements in order, naming the one that failed and how many preceded it.
+// exec runs statements in order, skipping what has already run and naming the one that failed.
 func (e *executor) exec(ctx context.Context, stmts []driver.Statement) error {
 	for _, stmt := range stmts {
 		e.position++
+
+		if e.resumed() {
+			continue
+		}
 
 		if err := e.conn.Exec(ctx, stmt); err != nil {
 			return &StatementError{Position: e.position, Statement: stmt, Err: err}
@@ -295,6 +328,11 @@ func (e *executor) exec(ctx context.Context, stmts []driver.Statement) error {
 	}
 
 	return nil
+}
+
+// resumed reports a statement a stopped run already succeeded at, which this run counts but skips.
+func (e *executor) resumed() bool {
+	return e.position <= e.from
 }
 
 // newRecord builds the row this run will be written as, leaving the store to stamp its outcome.
@@ -344,6 +382,7 @@ func (e *executor) leftDirty(ready prepared, survived int32, cause error) error 
 		Direction:        ready.compiled.Direction,
 		LastStatement:    survived,
 		Statements:       ready.compiled.Len(),
+		Deferred:         ready.compiled.Deferred(),
 		Batch:            e.batch,
 		Ordinal:          ready.item.ordinal,
 		TransactionalDDL: e.conn.Capabilities().TransactionalDDL(),

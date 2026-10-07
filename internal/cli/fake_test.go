@@ -182,6 +182,19 @@ func (f *fake) asked(call string) bool {
 	return false
 }
 
+// count reports how many times one thing was asked of this fake, where once is not the question.
+func (f *fake) count(call string) int {
+	total := 0
+
+	for _, made := range f.calls {
+		if made == call {
+			total++
+		}
+	}
+
+	return total
+}
+
 // capabilities declares every operation lock-free, and the support this test asked the driver for.
 func (f *fake) capabilities(t *testing.T) capability.Set {
 	t.Helper()

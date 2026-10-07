@@ -52,8 +52,10 @@ type planned struct {
 	Version string `json:"version"`
 	// File is the filename it was found in.
 	File string `json:"file"`
-	// Statements is how many statements it would execute.
+	// Statements is how many statements it would execute, of the operations anything here compiled.
 	Statements int `json:"statements"`
+	// Deferred is how many of its operations this engine compiles only as each one runs.
+	Deferred int `json:"deferred,omitempty"`
 	// Refused is how many of its operations destroy what nothing permits, which migr up stops at.
 	Refused int `json:"refused,omitempty"`
 	// Unsupported is how many this server declares it cannot perform, which migr up also stops at.
@@ -152,6 +154,7 @@ func planOf(s *session, previewed engine.Previewed) planSummary {
 			Version:     step.Plan.Migration.Version,
 			File:        step.Plan.Migration.Filename(),
 			Statements:  len(step.Plan.Statements()),
+			Deferred:    int(step.Plan.Deferred()),
 			Refused:     refusedIn(allowed, step.Plan),
 			Unsupported: unsupportedIn(caps, step.Plan),
 		})
@@ -257,8 +260,8 @@ func (s planSummary) String() string {
 	b.WriteString("\n")
 
 	for _, step := range s.Steps {
-		fmt.Fprintf(&b, "  %d  %-*s  %s\n", step.Ordinal, widest(s.Steps, fileOfStep), step.File,
-			describeStatements(step.Statements))
+		fmt.Fprintf(&b, "  %d  %-*s  %s%s\n", step.Ordinal, widest(s.Steps, fileOfStep), step.File,
+			describeStatements(step.Statements), describeDeferred(step.Deferred))
 	}
 
 	fmt.Fprintf(&b, "\nwould %s %s%s. nothing was executed and nothing was recorded.\n%s\n",
@@ -320,6 +323,18 @@ func describeBatch(batch int64) string {
 	}
 
 	return fmt.Sprintf(", batch %d", batch)
+}
+
+// describeDeferred says how many of a migration's operations are compiled only as each one runs.
+func describeDeferred(n int) string {
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return ", and 1 operation compiled as it runs"
+	}
+
+	return fmt.Sprintf(", and %d operations compiled as they run", n)
 }
 
 // describeStatements counts statements with the right noun.

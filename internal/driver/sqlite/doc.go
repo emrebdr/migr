@@ -192,7 +192,11 @@
 //
 // The seven are declared Emulated by a table rebuild, and Compile asks for a session rather than
 // refusing: the statements depend on the table's current definition, which Compile has no
-// connection to read (ADR 0053). The session's Expand is what produces them.
+// connection to read (ADR 0053). The session's Expand is what produces them, and internal/engine
+// calls it immediately before the operation's statements run rather than while compiling the
+// migration (ADR 0071) -- so the definition a rebuild reads is the one the operations ahead of it
+// left. Everything Expand reads goes through the session's open transaction, which is what makes
+// that true for statements those operations have sent and not yet committed.
 //
 // # What a rebuild is, and why it is not SQLite's documented one
 //

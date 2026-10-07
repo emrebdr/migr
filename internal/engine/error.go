@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -541,8 +542,10 @@ type DirtyError struct {
 	Direction ir.Direction
 	// LastStatement is the 1-based position of the last statement that succeeded, as the row records it.
 	LastStatement int32
-	// Statements is how many the migration compiled to, so the message can say how far it got.
+	// Statements is how many the migration had compiled to, so the message can say how far it got.
 	Statements int32
+	// Deferred is how many of its operations had not been compiled when it stopped, usually none.
+	Deferred int32
 	// Batch is the batch the run belonged to.
 	Batch int64
 	// Ordinal is its position within that batch.
@@ -555,13 +558,18 @@ type DirtyError struct {
 
 // dirtyTemplate puts the statement that failed under the range that did not, since both are acted on.
 const dirtyTemplate = `this migration left the schema between states -- statements 1 through %d of
-%d succeeded and nothing rolled them back.
+%s succeeded and nothing rolled them back.
 
   failed at   %v
   recorded    batch %d, ordinal %d, dirty at statement %d
-%s
+%s%s
 Both up and down refuse against this database until the dirty state is resolved explicitly, and
 nothing here undoes it -- nothing here knows what the statement that failed left behind.`
+
+// expandedLate is why a run that stopped cannot say how many statements the migration had in all.
+const expandedLate = "\nThis engine compiles %d of this migration's operations against the database " +
+	"immediately before each one runs, and this run never reached them, so what they would have " +
+	"become is unknown here and the count above is what it had compiled (ADR 0071).\n"
 
 // autoCommitting is why a session's own declaration explains the window, when it is the reason.
 const autoCommitting = "\nThis session reports no transactional DDL, so a migration is not one " +
@@ -571,13 +579,32 @@ const autoCommitting = "\nThis session reports no transactional DDL, so a migrat
 func (e *DirtyError) Error() string {
 	return fmt.Sprintf(dirtyTemplate,
 		e.LastStatement,
-		e.Statements,
+		describeTotal(e.Statements, e.Deferred),
 		e.Err,
 		e.Batch,
 		e.Ordinal,
 		e.LastStatement,
 		describeAtomicity(e.TransactionalDDL),
+		describeUncompiled(e.Deferred),
 	)
+}
+
+// describeTotal renders how many statements the migration had, marking a count that is not all of them.
+func describeTotal(statements, deferred int32) string {
+	if deferred == 0 {
+		return strconv.Itoa(int(statements))
+	}
+
+	return fmt.Sprintf("the %d it had compiled", statements)
+}
+
+// describeUncompiled explains a total that is partial, where operations were still to be compiled.
+func describeUncompiled(deferred int32) string {
+	if deferred == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf(expandedLate, deferred)
 }
 
 // Unwrap reports the sentinel and the cause, so errors.Is finds either.

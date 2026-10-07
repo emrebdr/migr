@@ -291,8 +291,7 @@ func (e *executor) finishResume(ctx context.Context, item queued, settled Resolu
 		return e.recordComplete(ctx, settled, ready)
 	}
 
-	ready, err := e.grouped(ready)
-	if err != nil {
+	if err := e.checkRunnable(ready); err != nil {
 		return settled, e.fail(item, plan.Plan{}, err)
 	}
 
@@ -358,6 +357,10 @@ func (e *executor) prepareResume(ctx context.Context, item queued, dir ir.Direct
 			emittedDifferentlyError(rec.Checksum.IR, ready.sum.IR))
 	}
 
+	if pending := ready.compiled.Deferred(); pending > 0 {
+		return prepared{}, e.fail(item, plan.Plan{}, expandedLateError(pending))
+	}
+
 	return ready, nil
 }
 
@@ -373,6 +376,15 @@ func (e *executor) asked(ctx context.Context, item queued, dir ir.Direction) (Em
 	}
 
 	return emitted, nil
+}
+
+// expandedLateError refuses a resume whose statements are a function of a schema this run has moved.
+func expandedLateError(deferred int32) error {
+	return fmt.Errorf("%w: %d of its operations are compiled against the database immediately "+
+		"before each one runs (ADR 0071), so the statement list the recorded index counts through "+
+		"is rendered from a schema this run has already changed -- and re-rendering it here would "+
+		"number a different list. Finish or undo the change yourself and record what you did with "+
+		"--applied or --rolled-back", ErrNotResumable, deferred)
 }
 
 // emittedDifferentlyError refuses a resume whose index no longer names the statement it named.

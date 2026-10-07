@@ -441,7 +441,7 @@ func previewOf(t *testing.T, f *fake, ops ir.Operations, held []driver.Query) en
 	m := migration.Migration{Version: "20260727T153000", Name: "backfill_status", Ext: ".sql"}
 
 	compiled, err := plan.Planner{Compiler: &fakeDriver{fake: f, caps: f.capabilities(t)}}.
-		Compile(t.Context(), m, ir.Up, ops)
+		Compile(m, ir.Up, ops)
 	if err != nil {
 		t.Fatalf("compiling the staged operations: %v", err)
 	}

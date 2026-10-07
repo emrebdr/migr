@@ -819,8 +819,10 @@ func TestAMigrationThatCannotBeOneTransactionIsRefused(t *testing.T) {
 	}
 
 	t.Log("Three runs means two commits, and M4-T9's dirty state does not exist to record that a")
-	t.Log("migration got halfway. The run loop that executes them is already written, so M13-T4")
-	t.Log("deletes this precondition rather than rewriting an executor.")
+	t.Log("migration got halfway. M11-T7 made the transaction bracket the whole step loop, because")
+	t.Log("an emulated operation has to read what the steps before it did from inside one -- so")
+	t.Log("M13-T4 now writes the multi-run loop rather than deleting this precondition, and owes")
+	t.Log("an answer for where a deferred step's own split points come from.")
 }
 
 func TestAMigrationThatIsEntirelyStandaloneStatementsIsRefused(t *testing.T) {
@@ -1050,49 +1052,6 @@ func TestTheHistoryRowIsWrittenInsideTheLastRunThatCanHoldIt(t *testing.T) {
 	t.Log("The row goes in the last run that is a transaction, so nothing after it is uncommitted")
 	t.Log("when the row claims the migration applied. The first would claim it too early, and -1")
 	t.Log("is the migration that has nowhere to put it at all -- which is a refusal, not a run.")
-}
-
-func TestAMigrationOfSeveralRunsRecordsInsideTheLastTransactionalOne(t *testing.T) {
-	conn := newRecorder(t, true)
-	opts, _ := staged(t, "a")
-
-	exec := &executor{conn: conn, store: conn.store, opts: opts, batch: 1}
-	ready := prepared{
-		item:     queued{migration: migrationAt(t, 0), ordinal: 1},
-		compiled: plan.Plan{Direction: ir.Up},
-		groups:   Groups(statements("aBc")),
-		sum:      sumOf(0),
-	}
-	rec := exec.newRecord(ready)
-
-	survived, err := exec.runMigration(t.Context(), ready.groups, exec.recorder(&rec))
-	if err != nil {
-		t.Fatalf("runMigration: %v", err)
-	}
-
-	if survived != 0 {
-		t.Errorf("a run that succeeded reports %d statements left behind, want none", survived)
-	}
-
-	want := []string{
-		"begin", "exec a0", "commit",
-		"exec-outside-any-transaction B1",
-		"begin", "exec c2", "record " + versionAt(0), "commit",
-	}
-	if !slices.Equal(conn.calls, want) {
-		t.Fatalf("the session was asked for\n  %v\nwant\n  %v", conn.calls, want)
-	}
-
-	if len(conn.store.runs) != 1 || conn.store.runs[0].Ordinal != 1 {
-		t.Fatalf("the history holds %v, want the one row this migration is entitled to",
-			conn.store.runs)
-	}
-
-	t.Log("checkRunnable still refuses this shape, so the loop is reached only from here. It is")
-	t.Log("written and held to its behavior anyway, because M13-T4's job is to delete a")
-	t.Log("precondition rather than to design an executor -- which is what M4-T5's done-when asks.")
-	t.Log("The row goes inside the last transactional run: written inside the first, it would")
-	t.Log("commit a claim that the migration applied while two of its runs had not happened.")
 }
 
 func TestElapsedIsNeverNegative(t *testing.T) {

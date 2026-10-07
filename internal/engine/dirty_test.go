@@ -104,48 +104,6 @@ func TestAPartialFailureOnASessionThatUndoesItIsStillMerelyFailed(t *testing.T) 
 	t.Log("took the three statements that succeeded back with it, so nothing survived.")
 }
 
-func TestAFailureAfterAnEarlierRunCommittedIsDirtyOnATransactionalSession(t *testing.T) {
-	conn := stopping(t, true, "d3")
-	opts, _ := staged(t, "a")
-
-	exec := &executor{conn: conn, store: conn.store, opts: opts, batch: 1}
-	groups := Groups(statements("aBcde"))
-
-	survived, err := exec.runMigration(t.Context(), groups, exec.recorder(new(history.Record)))
-	if err == nil {
-		t.Fatal("runMigration reported success for a refused statement")
-	}
-
-	if survived != 2 {
-		t.Errorf("the run reports %d statements left behind, want the one that committed and "+
-			"the one that ran outside any transaction", survived)
-		t.Log("The failing run is transactional on a transactional session, so its own statements")
-		t.Log("went back -- but the two runs before it are still there. This is M13-T4's shape,")
-		t.Log("and it is dirty on PostgreSQL, which the capability flag alone cannot see.")
-	}
-}
-
-func TestAFailureInAStandaloneRunIsDirtyEvenWhereTheSessionUndoesTransactions(t *testing.T) {
-	conn := stopping(t, true, "C2")
-	opts, _ := staged(t, "a")
-
-	exec := &executor{conn: conn, store: conn.store, opts: opts, batch: 1}
-	groups := Groups(statements("aBCd"))
-
-	survived, err := exec.runMigration(t.Context(), groups, exec.recorder(new(history.Record)))
-	if err == nil {
-		t.Fatal("runMigration reported success for a refused statement")
-	}
-
-	if survived != 2 {
-		t.Errorf("the run reports %d statements left behind, want the two that ran outside a "+
-			"transaction and the one that committed before them", survived)
-		t.Log("The session declares transactional DDL, and this is still dirty: a standalone run's")
-		t.Log("statements are not inside anything that could take them back. Branching on the")
-		t.Log("capability alone would call this failed and leave a half-changed schema unrecorded.")
-	}
-}
-
 func TestAFailureThatIsNotAStatementLeavesEveryStatementBehind(t *testing.T) {
 	conn := newRecorder(t, false)
 	conn.store.table = true

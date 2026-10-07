@@ -29,7 +29,7 @@ type Plan struct {
 	Steps []Step
 }
 
-// Step is one operation together with the statements it became.
+// Step is one operation together with the statements it became, or the note that it has none yet.
 type Step struct {
 	// Index is the operation's place in the migration, counting from one.
 	Index int32
@@ -37,10 +37,17 @@ type Step struct {
 	Op ir.Operation
 	// Statements are what the driver compiled it to, in the order they must run.
 	Statements []driver.Statement
+	// Deferred reports an operation compiled against the database immediately before it runs.
+	Deferred bool
 }
 
+// An operation the compiler answers with driver.ErrNeedsSession becomes a deferred step rather than
+// an expansion, because an expansion is rendered from the catalog and the operations before it have
+// not run yet (ADR 0071). Expand is what fills one in, and the caller is what knows when -- which is
+// what puts compilation back to needing no database at all, and says so in the signature.
+
 // Compile turns one migration's operations into an ordered plan, naming any it cannot compile.
-func (p Planner) Compile(ctx context.Context, m migration.Migration, dir ir.Direction,
+func (p Planner) Compile(m migration.Migration, dir ir.Direction,
 	ops ir.Operations,
 ) (Plan, error) {
 	if p.Compiler == nil {
@@ -54,7 +61,7 @@ func (p Planner) Compile(ctx context.Context, m migration.Migration, dir ir.Dire
 	for _, op := range ops {
 		index++
 
-		step, err := p.Step(ctx, m, index, op)
+		step, err := p.Step(m, index, op)
 		if err != nil {
 			return Plan{}, err
 		}
@@ -66,9 +73,7 @@ func (p Planner) Compile(ctx context.Context, m migration.Migration, dir ir.Dire
 }
 
 // Step compiles one operation, holding the driver to statements that would actually run.
-func (p Planner) Step(ctx context.Context, m migration.Migration, index int32,
-	op ir.Operation,
-) (Step, error) {
+func (p Planner) Step(m migration.Migration, index int32, op ir.Operation) (Step, error) {
 	if op == nil {
 		return Step{}, &CompileError{Migration: m, Index: index, Err: ErrNoOperation}
 	}
@@ -77,8 +82,8 @@ func (p Planner) Step(ctx context.Context, m migration.Migration, index int32,
 		return Step{}, &CompileError{Migration: m, Index: index, Kind: op.Kind(), Err: err}
 	}
 
-	stmts, err := p.statements(ctx, op)
-	if err == nil {
+	stmts, deferred, err := p.statements(op)
+	if err == nil && !deferred {
 		err = checkCompiled(stmts)
 	}
 
@@ -86,17 +91,36 @@ func (p Planner) Step(ctx context.Context, m migration.Migration, index int32,
 		return Step{}, &CompileError{Migration: m, Index: index, Kind: op.Kind(), Err: err}
 	}
 
-	return Step{Index: index, Op: op, Statements: stmts}, nil
+	return Step{Index: index, Op: op, Statements: stmts, Deferred: deferred}, nil
 }
 
-// statements compiles one operation, asking the session for the ones the compiler cannot produce.
-func (p Planner) statements(ctx context.Context, op ir.Operation) ([]driver.Statement, error) {
+// statements compiles one operation, reporting the ones this planner must come back for.
+func (p Planner) statements(op ir.Operation) ([]driver.Statement, bool, error) {
 	stmts, err := p.Compiler.Compile(op)
-	if !errors.Is(err, driver.ErrNeedsSession) || p.Expander == nil {
-		return stmts, err
+	if errors.Is(err, driver.ErrNeedsSession) && p.Expander != nil {
+		return nil, true, nil
 	}
 
-	return p.Expander.Expand(ctx, op)
+	return stmts, false, err
+}
+
+// Expand compiles one deferred step against the database, which is the only place its statements are.
+func (p Planner) Expand(ctx context.Context, m migration.Migration, step Step) (Step, error) {
+	if p.Expander == nil {
+		return Step{}, &CompileError{Migration: m, Index: step.Index, Kind: step.Op.Kind(),
+			Err: ErrNoExpander}
+	}
+
+	stmts, err := p.Expander.Expand(ctx, step.Op)
+	if err == nil {
+		err = checkCompiled(stmts)
+	}
+
+	if err != nil {
+		return Step{}, &CompileError{Migration: m, Index: step.Index, Kind: step.Op.Kind(), Err: err}
+	}
+
+	return Step{Index: step.Index, Op: step.Op, Statements: stmts}, nil
 }
 
 // checkCompiled refuses a compilation that reports success while changing nothing.
@@ -125,7 +149,20 @@ func (p Plan) Statements() []driver.Statement {
 	return stmts
 }
 
-// Len returns how many statements the plan compiles to, which is what a run counts through.
+// Deferred returns how many of the plan's operations are still to be compiled against the database.
+func (p Plan) Deferred() int32 {
+	var pending int32
+
+	for _, step := range p.Steps {
+		if step.Deferred {
+			pending++
+		}
+	}
+
+	return pending
+}
+
+// Len returns how many statements the plan has compiled to so far, which is what a run counts through.
 func (p Plan) Len() int32 {
 	var total int32
 

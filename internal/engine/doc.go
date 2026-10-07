@@ -223,20 +223,56 @@
 // zero rather than allowed to fail a migration that worked, since Validate refuses a negative
 // duration and it validates inside the transaction.
 //
-// # Grouping decides where transactions begin
+// # Grouping decides whether a migration can be one transaction
 //
 // A statement may declare that it cannot run inside a transaction; CREATE INDEX CONCURRENTLY is why
-// the flag exists. Groups splits a statement list into consecutive runs that agree on that flag, so
-// a migration is a sequence of runs rather than one wrapped block (ADR 0017).
+// the flag exists. Groups splits a statement list into consecutive runs that agree on that flag, and
+// that split is what says whether a migration can be the single transaction this executor runs it
+// inside (ADR 0017). Today's accepted set is exactly "at least one statement, and every statement
+// transactional", which is one transactional group; checkRunnable refuses every other shape and
+// names M13-T4, which is where a migration becomes a sequence of runs.
 //
-// The loop that executes those runs is written: a transactional run goes through Transact, a
-// standalone run executes bare, and the history row is written inside the last transactional run,
-// which is the position ADR 0017 chose the closure shape to make expressible. The statement counter
-// continues across a migration's runs and restarts for the next migration, because a position is a
-// place in one migration and M9-T6 resumes from it.
+// The known statements are grouped before the lock, as they always were. An expansion's statements
+// are grouped as they arrive, which is the one moment they exist — and a refusal there is inside the
+// transaction, so the transaction is discarded. ErrNothingToRun reads a statement list, so a plan
+// holding only deferred operations is refused only where nothing is deferred either; otherwise every
+// SQLite migration of one rebuild would be unrunnable (ADR 0071).
+//
+// The statement counter continues across a migration's steps and restarts for the next migration,
+// because a position is a place in one migration and M9-T6 resumes from it.
 //
 // Grouping lives here and not in a driver, because it reads Statement's flag and nothing
 // engine-specific. Three drivers must not reach three answers about the same statement list.
+//
+// # An emulated operation is compiled as the run reaches it
+//
+// An operation a driver performs only against a live database arrives as a deferred plan.Step
+// (ADR 0053, ADR 0071). The run walks a migration's steps in order and expands each deferred one
+// immediately before its statements execute, so the catalog it is rendered from is the one the steps
+// ahead of it left.
+//
+// That is why the transaction brackets the whole step loop rather than one statement list. Inside a
+// transaction, "the schema the steps before it left" means the statements they have already sent and
+// not yet committed, and both expanders read through the session's open transaction already — so
+// this needed no driver change. Compiling the whole migration first instead was the defect: measured
+// on SQLite, an add_primary_key rendered before the alter_column ahead of it had run re-created the
+// table without the NOT NULL that alter had just written, and a rollback of two emulated migrations
+// re-created what the newer inverse had removed.
+//
+// ADR 0022's whole-queue inversion is unchanged and is about something else: irreversibility is a
+// property of the migration, so it must be met before anything is undone. What moved is when a
+// statement is rendered, not when a refusal is decided.
+//
+// Two things follow and are stated where they are read. A dirty run can no longer say how many
+// statements the migration had in all, because the operations it never reached are rendered from a
+// catalog it never read — so DirtyError carries how many were still to be compiled and renders its
+// total as a partial one. And a resume is refused outright where any operation is compiled as it
+// runs, for ADR 0062's own reason one layer in: the recorded index names a statement in the list
+// that run emitted, and re-rendering an expansion here numbers a different list.
+//
+// M13-T4 therefore writes the multi-run loop rather than deleting a precondition, and inherits the
+// question this creates: a deferred step's split points are not known until it is expanded, so an
+// expansion after a split can no longer read the statements before it from inside one transaction.
 //
 // # What a run refuses, and why refusing is the honest answer
 //
@@ -357,13 +393,14 @@
 // resumed). The emitted operation list hashing differently is ErrNotResumable: the recorded index
 // names a statement in the list *that run* emitted, so against a list that moved it names a different
 // statement. A migration that branches on live data is therefore not resumable, and the refusal says
-// so and names the two repairs that are.
+// so and names the two repairs that are. A migration holding an operation this engine compiles as it
+// runs is not resumable either, for the same reason one layer in (ADR 0071).
 //
-// The skip is executor.from, read by grouped as Statements()[from:] and by perform as the position to
-// count from, so a resume that stops again records an absolute index rather than one relative to
-// itself. Where from equals the whole count -- a dirty row naming every statement, which ADR 0024
-// says means the commit or the history write failed -- nothing is executed and the Applied row the
-// bookkeeping never got to is recorded instead.
+// The skip is executor.from, read by exec as the statements it counts through and does not send, so a
+// resume that stops again records an absolute index rather than one relative to itself. Where from
+// equals the whole count -- a dirty row naming every statement, which ADR 0024 says means the commit
+// or the history write failed -- nothing is executed and the Applied row the bookkeeping never got
+// to is recorded instead.
 //
 // The two asserted repairs reach neither a planner nor a runtime: the row is built from the recorded
 // one plus this session, so a migration that no longer builds can still be settled. They copy the

@@ -1,7 +1,7 @@
 // Package plan turns Operation IR into an ordered, compiled execution plan.
 //
 // Planning is deterministic: no time.Now, no randomness, no map-iteration-order dependence, so
-// golden tests stay stable (CLAUDE.md invariant #8). Nothing here opens a database, and that is a
+// golden tests stay stable (CLAUDE.md invariant #8). Compiling opens no database, and that is a
 // property rather than a convenience — migr plan must print statements without touching one
 // (M5-T4), and CI catching a migration that will not compile is what makes the executor's lazy
 // operation seam survivable (ADR 0021).
@@ -10,6 +10,28 @@
 // carries the direction it was compiled in, which is what a history row records rather than a
 // parameter traveling beside it. Decomposing unsafe operations into safe sequences is
 // M13-T5, and annotating a plan with lock verdicts is M13-T6.
+//
+// # A deferred step, and what Compile stopped doing
+//
+// An operation a driver performs only against a live database answers driver.ErrNeedsSession
+// (ADR 0053). M8-T4 had Compile call the session there and then; M11-T7 made it mark the step
+// Deferred instead, because an expansion is rendered from the catalog and the operations ahead of it
+// have not run yet — measured on SQLite, a rebuild compiled before the alter_column before it ran
+// re-rendered the table without the NOT NULL that alter had just written (ADR 0071).
+//
+// Expand is what fills a deferred step in, and the caller is what knows when: internal/engine calls
+// it immediately before the step's statements execute, inside the transaction the migration is. An
+// expansion goes through the same checkCompiled a compilation does, since a session that reports
+// success while producing nothing is no different from a compiler that does.
+//
+// So Compile and Step take no context, and Expand is the one method here that is honest about
+// needing a database. A planner with no Expander still returns the sentinel rather than deferring,
+// which is what migr validate reads to report the operation unchecked (ADR 0040): deferring there
+// would hand it a step nothing could ever fill in.
+//
+// Plan.Len is therefore the count of statements compiled so far, not the count a run will send, and
+// Plan.Deferred is how many operations are still to be compiled. Both callers of the pair say which
+// they mean: a dirty row renders a partial total as one, and migr plan qualifies its own count.
 //
 // # A step carries the operation and the statements together
 //

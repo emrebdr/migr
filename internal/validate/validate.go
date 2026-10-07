@@ -104,7 +104,7 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 	}
 
 	r.destructive(m, up.Operations)
-	r.compile(ctx, m, ir.Up, up.Operations)
+	r.compile(m, ir.Up, up.Operations)
 	r.lint(m, up, r.undo(ctx, m, up))
 }
 
@@ -148,7 +148,7 @@ func (r *runner) undo(ctx context.Context, m migration.Migration, up engine.Emit
 
 	switch {
 	case err == nil:
-		r.compile(ctx, m, ir.Down, down.Operations)
+		r.compile(m, ir.Down, down.Operations)
 
 		return undone{emitted: down, from: rule.UndoAuthored}
 	case errors.Is(err, engine.ErrDeclaredIrreversible):
@@ -192,7 +192,7 @@ func (r *runner) derive(ctx context.Context, m migration.Migration, up engine.Em
 	}
 
 	slices.Reverse(inverse)
-	r.compile(ctx, m, ir.Down, inverse)
+	r.compile(m, ir.Down, inverse)
 
 	return undone{emitted: engine.Emitted{Operations: inverse}, from: rule.UndoDerived}
 }
@@ -240,23 +240,19 @@ func lintProblem(m migration.Migration, judged rule.Judgement) Problem {
 }
 
 // compile turns one half's operations into statements, reporting every one anything refuses.
-func (r *runner) compile(ctx context.Context, m migration.Migration, dir ir.Direction,
-	ops ir.Operations,
-) {
+func (r *runner) compile(m migration.Migration, dir ir.Direction, ops ir.Operations) {
 	var index int32
 
 	for _, op := range ops {
 		index++
 
-		r.operation(ctx, m, dir, index, op)
+		r.operation(m, dir, index, op)
 	}
 }
 
 // operation reports what the compiler refuses about one operation, and then what the server does.
-func (r *runner) operation(ctx context.Context, m migration.Migration, dir ir.Direction,
-	index int32, op ir.Operation,
-) {
-	err := r.errorFrom(ctx, m, index, op)
+func (r *runner) operation(m migration.Migration, dir ir.Direction, index int32, op ir.Operation) {
+	err := r.errorFrom(m, index, op)
 
 	switch {
 	case err == nil:
@@ -293,10 +289,8 @@ func (r *runner) capable(m migration.Migration, dir ir.Direction, index int32, o
 }
 
 // errorFrom compiles one operation and reports what stopped it, discarding the statements.
-func (r *runner) errorFrom(ctx context.Context, m migration.Migration, index int32,
-	op ir.Operation,
-) error {
-	_, err := r.opts.Planner.Step(ctx, m, index, op)
+func (r *runner) errorFrom(m migration.Migration, index int32, op ir.Operation) error {
+	_, err := r.opts.Planner.Step(m, index, op)
 
 	return err
 }

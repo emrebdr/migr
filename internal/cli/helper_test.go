@@ -60,6 +60,8 @@ const (
 	actLints = "lints"
 	// actMixes sends a statement of its own beside the one operation it declares, tripping a third.
 	actMixes = "mixes"
+	// actWords emits a view and a check as well, whose bodies every engine rewords in its own way.
+	actWords = "words"
 )
 
 // The declarations a scripted runtime reports, which compose with every act above.
@@ -324,7 +326,20 @@ func (r *scriptedRuntime) execute(m *protocol.Message) bool {
 
 	r.callback(protocol.HostSchemaApply, r.operations(p.Direction))
 
-	return r.reply(m, protocol.ExecuteResult{Operations: 1})
+	return r.reply(m, protocol.ExecuteResult{Operations: r.emitted(p.Direction)})
+}
+
+// emitted counts the operations this script just sent, since the host checks the two agree (§4).
+func (r *scriptedRuntime) emitted(direction ir.Direction) int {
+	if r.act != actWords {
+		return 1
+	}
+
+	if direction == ir.Down {
+		return 2
+	}
+
+	return 3
 }
 
 // sentStatement is what actMixes sends itself, which plan mode holds and apply mode performs.
@@ -339,6 +354,8 @@ func (r *scriptedRuntime) operations(direction ir.Direction) string {
 		return unfillableOperationsFor(direction)
 	case actMixes:
 		return columnOperationsFor(direction, true)
+	case actWords:
+		return wordedOperationsFor(direction)
 	default:
 		return operationsFor(direction)
 	}
@@ -366,6 +383,21 @@ func typedOperationsFor(direction ir.Direction) string {
 	return fmt.Sprintf(`{"operations":[{"op":"create_table","table":%q,"columns":`+
 		`[{"name":"id","type":"int64","nullable":false},`+
 		`{"name":"note","type":"text","nullable":false}]}]}`, scriptedTable)
+}
+
+// wordedOperationsFor renders a table with a view and a check, which are the two engine-text bodies.
+func wordedOperationsFor(direction ir.Direction) string {
+	if direction == ir.Down {
+		return fmt.Sprintf(`{"operations":[{"op":"drop_view","view":"seen"},`+
+			`{"op":"drop_table","table":%q}]}`, scriptedTable)
+	}
+
+	return fmt.Sprintf(`{"operations":[{"op":"create_table","table":%q,"columns":`+
+		`[{"name":"id","type":"int64","nullable":false},`+
+		`{"name":"note","type":"text","nullable":false}]},`+
+		`{"op":"add_check","table":%q,"name":"scripted_positive","expression":"id > 0"},`+
+		`{"op":"create_view","view":"seen","query":"SELECT id FROM scripted"}]}`,
+		scriptedTable, scriptedTable)
 }
 
 // unfillableOperationsFor renders a NOT NULL column added with no default to a table it never creates.

@@ -1,8 +1,14 @@
 // Package diff compares two schema snapshots and emits the ordered IR operations
 // that close the gap.
 //
-// Status: complete (M11-T3, M11-T4). The migr diff command is M11-T5. See
-// docs/adr/0070-the-snapshot-differ.md and docs/adr/0072-rename-detection.md.
+// Status: complete (M11-T3, M11-T4). See docs/adr/0070-the-snapshot-differ.md and
+// docs/adr/0072-rename-detection.md.
+//
+// internal/fold is this package read backwards -- IR onto a snapshot -- and over a
+// list this differ produced the two compose to the identity. That is what judges
+// the projection, and it is also where the policy for comparing a projection
+// against a live schema lives, since an engine rewrites its own view bodies and
+// check expressions and a projection has never seen one.
 //
 // # What it is a function of
 //
@@ -108,7 +114,7 @@
 // A refusal never leaves a dependent operation behind. The differ keeps a names-only model
 // of the target state and consults it before every constraint, so a refused create_table
 // takes that table's indexes and keys with it. Names and nothing else: that is deliberately
-// not the IR-onto-snapshot projection M10-T3 needs, and must not grow into one here.
+// not the IR-onto-snapshot projection internal/fold is, and must not grow into one here.
 //
 // # The order
 //

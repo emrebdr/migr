@@ -68,7 +68,9 @@
 // ir.ColumnsDef, ir.ForeignKeyDef, ir.CheckDef -- deliberately, because that is what makes
 // the differ total over the twenty operations and a projection of pending operations onto a
 // schema mechanical. What the model holds is what those operations can create, plus an honest
-// marker for everything else.
+// marker for everything else. Both directions exist: internal/diff reads a snapshot into
+// operations and internal/fold folds operations onto one, and over a list the differ produced
+// the two compose to the identity.
 //
 // This package cannot import internal/ir, and never will: ir imports it for schema.Type, so
 // the dependency runs one way and the reverse is a cycle. Two consequences are visible here.

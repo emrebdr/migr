@@ -7,6 +7,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/diff"
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/fold"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
 )
@@ -63,7 +64,44 @@ func (s Diff) Run(t *testing.T) {
 	s.checkForward(t, before, after)
 	s.checkBackward(t, before, after)
 	s.checkSelf(t, before)
+	s.checkProjected(t, before)
 	s.checkRenamed(t)
+}
+
+// M11-T5's own done-when is that the command compares the live database to the desired schema, and
+// the desired schema is every migration folded forward -- so the claim that needs an engine is that
+// a projection of the operations compares equal to what the server made of them. Nothing else can
+// say it: a projection has never seen a catalog, and each engine answers with its own spellings and
+// its own certainties.
+
+// checkProjected asserts the fixture folded forward is the schema this engine read it back as.
+func (s Diff) checkProjected(t *testing.T, live schema.Snapshot) {
+	t.Helper()
+
+	projected, unfoldable := fold.Forward(schema.Snapshot{}, s.base().fixture(t))
+	for _, one := range unfoldable {
+		t.Fatalf("this suite's own fixture will not fold: %s", one.Describe())
+	}
+
+	ops, refused := diff.Diff(live, fold.Comparable(live, projected), diff.Renames{})
+
+	for _, one := range ops {
+		t.Errorf("a projection of the fixture proposes %s against the schema this engine read "+
+			"it back as", one.Kind())
+	}
+
+	for _, one := range refused {
+		t.Errorf("a projection of the fixture is refused against this engine's own reading: %s",
+			one.Describe())
+	}
+
+	if t.Failed() {
+		t.Logf("projected:\n%s\n\nlive:\n%s", render(t, projected), render(t, live))
+		t.Log("Either the projection does not describe what the operations do, or this engine")
+		t.Log("reads one of these types back as something it cannot be compared to exactly --")
+		t.Log("which is a refusal by design (ADR 0070, C1) and belongs in inexactTypes rather")
+		t.Log("than in the fixture.")
+	}
 }
 
 // base is the snapshot suite this one borrows its fixture, its prefix scoping and its runner from.

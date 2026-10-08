@@ -429,6 +429,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0070](docs/adr/0070-the-snapshot-differ.md) | The snapshot differ, and what it declines to propose |
 | [0071](docs/adr/0071-expanding-as-the-run-reaches-it.md) | Expanding an emulated operation as the run reaches it |
 | [0072](docs/adr/0072-rename-detection.md) | Detecting a rename, and asking before acting on one |
+| [0073](docs/adr/0073-the-schema-projection.md) | Folding operations onto a schema, writing them back out, and `migr diff` |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -261,7 +261,9 @@ has no inverse.
   what would change that.
 - The projection this model will be folded forward by — IR applied to a snapshot, which M10-T3 needs
   and which is the opposite direction from M11-T3's differ — **has no task**. Recorded in TASKS.md
-  under M10-T3 rather than invented here.
+  under M10-T3 rather than invented here. **M11-T5 reached it first and scoped it in**: it is
+  `internal/fold`, and [ADR 0073](0073-the-schema-projection.md) records what it does that no
+  payload records, and why a projected column type is always exact.
 - `internal/driver/sqlite`'s `tableDefinition` splitter (ADR 0054) is untouched. It preserves the
   *wording* of a `CREATE TABLE` in order to rebuild it, which is the opposite of what a snapshot
   does, so M11-T2 will not replace it with introspection.

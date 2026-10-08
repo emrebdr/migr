@@ -15,6 +15,7 @@ import (
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/runtime"
 )
 
 // coded is one way a command ends, and the exit code CLAUDE.md §5 documents for that ending.
@@ -29,6 +30,8 @@ type coded struct {
 	stage func(t *testing.T) (string, *fake, *driver.Registry)
 	// want is the exit code §5 documents for this ending.
 	want int
+	// scripted reports a case a runtime actually answers for, not one whose adapter will not start.
+	scripted bool
 }
 
 // codes is every ending this build can produce, keyed by the command that produces it.
@@ -127,20 +130,46 @@ var codes = []coded{
 		stage: stagedLocked, want: ExitLock},
 	{name: "a migration edited since the run that stopped", command: "resolve",
 		args: []string{"--resume"}, stage: stoppedAndEdited, want: ExitDrift},
+	{name: "a language nothing writes a generated migration in", command: "diff",
+		stage: stagedApplied, want: ExitValidation},
+	{name: "a diff over a database with migrations still to run", command: "diff",
+		stage: pendingGoProject, want: ExitRuntime, scripted: true},
+	{name: "a name the filename grammar refuses", command: "diff", args: []string{"Not-A-Name"},
+		stage: stagedApplied, want: ExitValidation},
+	{name: "the migration lock a diff takes to read", command: "diff",
+		stage: lockedGoProject, want: ExitLock, scripted: true},
 }
+
+// A row says whether a runtime answers for its migrations, because two rows turn on the answer:
+// migr diff's desired schema is every migration folded forward, so its rows are Go projects a
+// runtime has to answer for, while "a runtime that will not start" is about an adapter that exists
+// and does not.
 
 func TestEveryCommandEndsWithTheCodeSection5Documents(t *testing.T) {
 	for _, c := range codes {
 		t.Run(c.command+": "+c.name, func(t *testing.T) {
 			dir, _, drivers := c.stage(t)
 
-			_, _, err := runWith(t, dir, noon, drivers, append([]string{c.command}, c.args...)...)
+			_, _, err := runOptions(t, dir, &options{clock: ticking(noon), drivers: drivers,
+				runtimes: registryFor(t, c.scripted)},
+				append([]string{c.command}, c.args...)...)
 
 			if got := ExitCode(err); got != c.want {
 				t.Errorf("migr %s %v exited %d, want %d (%v)", c.command, c.args, got, c.want, err)
 			}
 		})
 	}
+}
+
+// registryFor returns what answers for a row's migrations, which is the default where none does.
+func registryFor(t *testing.T, scripted bool) *runtime.Registry {
+	t.Helper()
+
+	if !scripted {
+		return runtimeRegistry(t, config.LanguageGo, config.LanguageTypeScript)
+	}
+
+	return scriptedRegistry(t, actTypes)
 }
 
 func TestEveryCommandIsInTheExitCodeMatrix(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 func altered(t *testing.T, from, to schema.Snapshot) ir.AlterColumn {
 	t.Helper()
 
-	ops, refused := Diff(from, to)
+	ops, refused := Diff(from, to, Renames{})
 
 	if len(refused) != 0 {
 		t.Fatalf("this change was refused: %s", describeAll(refused))
@@ -129,7 +129,7 @@ func TestItCreatesOffAGuessBecauseThereIsNothingToCompare(t *testing.T) {
 			Type: ambiguous(t, "int64", "integer"), Nullable: true})
 	})
 
-	ops, refused := Diff(users(t), guessed)
+	ops, refused := Diff(users(t), guessed, Renames{})
 
 	if len(refused) != 0 {
 		t.Fatalf("adding a column whose type the catalog only guesses at was refused: %s",
@@ -164,7 +164,7 @@ func TestItProposesNothingWhenAGuessAgrees(t *testing.T) {
 		})
 	})
 
-	ops, refused := Diff(users(t), guessed)
+	ops, refused := Diff(users(t), guessed, Renames{})
 
 	if len(ops) != 0 || len(refused) != 0 {
 		t.Errorf("an exact int64 against a guessed one proposed %v and refused %s",

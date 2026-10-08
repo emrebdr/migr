@@ -1,8 +1,8 @@
 // Package diff compares two schema snapshots and emits the ordered IR operations
 // that close the gap.
 //
-// Status: complete (M11-T3). Rename detection is M11-T4 and the migr diff command is
-// M11-T5. See docs/adr/0070-the-snapshot-differ.md.
+// Status: complete (M11-T3, M11-T4). The migr diff command is M11-T5. See
+// docs/adr/0070-the-snapshot-differ.md and docs/adr/0072-rename-detection.md.
 //
 // # What it is a function of
 //
@@ -27,10 +27,52 @@
 // because no two engines agree on one (ADR 0065) -- which is what stops a diff proposing
 // to rebuild every key it can see.
 //
-// A rename therefore reaches the operations as a drop and a create, which is what M11-T4
-// exists to fix. Until then invariant #7 is the net: drop_table and drop_column are
-// destructive, so migr up refuses a generated migration that destroys what the project has
-// not permitted.
+// An unconfirmed rename therefore reaches the operations as a drop and a create, which is
+// safe because invariant #7 makes both destructive: migr up refuses a generated migration
+// that destroys what the project has not permitted. It is also not what the operator wanted,
+// which is what the next section is for.
+//
+// # A rename is proposed, confirmed, and only then emitted
+//
+// Two snapshots differing by a rename record exactly what two differing by an unrelated drop
+// and create record, so there is no reading of the pair that is not a guess -- and acting on
+// a wrong one destroys the data a rename would have kept. Detection and emission are
+// therefore two calls with a person between them:
+//
+//	found := diff.Candidates(live, desired, confirmed)   // proposes, changes nothing
+//	confirmed = ask(found)                               // internal/cli, M11-T5's to call
+//	ops, refused := diff.Diff(live, desired, confirmed)  // told, not asked
+//
+// Diff takes the answer rather than the asker because invariant #8 forbids a planning path
+// whose output depends on anything but its arguments: a confirmer handed to Diff would make
+// the same two snapshots diff two ways.
+//
+// Candidates applies a floor rather than ranking everything, because a person shown ten
+// implausible pairs stops reading the plausible one. A column pair must share a type; a table
+// pair must have a majority of the table being left accounted for, counting a column matched
+// by name as stronger evidence than one matched by type alone. Then pairs are taken greedily,
+// best first and one to one, so N losses against M gains ask at most min(N, M) questions.
+// What a person is shown is prose rather than a score: "both are string(255), neither accepts
+// null, and neither has a default" is checkable against their own intent, and 0.83 is not.
+//
+// Candidates also takes what is already confirmed, and proposes one round deeper each time it
+// is asked. A column rename inside a table that may itself be renamed is a candidate
+// conditional on another candidate, which is not a question anybody can answer -- so the
+// confirmed renames are applied first and the columns are then matched by name.
+//
+// Applying one is a pre-pass and nothing else: emit the rename, rewrite the schema being
+// changed as the engine would leave it, and hand the rest to a differ that knows nothing
+// about any of this. Measured on all five servers, that rewrite is what each one does by
+// itself -- an index follows a renamed column and keeps its own name, and a foreign key in
+// another table follows a renamed table. A check expression and a view body are engine text
+// and are never rewritten here, so one naming a renamed object is proposed as a drop and an
+// add, or as a replacement; every server rewrites its own, so that is redundant work rather
+// than a wrong result.
+//
+// A confirmed rename arrives from outside, so it is checked rather than trusted. A source
+// this schema does not hold, a target the other does not hold, a source the target still
+// holds, a name already taken, and two renames claiming one object are each a Refusal -- and
+// the drop and the create are still proposed, so the diff has an answer either way.
 //
 // # Every operation it emits carries a complete from payload
 //
@@ -73,9 +115,17 @@
 // One fixed order in order.go rather than a topological sort, because no operation carries a
 // foreign key inline: every real dependency between two operations is a boundary between two
 // kinds. Drops come before creates because an index name is namespace-scoped on PostgreSQL,
-// so a name moving between tables must be freed before it is claimed. And the order is its
-// own mirror, the pairs sitting at opposite ends, so ir.ReverseAll of an emitted list is
-// itself validly ordered.
+// so a name moving between tables must be freed before it is claimed. The seventeen kinds
+// that are not renames are exactly their own mirror, the pairs sitting at opposite ends, so
+// ir.ReverseAll of a list of those is itself validly ordered.
+//
+// The two renames are the one asymmetry, and the asymmetry is what makes a derived down
+// runnable. A rename establishes the name every operation after it speaks, so it comes first
+// going forward and ir.ReverseAll puts it last coming back, which is where a rollback needs
+// it. Exactly two operations may precede one, and each records something the rename would
+// otherwise move out from under it: a dropped view's body names the old table, and a dropped
+// check's expression names the old column -- which is also what MySQL 8.0 requires, that
+// server refusing to rename a column a check names at all.
 //
 // A dropped table's own indexes, uniques, checks and foreign keys are dropped by name first,
 // even though every engine takes them with the table. A recorded table definition holds
@@ -89,10 +139,7 @@
 // different engines proposes replacing every view and every check. Nothing here can know
 // that an expanded column list and a SELECT * are the same query.
 //
-// And a list this differ emits is not always a list migr up can run today. plan.Planner
-// compiles every operation before any of them executes, and an emulated one is compiled
-// against the database (ADR 0053) -- so on SQLite an add_foreign_key over a table an earlier
-// create_table in the same list creates is expanded against a catalog that has no such
-// table. Measured: "cannot rebuild this table: this database has no such table". The
-// operations and their order are right; M11-T7 is what makes them runnable.
+// And a table renamed at the same time as the columns inside it needs two rounds rather than
+// one, since the second round is what the first round's answer unlocks. A caller that asks
+// once gets the table rename and takes the column changes as a drop and an add.
 package diff

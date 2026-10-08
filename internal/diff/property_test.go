@@ -13,7 +13,7 @@ import (
 func TestEveryProposedOperationIsWellFormed(t *testing.T) {
 	for _, one := range comparisons(t) {
 		t.Run(one.name, func(t *testing.T) {
-			ops, _ := Diff(one.from, one.to)
+			ops, _ := Diff(one.from, one.to, one.confirmed)
 
 			for i, op := range ops {
 				if err := op.Validate(); err != nil {
@@ -27,7 +27,7 @@ func TestEveryProposedOperationIsWellFormed(t *testing.T) {
 func TestEveryProposedListIsReversible(t *testing.T) {
 	for _, one := range comparisons(t) {
 		t.Run(one.name, func(t *testing.T) {
-			ops, _ := Diff(one.from, one.to)
+			ops, _ := Diff(one.from, one.to, one.confirmed)
 
 			if _, err := ir.ReverseAll(ops); err != nil {
 				t.Errorf("nothing could undo what this diff proposes: %v", err)
@@ -43,7 +43,7 @@ func TestEveryProposedListIsReversible(t *testing.T) {
 func TestNoProposedListIsOneTheRunWouldRefuse(t *testing.T) {
 	for _, one := range comparisons(t) {
 		t.Run(one.name, func(t *testing.T) {
-			ops, _ := Diff(one.from, one.to)
+			ops, _ := Diff(one.from, one.to, one.confirmed)
 
 			live := one.from
 
@@ -77,8 +77,8 @@ func TestNoProposedListIsOneTheRunWouldRefuse(t *testing.T) {
 func TestItProposesTheSameThingTwice(t *testing.T) {
 	for _, one := range comparisons(t) {
 		t.Run(one.name, func(t *testing.T) {
-			first, firstRefused := Diff(one.from, one.to)
-			second, secondRefused := Diff(one.from, one.to)
+			first, firstRefused := Diff(one.from, one.to, one.confirmed)
+			second, secondRefused := Diff(one.from, one.to, one.confirmed)
 
 			left, err := ir.Marshal(first)
 			if err != nil {
@@ -99,7 +99,7 @@ func TestItProposesTheSameThingTwice(t *testing.T) {
 					describeAll(firstRefused), describeAll(secondRefused))
 			}
 
-			shuffled, _ := Diff(reordered(one.from), reordered(one.to))
+			shuffled, _ := Diff(reordered(one.from), reordered(one.to), one.confirmed)
 
 			third, err := ir.Marshal(shuffled)
 			if err != nil {

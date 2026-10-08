@@ -57,7 +57,7 @@ func TestItProposesNothingForTwoSchemasThatAgree(t *testing.T) {
 		},
 	} {
 		t.Run(one.name, func(t *testing.T) {
-			ops, refused := Diff(one.snapshot, one.snapshot)
+			ops, refused := Diff(one.snapshot, one.snapshot, Renames{})
 
 			for _, op := range ops {
 				t.Errorf("a schema diffed against itself proposed %s", op.Kind())
@@ -75,7 +75,7 @@ func TestItProposesNothingForTwoSchemasThatAgree(t *testing.T) {
 }
 
 func TestItCreatesATableBeforeTheKeyThatReferencesIt(t *testing.T) {
-	ops, refused := Diff(empty(), both(t))
+	ops, refused := Diff(empty(), both(t), Renames{})
 
 	if len(refused) != 0 {
 		t.Fatalf("creating two expressible tables refused %v", describeAll(refused))
@@ -100,7 +100,7 @@ func TestItCreatesATableBeforeTheKeyThatReferencesIt(t *testing.T) {
 }
 
 func TestItDropsEverythingOnATableBeforeTheTableItself(t *testing.T) {
-	ops, refused := Diff(both(t), empty())
+	ops, refused := Diff(both(t), empty(), Renames{})
 
 	if len(refused) != 0 {
 		t.Fatalf("dropping two expressible tables refused %v", describeAll(refused))
@@ -126,7 +126,7 @@ func TestItDropsAnIndexBeforeTheColumnItCovers(t *testing.T) {
 		table.Indexes = nil
 
 		return withoutColumn(table, "total")
-	}))
+	}), Renames{})
 
 	if len(refused) != 0 {
 		t.Fatalf("dropping an indexed column refused %v", describeAll(refused))
@@ -143,7 +143,7 @@ func TestItDropsAnIndexBeforeTheColumnItCovers(t *testing.T) {
 func TestItEmitsEveryDropCarryingWhatItReplaced(t *testing.T) {
 	for _, one := range comparisons(t) {
 		t.Run(one.name, func(t *testing.T) {
-			ops, _ := Diff(one.from, one.to)
+			ops, _ := Diff(one.from, one.to, one.confirmed)
 
 			for i, op := range ops {
 				if recorded, carries := recordsPriorState(op); carries && !recorded {
@@ -165,7 +165,7 @@ func TestItMatchesConstraintsAsASet(t *testing.T) {
 		return table
 	})
 
-	if ops, _ := Diff(both(t), renamedKey); len(ops) != 0 {
+	if ops, _ := Diff(both(t), renamedKey, Renames{}); len(ops) != 0 {
 		t.Errorf("a foreign key whose name moved proposed %d operations, want none", len(ops))
 		t.Log("ForeignKey.Equal ignores the name because no two engines agree on one (ADR 0065),")
 		t.Log("so a diff across engines must not propose rebuilding every key it can see.")
@@ -177,7 +177,7 @@ func TestItMatchesConstraintsAsASet(t *testing.T) {
 		return table
 	})
 
-	ops, _ := Diff(both(t), renamedIndex)
+	ops, _ := Diff(both(t), renamedIndex, Renames{})
 
 	if kinds := kindsOf(ops); !slices.Equal(kinds,
 		[]ir.Kind{ir.KindDropIndex, ir.KindAddIndex}) {
@@ -189,7 +189,7 @@ func TestItMatchesConstraintsAsASet(t *testing.T) {
 
 func TestItReplacesAViewWhoseBodyMoved(t *testing.T) {
 	ops, refused := Diff(withView(t, "SELECT id FROM users"),
-		withView(t, "SELECT id, email FROM users"))
+		withView(t, "SELECT id, email FROM users"), Renames{})
 
 	if len(refused) != 0 {
 		t.Fatalf("replacing a view refused %v", describeAll(refused))
@@ -278,7 +278,7 @@ func describeAll(refused []Refusal) string {
 }
 
 func TestANewTableStatesItsKeyInline(t *testing.T) {
-	ops, refused := Diff(empty(), users(t))
+	ops, refused := Diff(empty(), users(t), Renames{})
 
 	if len(refused) != 0 {
 		t.Fatalf("creating one expressible table refused %v", describeAll(refused))
@@ -304,7 +304,7 @@ func TestANewTableStatesItsKeyInline(t *testing.T) {
 }
 
 func TestADroppedTableRecordsItsKeyAsWellAsItsColumns(t *testing.T) {
-	ops, _ := Diff(both(t), empty())
+	ops, _ := Diff(both(t), empty(), Renames{})
 
 	dropped, ok := ops[indexOfKind(t, ops, ir.KindDropTable)].(ir.DropTable)
 	if !ok {

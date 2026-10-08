@@ -523,6 +523,19 @@ Renames a table, preserving its contents.
 { "op": "rename_table", "from": "users", "to": "accounts" }
 ```
 
+**A generator will not produce one unless a person said so.** Two schemas that differ by a rename
+record exactly what two differing by an unrelated drop and create record, so `internal/diff` proposes
+this as a *candidate* and emits it only once a confirmation reaches it as a parameter. The reason is
+the one asymmetry in these two operations: both are `Destructive: no` and nothing gates them, while
+the drop and create a declined rename becomes are gated by invariant #7. See
+[ADR 0072](adr/0072-rename-detection.md).
+
+**Every engine repoints the references itself.** Measured on PostgreSQL 16/17, MySQL 8.0,
+MariaDB 11.4 and SQLite: another table's foreign key follows the renamed table, and an index over a
+renamed column keeps its own name while covering the new one. A check expression and a view body are
+rewritten by the server too, but they are engine text, so nothing that composes operations can state
+the rewritten form — a check or view naming a renamed object is reached as a drop and an add instead.
+
 ---
 
 ### `add_column`
@@ -601,6 +614,15 @@ Renames a column, preserving its data.
 ```json
 { "op": "rename_column", "table": "users", "from": "email", "to": "email_address" }
 ```
+
+`table` names the table by the name it has **when this operation runs**, which matters where a
+`rename_table` is in the same list: that one runs first, so this names the new name. The same name is
+correct in the inverse, where this runs *before* the table rename undoes itself.
+
+**MySQL 8.0 refuses this outright where a check constraint names the column** — `Error 3959`, measured;
+MariaDB 11.4 allows it, and an index, a unique, a foreign key and a primary key over the column are
+fine on every server. A list that drops the check first works everywhere, which is the order
+`internal/diff` emits.
 
 ---
 

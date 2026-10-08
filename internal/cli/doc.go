@@ -411,8 +411,36 @@
 // The plan's reason is new rather than reformatted: before M10-T2 that column
 // printed the word "unsupported" alone, beside the statement it would have sent.
 //
+// # Confirming a rename, which has no command yet
+//
+// ConfirmRenames is the interactive half of M11-T4 and its one caller is
+// M11-T5's migr diff: detection is pure and so is emission, so the person goes
+// between them rather than inside either (ADR 0072). The policy is this
+// package's rather than that command's, and it is one asymmetry throughout.
+//
+// A declined rename becomes a drop and a create, which invariant #7 gates -- the
+// run refuses it until the project permits that kind. A confirmed rename is
+// Destructive() == false and is gated by nothing at all. So the default is no,
+// and the answer nothing else checks is the one a person has to type: an empty
+// line, an unrecognized answer, and a stream with nothing left in it all
+// decline. There is no yes-to-all, that being a guess wearing a confirmation's
+// clothes for every candidate the operator did not read; q declines the rest,
+// which is safe because what it bulk-applies is the gated side.
+//
+// Each prompt states both outcomes rather than only the rename, because that is
+// the choice -- "rename x to y? [y/N]" hides what saying no costs. A stream that
+// ran out and an operator typing q are reported apart, being different facts,
+// and a prompt with no streams at all is ErrNotConfirmable rather than a silent
+// no: that is the one place declining would be wrong, since a caller would read
+// it as somebody's own answer.
+//
+// It drives its own rounds, because a confirmed table rename is what makes the
+// column renames inside it detectable and this is the only thing that knows
+// which candidates it has already put to somebody. A loop outside it would
+// re-propose every declined candidate forever.
+//
 // Status: init, create, up, down, status, history, plan, validate, version, and
-// config -- which is M5 complete. diff is M11-T4, seed is M12-T1, and cutover is
+// config -- which is M5 complete. diff is M11-T5, seed is M12-T1, and cutover is
 // M13-T10. TestEveryCommandIsInTheExitCodeMatrix is what makes each of them say
 // which of the five endings it can reach before it ships.
 package cli

@@ -141,3 +141,114 @@ func columnTypeOf(t *testing.T, table schema.Table, column string) schema.Column
 
 	return found.Type
 }
+
+// The rename leg's target is built here rather than by asking the differ to apply the renames, so
+// that the thing under test is not also the thing that wrote the expectation. It renames the
+// referenced table, which the other table's foreign key points at, and the indexed date column,
+// which an index covers -- the two references every engine was measured following by itself.
+//
+// It then adds a column to the renamed table and an index over the renamed column, and those two are
+// what make the emission order a measurement rather than an argument: each one speaks a name only the
+// rename above it establishes, so a server refuses the whole list if the renames are anywhere but
+// first. With the renames last, this leg passed -- a gap that is nothing but names has nothing for
+// them to be out of order with.
+
+// moved names the table this suite renames the fixture's referenced one to.
+func (s Diff) moved() string { return s.Prefix + "_moved" }
+
+// renamedDay names the column this suite renames the fixture's indexed date column to.
+func (s Diff) renamedDay() string { return dateColumn + "_moved" }
+
+// renamedColumnName names the column the rename leg adds to the table it renamed.
+const renamedColumnName = "settled"
+
+// renamed returns the schema differing from one by nothing but a table's name and a column's.
+func (s Diff) renamed(t *testing.T, before schema.Snapshot) schema.Snapshot {
+	t.Helper()
+
+	after := before.Canonical()
+
+	for i := range after.Tables {
+		after.Tables[i] = s.renamedTable(t, after.Tables[i])
+	}
+
+	return after.Canonical()
+}
+
+// renamedTable returns one table as the rename leg's target holds it, references included.
+func (s Diff) renamedTable(t *testing.T, table schema.Table) schema.Table {
+	t.Helper()
+
+	switch table.Name {
+	case s.base().parent():
+		table.Name = s.moved()
+		table.Columns = append(table.Columns, schema.Column{
+			Name: renamedColumnName, Type: columnTypeOf(t, table, stringColumn), Nullable: true,
+		})
+	case s.base().child():
+		table = s.renamedDayIn(t, table)
+		table.Indexes = append(table.Indexes, schema.Index{
+			Name: s.named("ridx"), Columns: []string{s.renamedDay()},
+		})
+	}
+
+	for i := range table.ForeignKeys {
+		if table.ForeignKeys[i].ReferencesTable == s.base().parent() {
+			table.ForeignKeys[i].ReferencesTable = s.moved()
+		}
+	}
+
+	return table
+}
+
+// renamedDayIn returns the referencing table with its indexed date column under its new name.
+func (s Diff) renamedDayIn(t *testing.T, child schema.Table) schema.Table {
+	t.Helper()
+
+	if _, held := child.Column(dateColumn); !held {
+		t.Fatalf("the rename leg renames column %q, which table %q does not hold",
+			dateColumn, child.Name)
+	}
+
+	child.Columns = renamedColumnIn(child.Columns, dateColumn, s.renamedDay())
+	child.Indexes = renamedIndexesOver(child.Indexes, dateColumn, s.renamedDay())
+
+	return child
+}
+
+// renamedColumnIn returns a column list with one of them under a new name, in the order it holds them.
+func renamedColumnIn(columns []schema.Column, from, to string) []schema.Column {
+	renamed := make([]schema.Column, 0, len(columns))
+
+	for _, column := range columns {
+		if column.Name == from {
+			column.Name = to
+		}
+
+		renamed = append(renamed, column)
+	}
+
+	return renamed
+}
+
+// renamedIndexesOver returns an index list covering a renamed column, which keeps every index name.
+func renamedIndexesOver(indexes []schema.Index, from, to string) []schema.Index {
+	renamed := make([]schema.Index, 0, len(indexes))
+
+	for _, index := range indexes {
+		covers := make([]string, 0, len(index.Columns))
+
+		for _, column := range index.Columns {
+			if column == from {
+				column = to
+			}
+
+			covers = append(covers, column)
+		}
+
+		index.Columns = covers
+		renamed = append(renamed, index)
+	}
+
+	return renamed
+}

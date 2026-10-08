@@ -6,7 +6,7 @@ import (
 )
 
 // Diff returns the operations that turn one schema into the other, and every change it will not propose.
-func Diff(from, to schema.Snapshot) (ir.Operations, []Refusal) {
+func Diff(from, to schema.Snapshot, confirmed Renames) (ir.Operations, []Refusal) {
 	d := &differ{
 		from:    from.Canonical(),
 		to:      to.Canonical(),
@@ -15,6 +15,7 @@ func Diff(from, to schema.Snapshot) (ir.Operations, []Refusal) {
 		missing: make(map[string]map[string]bool),
 	}
 
+	d.planRenames(confirmed)
 	d.planTables()
 	d.planConstraints()
 	d.planViews()
@@ -24,7 +25,7 @@ func Diff(from, to schema.Snapshot) (ir.Operations, []Refusal) {
 
 // differ holds one comparison: the two schemas, what it has emitted, and what it would not.
 type differ struct {
-	// from is the schema being changed, in canonical order.
+	// from is the schema being changed, in canonical order and with every confirmed rename applied.
 	from schema.Snapshot
 	// to is the schema being changed into, in canonical order.
 	to schema.Snapshot

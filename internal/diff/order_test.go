@@ -34,7 +34,7 @@ func TestEveryOperationInTheOrderIsOneSomeComparisonEmits(t *testing.T) {
 	emitted := make(map[ir.Kind]bool, len(order))
 
 	for _, one := range comparisons(t) {
-		ops, _ := Diff(one.from, one.to)
+		ops, _ := Diff(one.from, one.to, one.confirmed)
 
 		for _, op := range ops {
 			emitted[op.Kind()] = true
@@ -58,7 +58,7 @@ func TestEveryOperationInTheOrderIsOneSomeComparisonEmits(t *testing.T) {
 func TestEveryProposedListIsInTheOneOrder(t *testing.T) {
 	for _, one := range comparisons(t) {
 		t.Run(one.name, func(t *testing.T) {
-			ops, _ := Diff(one.from, one.to)
+			ops, _ := Diff(one.from, one.to, one.confirmed)
 
 			highest := -1
 
@@ -84,37 +84,65 @@ func TestEveryProposedListIsInTheOneOrder(t *testing.T) {
 	t.Log("test/conformance/driver.")
 }
 
-func TestTheOrderIsItsOwnMirror(t *testing.T) {
+func TestAReversedListPutsEveryRenameWhereARollbackNeedsIt(t *testing.T) {
 	for _, one := range comparisons(t) {
 		t.Run(one.name, func(t *testing.T) {
-			ops, _ := Diff(one.from, one.to)
+			ops, _ := Diff(one.from, one.to, one.confirmed)
 
 			reversed, err := ir.ReverseAll(ops)
 			if err != nil {
 				t.Fatalf("nothing could undo what this diff proposes: %v", err)
 			}
 
-			highest := -1
-
-			for i, op := range reversed {
-				place := slices.Index(order, op.Kind())
-
-				if place < highest {
-					t.Errorf("the inverse is out of order at operation %d (%s): %v",
-						i+1, op.Kind(), kindsOf(reversed))
-					t.Log("The pairs sit at opposite ends of the order on purpose, so reversing a")
-					t.Log("list reverses the dependencies with it -- which is what makes a derived")
-					t.Log("down of a generated migration runnable rather than merely well formed.")
-				}
-
-				highest = max(highest, place)
-			}
+			checkReversedOrder(t, reversed)
 		})
+	}
+
+	t.Log("A rename establishes the name every operation after it speaks, so it is first going")
+	t.Log("forward and last coming back. Everything else sits opposite its own inverse, so")
+	t.Log("reversing a list of those gives a list in the same order.")
+}
+
+// checkReversedOrder holds a reversed list to the one order its two halves each have to be in.
+func checkReversedOrder(t *testing.T, reversed ir.Operations) {
+	t.Helper()
+
+	highest := -1
+	renamed := -1
+
+	for i, op := range reversed {
+		place := slices.Index(core, op.Kind())
+		if place < 0 {
+			renamed = i
+
+			continue
+		}
+
+		if place < highest {
+			t.Errorf("the inverse is out of order at operation %d (%s): %v",
+				i+1, op.Kind(), kindsOf(reversed))
+		}
+
+		if renamed >= 0 && renamesAfter(reversed[renamed].Kind(), op.Kind()) {
+			t.Errorf("operation %d is a %s and operation %d renames before it: %v",
+				i+1, op.Kind(), renamed+1, kindsOf(reversed))
+		}
+
+		highest = max(highest, place)
 	}
 }
 
+// renamesAfter reports a reversed list speaking a name after the rename that was to restore it.
+func renamesAfter(rename, kind ir.Kind) bool {
+	if rename == ir.KindRenameTable {
+		return kind != ir.KindCreateView
+	}
+
+	return kind != ir.KindAddCheck && kind != ir.KindRenameTable && kind != ir.KindCreateView
+}
+
 func TestEveryOperationSitsOppositeItsOwnInverse(t *testing.T) {
-	for i, kind := range order {
+	for i, kind := range core {
 		op, held := representative(t, kind)
 		if !held {
 			t.Errorf("there is no representative %s to take the inverse of", kind)
@@ -129,19 +157,60 @@ func TestEveryOperationSitsOppositeItsOwnInverse(t *testing.T) {
 			continue
 		}
 
-		mirror := len(order) - 1 - i
+		mirror := len(core) - 1 - i
 
-		if place := slices.Index(order, inverse.Kind()); place != mirror {
+		if place := slices.Index(core, inverse.Kind()); place != mirror {
 			t.Errorf("%s is at %d and its inverse %s is at %d, where the mirror of %d is %d",
 				kind, i, inverse.Kind(), place, i, mirror)
-			t.Log("The order has to be exactly palindromic for a reversed list to still be in it,")
-			t.Log("which is what a derived down of a generated migration depends on.")
+			t.Log("Everything but a rename has to be exactly palindromic for a reversed list to")
+			t.Log("still be in that order, which a derived down of a generated migration depends on.")
 		}
 	}
 
-	if len(order)%2 == 0 {
-		t.Error("an even order has no middle, and alter_column inverts to itself")
+	if len(core)%2 == 0 {
+		t.Error("an even core has no middle, and alter_column inverts to itself")
 	}
+
+	for _, kind := range []ir.Kind{ir.KindRenameTable, ir.KindRenameColumn} {
+		if slices.Contains(core, kind) {
+			t.Errorf("%s is in the mirrored core and it is self-inverse, which only the middle can "+
+				"be -- and alter_column is the middle", kind)
+		}
+	}
+
+	t.Log("The two renames are the one asymmetry, and the asymmetry is what makes the derived down")
+	t.Log("runnable: ir.ReverseAll moves them to the end, which is where a rollback needs them.")
+}
+
+func TestARenameComesBeforeEveryOperationThatSpeaksItsNewName(t *testing.T) {
+	cases := []struct {
+		rename ir.Kind
+		after  []ir.Kind
+	}{
+		{ir.KindRenameTable, []ir.Kind{ir.KindDropView}},
+		{ir.KindRenameColumn, []ir.Kind{ir.KindDropView, ir.KindRenameTable, ir.KindDropCheck}},
+	}
+
+	for _, one := range cases {
+		place := slices.Index(order, one.rename)
+		if place < 0 {
+			t.Fatalf("%s is not in the order at all", one.rename)
+		}
+
+		for i, kind := range order {
+			if i >= place || slices.Contains(one.after, kind) {
+				continue
+			}
+
+			t.Errorf("%s is at %d, before the %s at %d, and it speaks a name that rename "+
+				"establishes", kind, i, one.rename, place)
+		}
+	}
+
+	t.Log("Only two operations may precede a rename, and each records something a rename would")
+	t.Log("otherwise have moved out from under it: a dropped view's recorded body names the old")
+	t.Log("table, and a dropped check's recorded expression names the old column. MySQL 8.0 also")
+	t.Log("refuses to rename a column a check names at all (error 3959, measured).")
 }
 
 // representative returns one operation of a kind, carrying enough of a payload to be inverted.

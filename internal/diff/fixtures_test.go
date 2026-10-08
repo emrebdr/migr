@@ -199,6 +199,8 @@ type comparison struct {
 	from schema.Snapshot
 	// to is the schema being changed into.
 	to schema.Snapshot
+	// confirmed is what an operator confirmed, which is empty for every case that is not a rename.
+	confirmed Renames
 }
 
 // Together these emit every operation this differ emits at all, which is what coverage is derived
@@ -210,15 +212,14 @@ func comparisons(t *testing.T) []comparison {
 	t.Helper()
 
 	return []comparison{
-		{"two tables arrive", empty(), both(t)},
-		{"two tables go", both(t), empty()},
+		{"two tables arrive", empty(), both(t), Renames{}},
+		{"two tables go", both(t), empty(), Renames{}},
 		{"a column arrives and another goes",
 			users(t),
 			changed(users(t), "users", func(table schema.Table) schema.Table {
 				return withColumn(withoutColumn(table, "note"),
 					schema.Column{Name: "phone", Type: exact(t, "string(32)"), Nullable: true})
-			}),
-		},
+			}), Renames{}},
 		{"a column is tightened",
 			changed(users(t), "users", func(table schema.Table) schema.Table {
 				return rewriting(table, "note", func(column schema.Column) schema.Column {
@@ -229,8 +230,7 @@ func comparisons(t *testing.T) []comparison {
 			}),
 			changed(users(t), "users", func(table schema.Table) schema.Table {
 				return rewriting(table, "note", tightened)
-			}),
-		},
+			}), Renames{}},
 		{"a column is retyped",
 			users(t),
 			changed(users(t), "users", func(table schema.Table) schema.Table {
@@ -239,21 +239,87 @@ func comparisons(t *testing.T) []comparison {
 
 					return column
 				})
-			}),
-		},
+			}), Renames{}},
 		{"the key moves",
 			users(t),
 			changed(users(t), "users", func(table schema.Table) schema.Table {
 				table.PrimaryKey = &schema.PrimaryKey{Columns: []string{"id", "email"}}
 
 				return table
-			}),
-		},
-		{"a view arrives", users(t), withView(t, "SELECT id FROM users")},
-		{"a view goes", withView(t, "SELECT id FROM users"), users(t)},
+			}), Renames{}},
+		{"a view arrives", users(t), withView(t, "SELECT id FROM users"), Renames{}},
+		{"a view goes", withView(t, "SELECT id FROM users"), users(t), Renames{}},
 		{"a view's body moves",
 			withView(t, "SELECT id FROM users"),
-			withView(t, "SELECT id, email FROM users"),
-		},
+			withView(t, "SELECT id, email FROM users"), Renames{}},
+		{"a confirmed table rename", both(t), tableRenamedTo(t, "clients"),
+			Renames{Tables: []TableRename{{From: "users", To: "clients"}}}},
+		{"a confirmed column rename", both(t), columnRenamedTo(t, "memo"),
+			Renames{Columns: []ColumnRename{{Table: "users", From: "note", To: "memo"}}}},
+		{"a confirmed rename of both at once", both(t), bothRenamed(t),
+			Renames{
+				Tables:  []TableRename{{From: "users", To: "clients"}},
+				Columns: []ColumnRename{{Table: "clients", From: "note", To: "memo"}},
+			}},
+		{"a rename alongside a change the same table needs", both(t),
+			changed(columnRenamedTo(t, "memo"), "orders", func(table schema.Table) schema.Table {
+				return withColumn(table, schema.Column{Name: "ref", Type: exact(t, "string(8)"),
+					Nullable: true})
+			}),
+			Renames{Columns: []ColumnRename{{Table: "users", From: "note", To: "memo"}}}},
 	}
+}
+
+// Every rename fixture is also a comparison, so the properties over the whole list -- that every
+// operation validates, that the list inverts, that the engine's own gate permits it, that it is
+// deterministic -- all cover a confirmed rename without any of them naming one.
+
+// tableRenamedTo is the two-table schema with the referenced table under another name.
+func tableRenamedTo(t *testing.T, name string) schema.Snapshot {
+	t.Helper()
+
+	renamed := both(t)
+
+	for i := range renamed.Tables {
+		if renamed.Tables[i].Name == "users" {
+			renamed.Tables[i].Name = name
+			renamed.Tables[i].PrimaryKey = &schema.PrimaryKey{Name: name + "_pkey",
+				Columns: []string{"id"}}
+		}
+
+		for j := range renamed.Tables[i].ForeignKeys {
+			if renamed.Tables[i].ForeignKeys[j].ReferencesTable == "users" {
+				renamed.Tables[i].ForeignKeys[j].ReferencesTable = name
+			}
+		}
+	}
+
+	return renamed.Canonical()
+}
+
+// columnRenamedTo is the two-table schema with the referenced table's nullable column renamed.
+func columnRenamedTo(t *testing.T, name string) schema.Snapshot {
+	t.Helper()
+
+	return changed(both(t), "users", func(table schema.Table) schema.Table {
+		return renamedColumnTo(table, "note", name)
+	})
+}
+
+// bothRenamed is the two-table schema with the referenced table and one of its columns renamed.
+func bothRenamed(t *testing.T) schema.Snapshot {
+	t.Helper()
+
+	return changed(tableRenamedTo(t, "clients"), "clients", func(table schema.Table) schema.Table {
+		return renamedColumnTo(table, "note", "memo")
+	})
+}
+
+// renamedColumnTo returns a table with one of its columns under another name.
+func renamedColumnTo(table schema.Table, from, to string) schema.Table {
+	return rewriting(table, from, func(column schema.Column) schema.Column {
+		column.Name = to
+
+		return column
+	})
 }

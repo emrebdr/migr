@@ -30,7 +30,7 @@ func TestTheMutationDiffersFromTheSchemaItWasGiven(t *testing.T) {
 		t.Fatal("the mutation returned the schema it was given, so this suite asks for nothing")
 	}
 
-	ops, refused := diff.Diff(before, after)
+	ops, refused := diff.Diff(before, after, diff.Renames{})
 
 	for _, one := range refused {
 		t.Errorf("the mutation holds something the differ will not propose: %s", one.Describe())

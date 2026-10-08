@@ -27,7 +27,7 @@ type refusalCase struct {
 func TestItRefusesWhatTheOperationsCannotExpress(t *testing.T) {
 	for _, one := range slices.Concat(markerCases(t), vocabularyCases(t), dependentCases(t)) {
 		t.Run(one.name, func(t *testing.T) {
-			ops, refused := Diff(one.from, one.to)
+			ops, refused := Diff(one.from, one.to, Renames{})
 
 			checkRefused(t, refused, one)
 			checkNotEmitted(t, ops, refused)

@@ -10,8 +10,8 @@ import (
 
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/driver/sqlite"
-	"github.com/emrebdr/migr/internal/driver/sqlite/sqlitetest"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // The whole stack against a real database, untagged, because this engine needs no daemon.
@@ -121,19 +121,22 @@ func sqliteDigest(t *testing.T, database string) string {
 	return sqliteDigestOf(t, database, sqliteHistoryTable)
 }
 
-// sqliteDigestOf renders what a database holds, excluding one history table and its index.
+// The history table is excluded by opening the session with it rather than by a parameter of the
+// probe's: Introspect leaves out the table migr records its own runs in (ADR 0069), so a comparison
+// of two moments cannot differ by the row the run between them wrote.
+
+// sqliteDigestOf renders what a database holds, as the neutral snapshot every driver answers with.
 func sqliteDigestOf(t *testing.T, database, table string) string {
 	t.Helper()
 
 	conn := sqliteOpened(t, database, table)
 
-	rendered, err := sqlitetest.Digest(sqlitetest.Over(context.WithoutCancel(t.Context()), conn,
-		table))
+	held, err := conn.Introspect(context.WithoutCancel(t.Context()))
 	if err != nil {
-		t.Fatalf("describing the database: %v", err)
+		t.Fatalf("introspecting the database: %v", err)
 	}
 
-	return rendered
+	return schema.Render(*held)
 }
 
 // sqliteRecorded returns every run the history holds, through the store contract alone.
@@ -173,7 +176,7 @@ func TestTheWholeStackAppliesAndRollsBackAgainstSQLite(t *testing.T) {
 	}
 
 	if got := sqliteDigest(t, database); got != before {
-		t.Fatalf("a dry run changed the schema:\n%s\n---\n%s", before, got)
+		t.Fatalf("a dry run changed the schema:\n%s", schema.Difference(before, got))
 	}
 
 	if err := migr(t, config, "up"); err != nil {
@@ -194,17 +197,19 @@ func TestTheWholeStackAppliesAndRollsBackAgainstSQLite(t *testing.T) {
 	}
 
 	if got := sqliteDigest(t, database); got != before {
-		t.Errorf("the rollback did not restore the starting schema:\nbefore\n%s\nafter\n%s",
-			before, got)
+		t.Errorf("the rollback did not restore the starting schema:\n%s",
+			schema.Difference(before, got))
 	}
 
 	if got := sqliteApplied(sqliteRecorded(t, database), "down"); got != len(sqliteMigrations) {
 		t.Errorf("the history holds %d rollbacks, want %d", got, len(sqliteMigrations))
 	}
 
-	t.Log("Byte-identical, and DROP COLUMN is what makes that worth asserting: SQLite rewrites the")
-	t.Log("whole table content for one, and rewrites the recorded CREATE TABLE with it. Measured:")
-	t.Log("dropping a column and adding it back leaves the definition exactly as it was.")
+	t.Log("DROP COLUMN is what makes this worth asserting: SQLite rewrites the whole table content")
+	t.Log("for one, and rewrites the recorded CREATE TABLE with it. What is compared is the neutral")
+	t.Log("snapshot, so the re-wording is invisible here and what has to come back is what the")
+	t.Log("table holds -- the columns, the key and the index. That the recorded text itself settles")
+	t.Log("after one rebuild is a fact about this engine and is asserted in the driver's own suite.")
 }
 
 func TestTheRoundTripRunsTwiceOverAndTheSecondUpIsNotANoOpBySkipping(t *testing.T) {

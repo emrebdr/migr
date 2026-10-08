@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver/sqlite"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // A table rebuild, end to end, which only a real operation can reach.
@@ -22,9 +23,11 @@ import (
 //
 // One thing a rebuild cannot restore is the wording of the table it replaced: it re-renders the
 // CREATE TABLE from its own splitter, so the columns, the key and the constraints come back and the
-// recorded text is the rebuild's rather than the author's. checkRebuildRestored exempts exactly that
-// one line, which is M8-T4's rule (checkOther, in the driver's own suite) applied end to end, and
-// TestARebuiltTableIsStableAcrossASecondRoundTrip is what says the wording then stops moving.
+// recorded text is the rebuild's rather than the author's. Until M11-T6 that cost this suite an
+// exemption for every line naming the rebuilt table -- which left the one table the emulation
+// touched as the one thing the round trip did not check. What is compared now is the neutral
+// snapshot, where a re-wording is invisible, so the rebuilt table is held to the same equality as
+// everything around it and the wording claim lives in the driver's own suite instead.
 
 // sqliteGoHistoryTable keeps this suite's runs out of every other table here.
 const sqliteGoHistoryTable = "migr_e2e_sqlite_go"
@@ -242,32 +245,17 @@ func TestARebuildAppliesAndRollsBackWithoutLosingWhatItDidNotTouch(t *testing.T)
 		t.Errorf("the rollback left the check behind:\n%s", after)
 	}
 
-	checkRebuildRestored(t, before, after)
-}
-
-// checkRebuildRestored holds a rollback to restoring everything but the rebuilt table's own wording.
-func checkRebuildRestored(t *testing.T, before, after string) {
-	t.Helper()
-
-	was := make(map[string]bool)
-	for _, line := range strings.Split(before, "\n") {
-		was[line] = true
+	if after != before {
+		t.Errorf("the round trip did not restore the schema:\n%s", schema.Difference(before, after))
 	}
 
-	for _, line := range strings.Split(after, "\n") {
-		if was[line] || strings.HasPrefix(line, "table rebuilt_accounts ") {
-			continue
-		}
-
-		t.Errorf("the round trip changed an object the rebuild was not asked about:\n  %s", line)
+	if !strings.Contains(after, "table       rebuilt_accounts") {
+		t.Errorf("the comparison does not cover the rebuilt table, so it proves little:\n%s", after)
 	}
 
-	for _, want := range []string{`index idx_rebuilt_accounts_email`, `"id"`, `"email"`,
-		`PRIMARY KEY`} {
-		if !strings.Contains(after, want) {
-			t.Errorf("the rolled-back schema no longer holds %q:\n%s", want, after)
-		}
-	}
+	t.Log("The rebuilt table is not exempt from that equality any more. It used to be, because the")
+	t.Log("comparison was SQLite's own recorded CREATE TABLE and a rebuild re-words it -- which left")
+	t.Log("the one table the emulation touched as the one thing the round trip never checked.")
 }
 
 func TestARebuiltTableIsStableAcrossASecondRoundTrip(t *testing.T) {
@@ -292,12 +280,15 @@ func TestARebuiltTableIsStableAcrossASecondRoundTrip(t *testing.T) {
 	}
 
 	if got := sqliteDigestOf(t, database, sqliteGoHistoryTable); got != settled {
-		t.Errorf("a second round trip did not land where the first did:\n%s\n---\n%s", settled, got)
+		t.Errorf("a second round trip did not land where the first did:\n%s",
+			schema.Difference(settled, got))
 	}
 
-	t.Log("The rebuild's own rendering is what a rebuilt table keeps, so the first round trip moves")
-	t.Log("the recorded wording once and every one after it is byte-identical. That is the strongest")
-	t.Log("form the done-when can take for an emulated operation.")
+	t.Log("Two round trips through the CLI land on the same schema, which is what says an emulated")
+	t.Log("operation is idempotent across runs rather than merely reversible within one. The claim")
+	t.Log("used to be about SQLite's recorded wording settling after the first rebuild -- that is a")
+	t.Log("fact about this engine rather than about the stack, so it moved into the driver's own")
+	t.Log("suite, where the recorded statement is available and a snapshot's is not.")
 }
 
 // notesMigration creates the table the dropping migration below takes a column from.
@@ -412,7 +403,8 @@ func TestATypedDropIsRefusedUntilItsKindIsPermitted(t *testing.T) {
 		}
 	}
 
-	if got := sqliteDigestOf(t, database, sqliteGoHistoryTable); !strings.Contains(got, `"body"`) {
+	if got := sqliteDigestOf(t, database, sqliteGoHistoryTable); !strings.Contains(got,
+		"rebuilt_notes.body") {
 		t.Errorf("the refused migration changed the schema:\n%s", got)
 	}
 
@@ -420,7 +412,8 @@ func TestATypedDropIsRefusedUntilItsKindIsPermitted(t *testing.T) {
 		t.Fatalf("up --allow-destructive: %v", err)
 	}
 
-	if got := sqliteDigestOf(t, database, sqliteGoHistoryTable); strings.Contains(got, `"body"`) {
+	if got := sqliteDigestOf(t, database, sqliteGoHistoryTable); strings.Contains(got,
+		"rebuilt_notes.body") {
 		t.Errorf("the column is still there after a permitted drop:\n%s", got)
 	}
 

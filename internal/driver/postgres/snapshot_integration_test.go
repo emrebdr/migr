@@ -3,31 +3,40 @@
 package postgres
 
 import (
-	"context"
-	"strings"
 	"testing"
 
-	"github.com/emrebdr/migr/internal/driver/postgres/pgtest"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
-// snapshotSupersededBy names the task that replaces this probe with the comparison M3-T5 asked for.
+// M11-T6 replaced M3-T5's stand-in with the comparison that task's done-when actually asked for.
 //
-// M3-T5's done-when says "verified by introspection snapshot comparison", and no such thing exists
-// to verify with: internal/schema's Snapshot is M11-T1 and per-driver introspection is M11-T2, both
-// eight milestones ahead and both depending on M3-T1 rather than the other way round. Building
-// either early would be doing another milestone's work under this task's name.
+// M3-T5 said "verified by introspection snapshot comparison" and there was no such thing to verify
+// with: internal/schema's Snapshot was M11-T1 and per-driver introspection M11-T2, both eight
+// milestones ahead. So the comparison was a catalog digest in pgtest -- five probes asking
+// PostgreSQL to describe itself, reassembled into sorted text.
 //
-// So the comparison is a catalog digest, the same shape M3-T3's relfilenode probe took: a question
-// asked in the driver's own dialect, which invariant #3 permits inside this subtree and nowhere
-// above it. It lives in pgtest because M6-T10 needed to ask it from cmd/migr, the one package that
-// may drive the whole stack -- see that package's doc for why that is the only home it can have.
-const snapshotSupersededBy = "M11-T6"
+// Conn.Introspect is now on the contract, so the question has a neutral answer and the digest is
+// the second one. What describeSchema renders is a snapshot, which is what the suites above
+// compare; nothing here composes SQL any more, and the Ask seam pgtest needed went with it, since
+// probe already reads through this session's open transaction when it has one.
+
+// describeSchema renders what this session's namespace holds, as the snapshot the drivers agree on.
+func describeSchema(t *testing.T, session *pgConn) string {
+	t.Helper()
+
+	held, err := session.Introspect(t.Context())
+	if err != nil {
+		t.Fatalf("introspecting the schema: %v", err)
+	}
+
+	return schema.Render(*held)
+}
 
 // loneTable is a table whose only column drop_column takes away, leaving the relation behind.
 const loneTable = "migr_probe_lone"
 
-func TestTheDigestTellsAnEmptiedTableFromADroppedOne(t *testing.T) {
+func TestASnapshotTellsAnEmptiedTableFromADroppedOne(t *testing.T) {
 	for _, server := range servers {
 		t.Run(server.name, func(t *testing.T) {
 			dsn := dsnFor(server.env, server.dsn)
@@ -38,51 +47,49 @@ func TestTheDigestTellsAnEmptiedTableFromADroppedOne(t *testing.T) {
 
 			apply(t, session, ir.Operations{
 				ir.CreateTable{Table: loneTable, Columns: []ir.Column{only}},
+			})
+
+			built, err := session.Introspect(t.Context())
+			if err != nil {
+				t.Fatalf("introspecting the built schema: %v", err)
+			}
+
+			apply(t, session, ir.Operations{
 				ir.DropColumn{Table: loneTable, Column: only.Name, From: &only},
 			})
 
-			if digest := describeSchema(t, session, target); !strings.Contains(digest, loneTable) {
-				t.Errorf("a table with no columns left renders as nothing:\n%q", digest)
-				t.Log("Every probe but relationQuery describes contents, so an emptied table would")
-				t.Log("be indistinguishable from one that was dropped -- and a rollback that dropped")
-				t.Log("a table it was meant to empty would compare equal to one that did neither.")
+			emptied, err := session.Introspect(t.Context())
+			if err != nil {
+				t.Fatalf("introspecting the emptied schema: %v", err)
+			}
+
+			held, there := emptied.Table(loneTable)
+			if !there {
+				t.Fatalf("a table with no columns left is not in the snapshot:\n%s",
+					schema.Render(*emptied))
+			}
+
+			if len(held.Columns) != 0 {
+				t.Errorf("the emptied table still reports %d columns", len(held.Columns))
+			}
+
+			if emptied.Equal(*built) {
+				t.Error("emptying the table compares equal to leaving it alone")
+			}
+
+			apply(t, session, ir.Operations{ir.DropTable{Table: loneTable}})
+
+			dropped, err := session.Introspect(t.Context())
+			if err != nil {
+				t.Fatalf("introspecting the dropped schema: %v", err)
+			}
+
+			if dropped.Equal(*emptied) {
+				t.Error("dropping the table compares equal to emptying it")
+				t.Log("Every other line of a rendering describes contents, and PostgreSQL holds a")
+				t.Log("relation with no columns -- so without the table's own entry a rollback that")
+				t.Log("dropped a table it was meant to empty would compare equal to a correct one.")
 			}
 		})
 	}
-}
-
-// describeSchema renders one schema as text, asking over this package's own connection.
-func describeSchema(t *testing.T, session *pgConn, schema string) string {
-	t.Helper()
-
-	digest, err := pgtest.Digest(func(probe string) ([]string, error) {
-		return queryLines(session, probe, schema)
-	})
-	if err != nil {
-		t.Fatalf("describing schema %q: %v", schema, err)
-	}
-
-	return digest
-}
-
-// queryLines runs one probe and returns its rows, which the digest orders for itself.
-func queryLines(session *pgConn, probe, schema string) ([]string, error) {
-	rows, err := session.conn.Query(context.Background(), probe, schema)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var lines []string
-
-	for rows.Next() {
-		var line string
-		if err := rows.Scan(&line); err != nil {
-			return nil, err
-		}
-
-		lines = append(lines, line)
-	}
-
-	return lines, rows.Err()
 }

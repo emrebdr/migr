@@ -233,7 +233,8 @@ func checkTightenedAndKeyed(t *testing.T, database string) {
 
 	rendered := sqliteDigestOf(t, database, expandHistoryTable)
 
-	for _, want := range []string{`"tag" varchar(64) NOT NULL`, `PRIMARY KEY ("tag")`} {
+	for _, want := range []string{"column      crates.tag string(64) not null",
+		"primary_key crates pk_crates (tag)"} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("the schema does not hold %q, so one rebuild undid the other:\n%s",
 				want, rendered)
@@ -249,7 +250,7 @@ func TestATableCreatedAndThenKeyedInOneRunCompilesAtAll(t *testing.T) {
 	}
 
 	if got := sqliteDigestOf(t, database, expandHistoryTable); !strings.Contains(got,
-		`FOREIGN KEY ("crate") REFERENCES "crates" ("tag")`) {
+		"(crate) -> crates(tag)") {
 		t.Fatalf("the foreign key is not in the schema:\n%s", got)
 	}
 

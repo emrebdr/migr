@@ -174,8 +174,10 @@
 //
 // A table with no columns is valid here, where ir.TableDef requires at least one. PostgreSQL
 // permits a relation with zero columns and drop_column can reach that state -- which is why
-// pgtest lists relations as well as describing them. A snapshot reports what the engine holds,
-// so refusing it would make a real database impossible to introspect.
+// every driver lists relations as well as describing them, measured at M11-T6: Introspect
+// reports an emptied table as a Table with no columns, so Equal tells it from a dropped one.
+// A snapshot reports what the engine holds, so refusing it would make a real database
+// impossible to introspect.
 //
 // # What is deliberately not represented
 //
@@ -184,10 +186,28 @@
 // which are outside the five object classes this model covers at all. Each is either beyond
 // the v1 operation set or beyond the task, and the distinction matters to whoever extends this.
 //
+// # Two renderings, one for a machine and one for a person
+//
+// Render renders a canonical snapshot as sorted lines, one per element, each opening with its
+// kind. It is what a comparison of two moments of a schema prints, and Difference renders the
+// lines two such renderings disagree on. Both exist because M11-T6 replaced three per-driver
+// catalog digests with this model: a digest asked an engine to describe itself, so two moments
+// compared that way differ wherever the engine reworded itself -- which is why SQLite's round
+// trip had to exempt the one table its rebuild touched, and why MySQL's had to sort its own
+// lines to survive a reversed drop_column. See docs/adr/0074-the-neutral-round-trip.md.
+//
+// An exact column type renders as the logical type alone and a guess says so, which is
+// ColumnType.String's own rule: the renderings are never compared across engines, so a native
+// spelling would make two of them differ for no reason. Canonical runs first, and that is
+// load-bearing rather than tidy -- it resolves an omitted referential action to no_action, so
+// two snapshots that compare Equal render identically. Sorting the lines cannot do that.
+//
 // # Serializable, and unversioned
 //
 // Marshal and Unmarshal round-trip a snapshot through JSON in canonical order, refusing a
 // member this build does not know -- the same strictness ir.Unmarshal has, for the same reason.
+// Marshal is the canonical form for a machine where Render is the one for a person; both are
+// views of one snapshot rather than two readings of a database.
 //
 // There is no version field, which is deliberate rather than deferred. The IR and the protocol
 // carry one because they cross a boundary, between two processes or two languages or into a

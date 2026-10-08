@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
-	"github.com/emrebdr/migr/internal/driver/sqlite/sqlitetest"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // referenced builds a table with one of everything that can point at it, and rows in all of them.
@@ -41,18 +41,6 @@ func referenced(t *testing.T, c *sqliteConn) {
 	} {
 		exec(t, c, statement)
 	}
-}
-
-// digest renders every object this database holds, which is what a rebuild must leave alone.
-func digest(t *testing.T, c *sqliteConn) string {
-	t.Helper()
-
-	rendered, err := sqlitetest.Digest(sqlitetest.Over(t.Context(), c, ""))
-	if err != nil {
-		t.Fatalf("describing the database: %v", err)
-	}
-
-	return rendered
 }
 
 // expanded compiles one emulated operation against a live database and runs every statement.
@@ -110,9 +98,9 @@ func TestARebuildLosesNothingThatReferencesTheTable(t *testing.T) {
 				expanded(t, c, addedFirst(t, name))
 			}
 
-			before := digest(t, c)
+			before := recordedSQL(t, c)
 			expanded(t, c, op)
-			after := digest(t, c)
+			after := recordedSQL(t, c)
 
 			checkSurvivors(t, c, before, after)
 		})
@@ -329,4 +317,47 @@ func TestEveryStatementARebuildEmitsRunsInsideOneTransaction(t *testing.T) {
 		t.Log("it -- measured. Deferral moves the check to the commit, by which time the table is")
 		t.Log("back with the same rows in it.")
 	}
+}
+
+func TestARebuildReWordsTheRecordedStatementOnceAndThenSettles(t *testing.T) {
+	for name, op := range rebuilds(t) {
+		t.Run(name, func(t *testing.T) {
+			c := openFile(t)
+			referenced(t, c)
+
+			if name == "drop_foreign_key" || name == "drop_primary_key" {
+				expanded(t, c, addedFirst(t, name))
+			}
+
+			authored := recordedSQL(t, c)
+
+			expanded(t, c, op)
+			once := recordedSQL(t, c)
+
+			if once == authored {
+				t.Skipf("%s did not re-word the recorded statement, so there is nothing to settle",
+					name)
+			}
+
+			inverse, err := op.Reverse()
+			if err != nil {
+				t.Skipf("this fixture records no from payload, so nothing inverts it: %v", err)
+			}
+
+			expanded(t, c, inverse)
+			expanded(t, c, op)
+
+			if twice := recordedSQL(t, c); twice != once {
+				t.Errorf("a second rebuild re-worded the recorded statement again:\n%s",
+					schema.Difference(once, twice))
+				t.Log("A rebuild renders the CREATE TABLE it replaces, so the wording is the")
+				t.Log("rebuild's own from the first one onwards. If it keeps moving, two identical")
+				t.Log("round trips leave two different recorded statements and nothing converges.")
+			}
+		})
+	}
+
+	t.Log("This is the claim cmd/migr's round trip used to make and no longer can: it compares the")
+	t.Log("neutral snapshot, where a re-wording is invisible by design. The wording is a fact about")
+	t.Log("this engine, so it is measured here, against the statement SQLite actually recorded.")
 }

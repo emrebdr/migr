@@ -104,13 +104,18 @@ PostgreSQL already reports that way.
 ### `sqlitetest`, and the second depguard pair
 
 The round trip compares a before and after schema, `cmd/migr` is the only package that may drive the
-whole stack, and invariant #3 will not let it compose the catalog query. So the probe lives in
-`internal/driver/sqlite/sqlitetest` and is exported — pgtest's argument unchanged (ADR 0040).
+whole stack, and invariant #3 will not let it compose the catalog query. So the probe lived in
+`internal/driver/sqlite/sqlitetest` and was exported — pgtest's argument unchanged (ADR 0040).
+**M11-T6 deleted that package** ([ADR 0074](0074-the-neutral-round-trip.md)): `Conn.Introspect`
+answers `cmd/migr` neutrally, so nothing above the driver needs a probe, and what remains of the
+`sqlite_schema` reading is a test helper inside the driver — kept because a trigger and a generated
+column are two things only the recorded statement holds, and a rebuild must not lose either.
 
 The driver's own rebuild suite reads the same digest, so the driver imports its own child, so
 `.golangci.yml` owes the pair CLAUDE.md already anticipated: `internal/driver/sqlite/` exempted from the
 blanket `internal/driver/` deny, and held instead by a rule set denying `postgres`, `mysql` and every
-language runtime by name. Exempting without the pair would trade invariant #2 for nothing.
+language runtime by name. Exempting without the pair would trade invariant #2 for nothing. **The pair
+outlives the child package**: it holds invariant #2 regardless, and PostgreSQL still has a child.
 
 One probe rather than PostgreSQL's five, because everything SQLite knows about its schema is in
 `sqlite_schema`. The `Ask` seam is kept anyway — not because a second fetcher is needed today, but
@@ -220,5 +225,5 @@ confirming it: extended result codes survive `lib.Error.Code()`, which is what l
 detected precisely instead of by message; and `sqlite_schema.name` comparing BINARY is what put
 `COLLATE NOCASE` in the lookup rather than leaving `Ensure` to loop forever on a `MixedCase` table.
 
-`Introspect` is M11-T1 and `sqlitetest` is M11-T6's to delete, alongside `pgtest`. `--require-safe` and
-the lock axis in `migr plan` remain M13-T6.
+`Introspect` is M11-T1, and M11-T6 deleted `sqlitetest` on the back of it (ADR 0074).
+`--require-safe` and the lock axis in `migr plan` remain M13-T6.

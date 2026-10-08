@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // usersTable is the referenced side of the fixture's foreign key.
@@ -276,11 +277,11 @@ func TestEveryOperationRestoresTheSchemaItChanged(t *testing.T) {
 func roundTrip(t *testing.T, session *pgConn, target string, op ir.Operation) {
 	t.Helper()
 
-	before := describeSchema(t, session, target)
+	before := describeSchema(t, session)
 
 	apply(t, session, ir.Operations{op})
 
-	after := describeSchema(t, session, target)
+	after := describeSchema(t, session)
 	if after == before {
 		t.Log("An operation the digest cannot see round-trips for free: apply nothing, reverse")
 		t.Log("nothing, compare equal. Either the fixture is not exercising this operation or")
@@ -295,16 +296,16 @@ func roundTrip(t *testing.T, session *pgConn, target string, op ir.Operation) {
 
 	apply(t, session, ir.Operations{inverse})
 
-	if restored := describeSchema(t, session, target); restored != before {
+	if restored := describeSchema(t, session); restored != before {
 		t.Fatalf("reversing %s did not restore the schema it changed:\n%s",
-			op.Kind(), diffLines(before, restored))
+			op.Kind(), schema.Difference(before, restored))
 	}
 
 	apply(t, session, ir.Operations{op})
 
-	if again := describeSchema(t, session, target); again != after {
+	if again := describeSchema(t, session); again != after {
 		t.Fatalf("re-applying %s after its reverse reached a different schema:\n%s",
-			op.Kind(), diffLines(after, again))
+			op.Kind(), schema.Difference(after, again))
 	}
 }
 
@@ -383,20 +384,20 @@ func TestABuildRollsBackToTheSchemaItFound(t *testing.T) {
 			target := scratchSchema(t, dsn)
 			session := sessionIn(t, dsn, target)
 
-			empty := describeSchema(t, session, target)
+			empty := describeSchema(t, session)
 			build := buildScript(t)
 
 			apply(t, session, build)
 
-			if built := describeSchema(t, session, target); built == empty {
+			if built := describeSchema(t, session); built == empty {
 				t.Fatal("the build left the schema exactly as it found it")
 			}
 
 			apply(t, session, reverseAll(t, build))
 
-			if restored := describeSchema(t, session, target); restored != empty {
+			if restored := describeSchema(t, session); restored != empty {
 				t.Fatalf("rolling the build back left the schema changed:\n%s",
-					diffLines(empty, restored))
+					schema.Difference(empty, restored))
 			}
 		})
 	}
@@ -415,21 +416,21 @@ func TestATeardownIsRebuiltFromWhatItRecorded(t *testing.T) {
 			session := sessionIn(t, dsn, target)
 
 			apply(t, session, buildScript(t))
-			built := describeSchema(t, session, target)
+			built := describeSchema(t, session)
 
 			teardown := teardownScript(t)
 			apply(t, session, teardown)
 
-			emptied := describeSchema(t, session, target)
+			emptied := describeSchema(t, session)
 			if emptied == built {
 				t.Fatal("the teardown removed nothing")
 			}
 
 			apply(t, session, reverseAll(t, teardown))
 
-			if rebuilt := describeSchema(t, session, target); rebuilt != built {
+			if rebuilt := describeSchema(t, session); rebuilt != built {
 				t.Fatalf("the teardown's reverse did not rebuild what it removed:\n%s",
-					diffLines(built, rebuilt))
+					schema.Difference(built, rebuilt))
 			}
 		})
 	}
@@ -462,12 +463,12 @@ func TestOnlyAnAuthoredUndoTakesARawOperationBack(t *testing.T) {
 				PrimaryKey: []string{"id"},
 			}})
 
-			before := describeSchema(t, session, target)
+			before := describeSchema(t, session)
 			raw := ir.Raw{Driver: Name, SQL: partialIndexSQL}
 
 			apply(t, session, ir.Operations{raw})
 
-			if after := describeSchema(t, session, target); after == before {
+			if after := describeSchema(t, session); after == before {
 				t.Fatal("the raw statement changed nothing the schema digest can see")
 			}
 
@@ -475,9 +476,9 @@ func TestOnlyAnAuthoredUndoTakesARawOperationBack(t *testing.T) {
 
 			apply(t, session, ir.Operations{ir.Raw{Driver: Name, SQL: dropPartialIndexSQL}})
 
-			if restored := describeSchema(t, session, target); restored != before {
+			if restored := describeSchema(t, session); restored != before {
 				t.Fatalf("the authored undo did not take the raw statement back:\n%s",
-					diffLines(before, restored))
+					schema.Difference(before, restored))
 			}
 		})
 	}
@@ -539,13 +540,13 @@ func checkTheIndexIsNotRecorded(t *testing.T, session *pgConn, target string) {
 		ir.AddIndex{Table: "migr_gap_indexed", Name: "idx_gap_tag", Columns: []string{"tag"}},
 	})
 
-	before := describeSchema(t, session, target)
+	before := describeSchema(t, session)
 	drop := ir.DropColumn{Table: "migr_gap_indexed", Column: "tag", From: &tagged}
 
 	apply(t, session, ir.Operations{drop})
 	apply(t, session, ir.Operations{reverse(t, drop)})
 
-	restored := describeSchema(t, session, target)
+	restored := describeSchema(t, session)
 	if restored == before {
 		t.Error("reversing a drop_column restored the index on the dropped column")
 		t.Log("If PostgreSQL has started recording that dependency, this gap is closed and the")
@@ -555,11 +556,11 @@ func checkTheIndexIsNotRecorded(t *testing.T, session *pgConn, target string) {
 	}
 
 	if !strings.Contains(restored, "migr_gap_indexed.tag ") {
-		t.Errorf("the column itself did not come back:\n%s", diffLines(before, restored))
+		t.Errorf("the column itself did not come back:\n%s", schema.Difference(before, restored))
 	}
 
 	if strings.Contains(restored, "idx_gap_tag") {
-		t.Errorf("the index is present after all:\n%s", diffLines(before, restored))
+		t.Errorf("the index is present after all:\n%s", schema.Difference(before, restored))
 	}
 }
 
@@ -572,13 +573,13 @@ func checkTheImpliedNotNullIsNotRestored(t *testing.T, session *pgConn, target s
 		Columns: []ir.Column{{Name: "id", Type: probeType(t, "int64"), Nullable: true}},
 	}})
 
-	before := describeSchema(t, session, target)
+	before := describeSchema(t, session)
 	add := ir.AddPrimaryKey{Table: "migr_gap_nullable", Name: "pk_gap", Columns: []string{"id"}}
 
 	apply(t, session, ir.Operations{add})
 	apply(t, session, ir.Operations{reverse(t, add)})
 
-	restored := describeSchema(t, session, target)
+	restored := describeSchema(t, session)
 	if restored == before {
 		t.Error("reversing an add_primary_key restored the column's nullability")
 		t.Log("PostgreSQL used to keep the NOT NULL that ADD PRIMARY KEY implied. If it has")
@@ -587,9 +588,9 @@ func checkTheImpliedNotNullIsNotRestored(t *testing.T, session *pgConn, target s
 		return
 	}
 
-	if !strings.Contains(restored, "migr_gap_nullable.id bigint not null") {
+	if !strings.Contains(restored, "migr_gap_nullable.id int64 not null") {
 		t.Errorf("the column is not left NOT NULL, so this reads as something else:\n%s",
-			diffLines(before, restored))
+			schema.Difference(before, restored))
 	}
 }
 
@@ -634,37 +635,4 @@ func describeKinds(ops ir.Operations) string {
 	}
 
 	return strings.Join(kinds, ", ")
-}
-
-// diffLines renders what two schema digests disagree about, so a failure names relations.
-func diffLines(want, got string) string {
-	var out strings.Builder
-
-	for _, line := range linesMissingFrom(want, got) {
-		out.WriteString("  - " + line + "\n")
-	}
-
-	for _, line := range linesMissingFrom(got, want) {
-		out.WriteString("  + " + line + "\n")
-	}
-
-	return out.String()
-}
-
-// linesMissingFrom returns the lines of one digest the other does not hold.
-func linesMissingFrom(from, other string) []string {
-	held := make(map[string]bool)
-	for _, line := range strings.Split(other, "\n") {
-		held[line] = true
-	}
-
-	var missing []string
-
-	for _, line := range strings.Split(from, "\n") {
-		if line != "" && !held[line] {
-			missing = append(missing, line)
-		}
-	}
-
-	return missing
 }

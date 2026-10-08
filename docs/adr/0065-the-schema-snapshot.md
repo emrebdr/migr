@@ -208,8 +208,10 @@ default is `(nullable_one * 2)`.
 engine could have produced.
 
 A table with no columns is **valid** here, where `ir.TableDef` requires at least one: PostgreSQL
-permits a relation with zero columns and `drop_column` can reach that state, which is why `pgtest`
-lists relations as well as describing them. A snapshot reports what the engine holds.
+permits a relation with zero columns and `drop_column` can reach that state, which is why a driver
+lists relations as well as describing them — measured at M11-T6, where `Introspect` reports an
+emptied table as a `Table` with no columns, so `Equal` tells it from a dropped one. A snapshot
+reports what the engine holds.
 
 Coverage is mechanical and derived from `ir.Kinds()`. One test declares, for every one of the twenty
 operations, the element it changes and a before/after pair of snapshots, and asserts the model can

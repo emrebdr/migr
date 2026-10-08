@@ -131,8 +131,10 @@ and nothing acts on it without asking `Exact()` first.
   table from `Options.Namespace()`, so it excludes it and everything attached to it; SQLite also
   excludes `sqlite_sequence` and `sqlite_stat*`. Including it would have every `migr diff` propose
   dropping the migration history, and would make M11-T6's empty diff unreachable.
-- D2: take an exclusion as a parameter, the way `pgtest.Digest` does. **Rejected**: ADR 0011 settled
-  the signature, and a caller that could forget is a caller that will.
+- D2: take an exclusion as a parameter, the way `pgtest.Digest` did. **Rejected**: ADR 0011 settled
+  the signature, and a caller that could forget is a caller that will. M11-T6 found that exact
+  caller: `cmd/migr`'s PostgreSQL digest excluded nothing and got away with it only because the
+  history table was in both compared moments (ADR 0074, B).
 
 ### E. What closes ADR 0008's trust problem
 
@@ -271,8 +273,10 @@ M9-T7's assertion about it stays pinned.
   one per migration. That is cheap beside the DDL it precedes and is not free.
 - **An explicitly declared `ON UPDATE RESTRICT` on MariaDB reads back as `no_action`**, which a
   round trip of that key reports as a difference. The server does not record the distinction.
-- **A view's body round-trips on no engine**, PostgreSQL and MySQL both re-rendering it, so M11-T6's
-  empty diff will have to treat a view's query as engine text or compare it another way.
+- **A view's body round-trips on no engine**, PostgreSQL and MySQL both re-rendering it, so an
+  empty diff has to treat a view's query as engine text or compare it another way. M11-T5 did the
+  latter, in `fold.Comparable` (ADR 0073); M11-T6 then found the same rewriting one level down, in
+  SQLite's rebuild re-wording a whole `CREATE TABLE` (ADR 0074, C).
 - **The implied half refuses a migration an authored down may have handled** whenever that down
   cannot be read — which is every migration whose source will not start. The refusal names the
   remedy, and the remedy is correct on every engine, so the cost is an operation rather than a flag.

@@ -430,6 +430,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0071](docs/adr/0071-expanding-as-the-run-reaches-it.md) | Expanding an emulated operation as the run reaches it |
 | [0072](docs/adr/0072-rename-detection.md) | Detecting a rename, and asking before acting on one |
 | [0073](docs/adr/0073-the-schema-projection.md) | Folding operations onto a schema, writing them back out, and `migr diff` |
+| [0074](docs/adr/0074-the-neutral-round-trip.md) | Comparing two moments of a schema through the snapshot rather than the catalog |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -14,6 +14,7 @@ import (
 	"github.com/emrebdr/migr/internal/driver/postgres/pgtest"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/rule"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // The TypeScript half of the stack, driven the whole way down to a real server.
@@ -249,7 +250,7 @@ func TestATypeScriptMigrationAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) 
 		t.Logf("clearing what an earlier run left behind: %v", err)
 	}
 
-	before := digest(t)
+	before := digest(t, tsHistoryTable)
 
 	t.Cleanup(func() {
 		if err := migr(t, cfg, "down"); err != nil {
@@ -261,7 +262,7 @@ func TestATypeScriptMigrationAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) 
 		t.Fatalf("up: %v", err)
 	}
 
-	applied := digest(t)
+	applied := digest(t, tsHistoryTable)
 	if applied == before {
 		t.Fatal("up changed nothing about the schema, so there is no round trip to measure")
 	}
@@ -271,7 +272,7 @@ func TestATypeScriptMigrationAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) 
 
 	for _, want := range []string{
 		"e2e_ts_accounts", "idx_e2e_ts_accounts_email", "balance", "verified", "audited",
-		"e2e_ts_audit", "e2e_ts_accounts.email character varying(255)",
+		"e2e_ts_audit", "e2e_ts_accounts.email string(255)",
 	} {
 		if !strings.Contains(applied, want) {
 			t.Errorf("the schema does not hold %q after up:\n%s", want, applied)
@@ -285,7 +286,7 @@ func TestATypeScriptMigrationAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) 
 	t.Log("Both directions crossed the wire as IR from a TypeScript source: node was found, the")
 	t.Log("SDK resolved, every operation compiled by the driver, and the escape hatch compensated.")
 
-	if got := digest(t); got != before {
+	if got := digest(t, tsHistoryTable); got != before {
 		t.Errorf("the schema did not return to what it was:\n before %s\n  after %s", before, got)
 	}
 }
@@ -307,7 +308,7 @@ func TestADerivedRollbackDropsWhatTheTypeScriptSDKNeverWroteAnUndoFor(t *testing
 		t.Fatalf("up --to: %v", err)
 	}
 
-	if !strings.Contains(digest(t), "balance") {
+	if !strings.Contains(digest(t, tsHistoryTable), "balance") {
 		t.Fatal("the column the derived rollback is meant to drop was never added")
 	}
 
@@ -318,7 +319,7 @@ func TestADerivedRollbackDropsWhatTheTypeScriptSDKNeverWroteAnUndoFor(t *testing
 	t.Log("The migration authors no down at all, so §7.4's no_down_authored came back over the")
 	t.Log("wire and invariant #10's derivation inverted what its up had emitted.")
 
-	rolled := digest(t)
+	rolled := digest(t, tsHistoryTable)
 	if strings.Contains(rolled, "balance") {
 		t.Errorf("the derived rollback left the column behind:\n%s", rolled)
 	}
@@ -372,8 +373,9 @@ func TestAMigrationsLiveReadDecidesWhatItEmits(t *testing.T) {
 	t.Log("with a default because the answer was yes. Its other branch emits a nullable one, so the")
 	t.Log("nullability in the schema is what says the read happened and was answered.")
 
-	if !strings.Contains(digest(t), "verified boolean not null default false") {
-		t.Errorf("the column the populated branch emits is not there:\n%s", digest(t))
+	if got := digest(t, tsHistoryTable); !strings.Contains(got,
+		`e2e_ts_accounts.verified bool not null default "false"`) {
+		t.Errorf("the column the populated branch emits is not there:\n%s", got)
 	}
 }
 
@@ -384,7 +386,7 @@ func TestPlanHoldsTheStatementAMigrationSendsItself(t *testing.T) {
 		t.Logf("clearing what an earlier run left behind: %v", err)
 	}
 
-	before := digest(t)
+	before := digest(t, tsHistoryTable)
 	planned := migrOut(t, cfg, "plan")
 
 	for _, want := range []string{"create_table", "add_index", "add_column", "native",
@@ -401,8 +403,8 @@ func TestPlanHoldsTheStatementAMigrationSendsItself(t *testing.T) {
 		t.Errorf("migr plan does not mark the statement it held:\n%s", planned)
 	}
 
-	if got := digest(t); got != before {
-		t.Errorf("a preview reached the database:\n before %s\n  after %s", before, got)
+	if got := digest(t, tsHistoryTable); got != before {
+		t.Errorf("a preview reached the database:\n%s", schema.Difference(before, got))
 	}
 }
 
@@ -534,7 +536,7 @@ func TestAStatementAMigrationRanItselfSurvivesTheFailureThatFollowedIt(t *testin
 		t.Errorf("the failure does not carry the server's own refusal:\n%s", reported)
 	}
 
-	if applied := digest(t); !strings.Contains(applied, orphanTable) {
+	if applied := digest(t, tsHistoryTable+"_orphan"); !strings.Contains(applied, orphanTable) {
 		t.Errorf("the table the migration execed is gone, and nothing rolled it back:\n%s", applied)
 	}
 

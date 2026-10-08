@@ -11,6 +11,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // One directory, two languages, one `migr up`.
@@ -198,7 +199,7 @@ func TestOneDirectoryOfTwoLanguagesAppliesAndRollsBackAgainstPostgreSQL(t *testi
 		t.Logf("clearing what an earlier run left behind: %v", err)
 	}
 
-	before := digest(t)
+	before := digest(t, mixedHistoryTable+"_round_trip")
 
 	t.Cleanup(func() {
 		if err := migr(t, path, "down"); err != nil {
@@ -210,11 +211,11 @@ func TestOneDirectoryOfTwoLanguagesAppliesAndRollsBackAgainstPostgreSQL(t *testi
 		t.Fatalf("up: %v", err)
 	}
 
-	applied := digest(t)
+	applied := digest(t, mixedHistoryTable+"_round_trip")
 
 	for _, want := range []string{
-		"e2e_mixed_accounts.tier character varying(16)",
-		"e2e_mixed_accounts.verified boolean",
+		"e2e_mixed_accounts.tier string(16)",
+		"e2e_mixed_accounts.verified bool",
 		"idx_e2e_mixed_accounts_email",
 	} {
 		if !strings.Contains(applied, want) {
@@ -230,8 +231,9 @@ func TestOneDirectoryOfTwoLanguagesAppliesAndRollsBackAgainstPostgreSQL(t *testi
 		t.Fatalf("down: %v", err)
 	}
 
-	if got := digest(t); got != before {
-		t.Errorf("the schema did not return to where it started\n got %s\nwant %s", got, before)
+	if got := digest(t, mixedHistoryTable+"_round_trip"); got != before {
+		t.Errorf("the schema did not return to where it started:\n%s",
+			schema.Difference(before, got))
 	}
 }
 

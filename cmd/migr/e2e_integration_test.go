@@ -13,8 +13,8 @@ import (
 
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/driver/postgres"
-	"github.com/emrebdr/migr/internal/driver/postgres/pgtest"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // dsnEnv overrides the connection string below, as it does for the driver's own suite.
@@ -88,7 +88,7 @@ validation:
 	return config
 }
 
-// targetSchema is the schema every suite here builds in, which is also what the digest describes.
+// targetSchema is the schema every suite here builds in, which is the namespace a snapshot reads.
 const targetSchema = "public"
 
 // opened dials the server this suite runs against, closing the session when the test is done.
@@ -133,16 +133,21 @@ func recorded(t *testing.T, table string) []history.Record {
 	return runs
 }
 
-// digest renders what the target schema holds, through the driver's own session and nothing else.
-func digest(t *testing.T) string {
+// The history table is a parameter because Introspect excludes the one the session was opened with,
+// and each suite here records into its own. Passing none leaves migr_migrations excluded and this
+// suite's own rows in the comparison -- measured, and harmless only while the table is in both
+// moments, which is not a property a round trip should be relying on.
+
+// digest renders what the target schema holds, as the neutral snapshot every driver answers with.
+func digest(t *testing.T, table string) string {
 	t.Helper()
 
-	described, err := pgtest.Digest(pgtest.Over(t.Context(), opened(t, ""), targetSchema))
+	held, err := opened(t, table).Introspect(t.Context())
 	if err != nil {
-		t.Fatalf("describing the schema: %v", err)
+		t.Fatalf("introspecting the schema: %v", err)
 	}
 
-	return described
+	return schema.Render(*held)
 }
 
 // applied counts the completed runs in one direction, which is what a round trip is measured in.

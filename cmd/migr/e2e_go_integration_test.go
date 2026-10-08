@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/rule"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // goHistoryTable keeps this suite's runs out of the tables the .sql suite and the driver use.
@@ -160,7 +161,7 @@ func TestAGoMigrationAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {
 		t.Logf("clearing what an earlier run left behind: %v", err)
 	}
 
-	before := digest(t)
+	before := digest(t, goHistoryTable)
 
 	t.Cleanup(func() {
 		if err := migr(t, config, "down"); err != nil {
@@ -172,7 +173,7 @@ func TestAGoMigrationAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 
-	applied := digest(t)
+	applied := digest(t, goHistoryTable)
 	if applied == before {
 		t.Fatal("up changed nothing about the schema, so there is no round trip to measure")
 	}
@@ -190,8 +191,8 @@ func TestAGoMigrationAppliesAndRollsBackAgainstPostgreSQL(t *testing.T) {
 	t.Log("Both directions crossed the wire as IR from a Go source: the runner was generated,")
 	t.Log("built, and started by the CLI, and every statement here was compiled by the driver.")
 
-	if got := digest(t); got != before {
-		t.Errorf("the schema did not return to what it was:\n before %s\n  after %s", before, got)
+	if got := digest(t, goHistoryTable); got != before {
+		t.Errorf("the schema did not return to what it was:\n%s", schema.Difference(before, got))
 	}
 }
 
@@ -212,7 +213,7 @@ func TestADerivedRollbackDropsWhatTheGoSDKNeverWroteAnUndoFor(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 
-	if !strings.Contains(digest(t), "balance") {
+	if !strings.Contains(digest(t, goHistoryTable), "balance") {
 		t.Fatal("the column the derived rollback is meant to drop was never added")
 	}
 
@@ -223,7 +224,7 @@ func TestADerivedRollbackDropsWhatTheGoSDKNeverWroteAnUndoFor(t *testing.T) {
 	t.Log("A .sql migration can never reach here: ir.Raw has no inverse, so invariant #10's")
 	t.Log("derivation had never run against a real server until a Go source could author no Down.")
 
-	rolled := digest(t)
+	rolled := digest(t, goHistoryTable)
 	if strings.Contains(rolled, "balance") {
 		t.Errorf("the derived rollback left the column behind:\n%s", rolled)
 	}

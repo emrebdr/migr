@@ -209,13 +209,13 @@ func TestAFailedMigrationLeavesTheSchemaExactlyAsItWas(t *testing.T) {
 			session := sessionIn(t, dsn, target)
 			observer := sessionIn(t, dsn, target)
 
-			empty := describeSchema(t, observer, target)
+			empty := describeSchema(t, observer)
 
 			if err := applyOps(t, session, groundwork(t)); err != nil {
 				t.Fatalf("the groundwork migration failed: %v", err)
 			}
 
-			before := describeSchema(t, observer, target)
+			before := describeSchema(t, observer)
 			if before == empty {
 				t.Fatal("a migration that succeeded left the digest unchanged, so this probe cannot " +
 					"see the kind of change the failing migration below attempts, and every " +
@@ -229,7 +229,7 @@ func TestAFailedMigrationLeavesTheSchemaExactlyAsItWas(t *testing.T) {
 
 			checkServerRejected(t, err)
 
-			after := describeSchema(t, observer, target)
+			after := describeSchema(t, observer)
 			if after != before {
 				t.Errorf("the schema changed across a failed migration.\nbefore:\n%s\nafter:\n%s",
 					before, after)
@@ -238,8 +238,8 @@ func TestAFailedMigrationLeavesTheSchemaExactlyAsItWas(t *testing.T) {
 			t.Log("The two digests are read from a second session, because \"the schema is unchanged\"")
 			t.Log("is a claim about what every other connection sees, not about what the migrating")
 			t.Log("session can still see inside a transaction it has not ended.")
-			t.Logf("The digest is this package's own, not internal/schema's snapshot: that model does "+
-				"not exist yet, and %s replaces this with the neutral comparison.", snapshotSupersededBy)
+			t.Log("What is compared is the neutral snapshot, which is what Conn.Introspect answers")
+			t.Log("and what every driver is held to -- not a catalog digest this package composed.")
 		})
 	}
 }
@@ -281,7 +281,7 @@ func TestTheStatementsBeforeTheFailureRanAndWereDiscarded(t *testing.T) {
 		t.Fatalf("the groundwork migration failed: %v", err)
 	}
 
-	before := describeSchema(t, observer, target)
+	before := describeSchema(t, observer)
 	var midway string
 
 	err := session.Transact(t.Context(), func(ctx context.Context) error {
@@ -291,7 +291,7 @@ func TestTheStatementsBeforeTheFailureRanAndWereDiscarded(t *testing.T) {
 			}
 		}
 
-		midway = describeSchema(t, session, target)
+		midway = describeSchema(t, session)
 
 		return errors.New("this migration decided to fail")
 	})
@@ -305,7 +305,7 @@ func TestTheStatementsBeforeTheFailureRanAndWereDiscarded(t *testing.T) {
 			"rollback for a migration that was really a no-op")
 	}
 
-	if after := describeSchema(t, observer, target); after != before {
+	if after := describeSchema(t, observer); after != before {
 		t.Errorf("the discarded statements survived.\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 
@@ -374,14 +374,14 @@ func TestAMigrationThatFaultsPartwayIsDiscardedRatherThanCommitted(t *testing.T)
 	session := sessionIn(t, dsn, target)
 	observer := sessionIn(t, dsn, target)
 
-	before := describeSchema(t, observer, target)
+	before := describeSchema(t, observer)
 
 	if fault := faultPartway(t, session); fault == nil {
 		t.Fatal("the work returned instead of faulting, so the rollback path this test is about " +
 			"was never taken and the assertions below would pass for the wrong reason")
 	}
 
-	if after := describeSchema(t, observer, target); after != before {
+	if after := describeSchema(t, observer); after != before {
 		t.Errorf("a faulted migration was committed.\nbefore:\n%s\nafter:\n%s", before, after)
 		t.Log("A closure that never returns leaves the deferred end with no error to see, so the")
 		t.Log("commit decision cannot rest on the error alone -- it rests on whether the work")

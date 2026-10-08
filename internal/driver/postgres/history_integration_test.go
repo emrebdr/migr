@@ -87,8 +87,9 @@ func TestTheHistoryTableIsCreatedAndSeenFromAnotherSession(t *testing.T) {
 			dsn := dsnFor(server.env, server.dsn)
 			session, target := ensured(t, dsn)
 
+			checkCreatedTable(t, dsn, target)
+
 			observer := historyIn(t, dsn, target)
-			checkCreatedTable(t, observer, target)
 
 			if err := session.History().Ensure(t.Context()); err != nil {
 				t.Errorf("a second Ensure did not report the table it had just created: %v", err)
@@ -101,28 +102,58 @@ func TestTheHistoryTableIsCreatedAndSeenFromAnotherSession(t *testing.T) {
 	}
 }
 
+// Introspect leaves out the table the session was opened with (ADR 0069), which is this one -- so
+// what describes it is a session pointed at a different history table, for which it is an ordinary
+// table like any other. That the name is what decides is the point rather than a way around it: the
+// same exclusion is why every migr diff over a migrated database does not propose dropping the
+// migration history.
+
 // checkCreatedTable holds what Ensure created to what the neutral schema declares.
-func checkCreatedTable(t *testing.T, session *pgConn, schema string) {
+func checkCreatedTable(t *testing.T, dsn, target string) {
 	t.Helper()
 
-	digest := describeSchema(t, session, schema)
+	outsider := open(t, dsn, driver.Options{Schema: target, HistoryTable: historyTable + "_other"})
+
+	session, ok := outsider.(*pgConn)
+	if !ok {
+		t.Fatalf("Open returned %T, not this package's session", outsider)
+	}
+
+	described := describeSchema(t, session)
 
 	for _, column := range declaredColumns(historyTable) {
-		if !strings.Contains(digest, historyTable+"."+column+" ") {
-			t.Errorf("the created table has no column %q:\n%s", column, digest)
+		if !strings.Contains(described, historyTable+"."+column+" ") {
+			t.Errorf("the created table has no column %q:\n%s", column, described)
 		}
 	}
 
-	if !strings.Contains(digest, "PRIMARY KEY (batch, ordinal)") {
-		t.Errorf("the created table has no (batch, ordinal) primary key:\n%s", digest)
+	if !strings.Contains(described, "primary_key "+historyTable+" ") ||
+		!strings.Contains(described, "(batch, ordinal)") {
+		t.Errorf("the created table has no (batch, ordinal) primary key:\n%s", described)
 		t.Log("Asserting only that Ensure returned nil would pass for CREATE TABLE runs (x int).")
 	}
 
-	if !strings.Contains(digest, historyTable+"_version_idx") {
-		t.Errorf("the created table has no version index:\n%s", digest)
+	if !strings.Contains(described, historyTable+"_version_idx") {
+		t.Errorf("the created table has no version index:\n%s", described)
 		t.Log("The index and the table are created in one transaction precisely so this cannot")
 		t.Log("happen: without it, a failure between them leaves a table every later Ensure")
 		t.Log("reports as present, and the index is never created at all.")
+	}
+}
+
+func TestASnapshotLeavesOutTheHistoryTableTheSessionRecordsIn(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			dsn := dsnFor(server.env, server.dsn)
+			_, target := ensured(t, dsn)
+
+			if described := describeSchema(t, historyIn(t, dsn, target)); strings.Contains(
+				described, historyTable) {
+				t.Errorf("the session's own history table is in its snapshot:\n%s", described)
+				t.Log("Read as part of the schema, migr's own bookkeeping would have every")
+				t.Log("migr diff propose dropping the migration history (ADR 0069).")
+			}
+		})
 	}
 }
 

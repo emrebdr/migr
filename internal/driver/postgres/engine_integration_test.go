@@ -19,6 +19,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // queueRuntime is what the migrations these tests stage are written in, as a history row records it.
@@ -255,7 +256,7 @@ func TestTheExecutorAppliesAQueueAndRecordsEveryMigrationInOneBatch(t *testing.T
 			session := queueSession(t, dsn, target)
 			observer := queueSession(t, dsn, target)
 
-			empty := describeSchema(t, observer, target)
+			empty := describeSchema(t, observer)
 
 			result, err := engine.Apply(t.Context(), session,
 				queueOptions(t, createAccounts(t), addNickname(t)))
@@ -263,7 +264,7 @@ func TestTheExecutorAppliesAQueueAndRecordsEveryMigrationInOneBatch(t *testing.T
 				t.Fatalf("Apply: %v", err)
 			}
 
-			if describeSchema(t, observer, target) == empty {
+			if describeSchema(t, observer) == empty {
 				t.Fatal("a queue that reported success changed nothing another session can see, so " +
 					"every assertion below would pass for the wrong reason")
 			}
@@ -296,8 +297,8 @@ func TestTheExecutorAppliesAQueueAndRecordsEveryMigrationInOneBatch(t *testing.T
 
 			t.Log("The second migration alters the table the first created, so a queue that ran them")
 			t.Log("out of order or skipped one would fail against the server rather than here.")
-			t.Logf("The digest is this package's own, not internal/schema's snapshot: %s replaces "+
-				"this with the neutral comparison.", snapshotSupersededBy)
+			t.Log("What is compared is the neutral snapshot rather than a catalog digest, so the")
+			t.Log("claim is the one every driver is held to rather than one about PostgreSQL's text.")
 		})
 	}
 }
@@ -336,7 +337,7 @@ func TestAFailureMidQueueLeavesTheEarlierMigrationsAppliedAndTheLaterOnesUntouch
 				t.Fatalf("the groundwork migration failed: %v", err)
 			}
 
-			before := describeSchema(t, observer, target)
+			before := describeSchema(t, observer)
 
 			opts := queueOptions(t, createAccounts(t), alterNothing(t), createLater(t))
 
@@ -345,7 +346,7 @@ func TestAFailureMidQueueLeavesTheEarlierMigrationsAppliedAndTheLaterOnesUntouch
 				t.Fatal("the queue reported success though its second migration names no table")
 			}
 
-			if after := describeSchema(t, observer, target); after != before {
+			if after := describeSchema(t, observer); after != before {
 				t.Errorf("the schema changed across an aborted queue.\nbefore:\n%s\nafter:\n%s",
 					before, after)
 			}
@@ -498,7 +499,7 @@ func TestTheHistoryRowIsDiscardedWithTheMigrationItDescribes(t *testing.T) {
 		t.Fatalf("the groundwork migration failed: %v", err)
 	}
 
-	before := describeSchema(t, observer, target)
+	before := describeSchema(t, observer)
 
 	discarded := errors.New("this run is thrown away after its row was written")
 	wrapped := discardAfterWork{pgConn: session, err: discarded}
@@ -509,7 +510,7 @@ func TestTheHistoryRowIsDiscardedWithTheMigrationItDescribes(t *testing.T) {
 			err)
 	}
 
-	if after := describeSchema(t, observer, target); after != before {
+	if after := describeSchema(t, observer); after != before {
 		t.Errorf("the discarded migration survived.\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 
@@ -606,14 +607,14 @@ func TestApplyingAQueueAndRollingItBackRestoresTheSchemaDigestExactly(t *testing
 				t.Fatalf("preparing the history table: %v", err)
 			}
 
-			empty := describeSchema(t, observer, target)
+			empty := describeSchema(t, observer)
 
 			if _, err := engine.Rollback(t.Context(), session,
 				queueOptions(t, createAccounts(t))); err != nil {
 				t.Fatalf("clearing the schema: %v", err)
 			}
 
-			bare := describeSchema(t, observer, target)
+			bare := describeSchema(t, observer)
 			if bare == empty {
 				t.Fatal("rolling back the groundwork migration changed nothing another session " +
 					"can see, so every assertion below would pass for the wrong reason")
@@ -625,7 +626,7 @@ func TestApplyingAQueueAndRollingItBackRestoresTheSchemaDigestExactly(t *testing
 				t.Fatalf("Apply: %v", err)
 			}
 
-			if describeSchema(t, observer, target) == bare {
+			if describeSchema(t, observer) == bare {
 				t.Fatal("the queue that reported success changed nothing")
 			}
 
@@ -633,16 +634,16 @@ func TestApplyingAQueueAndRollingItBackRestoresTheSchemaDigestExactly(t *testing
 				t.Fatalf("Rollback: %v", err)
 			}
 
-			if restored := describeSchema(t, observer, target); restored != bare {
+			if restored := describeSchema(t, observer); restored != bare {
 				t.Errorf("rolling the queue back did not restore the schema it found:\n%s",
-					diffLines(bare, restored))
+					schema.Difference(bare, restored))
 			}
 
 			t.Log("This is the property the whole task exists for, and it is asserted against the")
 			t.Log("server rather than against the operations: the inverses are derived, compiled")
 			t.Log("and run, and what a second session sees afterwards is what it saw before.")
-			t.Logf("The digest is this package's own, not internal/schema's snapshot: %s replaces "+
-				"this with the neutral comparison.", snapshotSupersededBy)
+			t.Log("What is compared is the neutral snapshot rather than a catalog digest, so the")
+			t.Log("claim is the one every driver is held to rather than one about PostgreSQL's text.")
 		})
 	}
 }
@@ -732,15 +733,15 @@ func TestAnIrreversibleMigrationHaltsTheRollbackWithTheSchemaUntouched(t *testin
 		t.Fatalf("Apply: %v", err)
 	}
 
-	before := describeSchema(t, observer, target)
+	before := describeSchema(t, observer)
 
 	_, err := engine.Rollback(t.Context(), session, opts)
 	if !errors.Is(err, ir.ErrIrreversible) {
 		t.Fatalf("Rollback returned %v, want a refusal reporting ir.ErrIrreversible", err)
 	}
 
-	if after := describeSchema(t, observer, target); after != before {
-		t.Errorf("the refused rollback changed the schema:\n%s", diffLines(before, after))
+	if after := describeSchema(t, observer); after != before {
+		t.Errorf("the refused rollback changed the schema:\n%s", schema.Difference(before, after))
 	}
 
 	for _, rec := range recordedRuns(t, session) {
@@ -767,7 +768,7 @@ func TestARolledBackMigrationIsAppliedAgainFromItsUp(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 
-	applied := describeSchema(t, observer, target)
+	applied := describeSchema(t, observer)
 
 	if _, err := engine.Rollback(t.Context(), session, opts); err != nil {
 		t.Fatalf("Rollback: %v", err)
@@ -783,9 +784,9 @@ func TestARolledBackMigrationIsAppliedAgainFromItsUp(t *testing.T) {
 			len(result.Runs), result.Batch)
 	}
 
-	if again := describeSchema(t, observer, target); again != applied {
+	if again := describeSchema(t, observer); again != applied {
 		t.Errorf("re-applying after a rollback reached a different schema:\n%s",
-			diffLines(applied, again))
+			schema.Difference(applied, again))
 	}
 
 	var directions []ir.Direction
@@ -815,14 +816,14 @@ func TestAnAuthoredDownIsRunInsteadOfADerivedOne(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 
-	applied := describeSchema(t, observer, target)
+	applied := describeSchema(t, observer)
 
 	if _, err := engine.Rollback(t.Context(), session,
 		queueOptions(t, archiveAccounts(t))); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}
 
-	archived := describeSchema(t, observer, target)
+	archived := describeSchema(t, observer)
 	if archived == applied {
 		t.Fatal("the authored down changed nothing another session can see")
 	}
@@ -854,7 +855,7 @@ func TestAnEditedMigrationRefusesTheRunAndReportsBothChecksums(t *testing.T) {
 				t.Fatalf("Apply: %v", err)
 			}
 
-			applied := describeSchema(t, observer, target)
+			applied := describeSchema(t, observer)
 			recorded := recordedRuns(t, session)
 
 			_, err := engine.Apply(t.Context(), session,
@@ -889,8 +890,8 @@ func TestAnEditedMigrationRefusesTheRunAndReportsBothChecksums(t *testing.T) {
 				}
 			}
 
-			if after := describeSchema(t, observer, target); after != applied {
-				t.Errorf("the refused run changed the schema:\n%s", diffLines(applied, after))
+			if after := describeSchema(t, observer); after != applied {
+				t.Errorf("the refused run changed the schema:\n%s", schema.Difference(applied, after))
 			}
 
 			if runs := recordedRuns(t, session); len(runs) != len(recorded) {
@@ -916,7 +917,7 @@ func TestAnEditedMigrationRefusesARollbackToo(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 
-	applied := describeSchema(t, observer, target)
+	applied := describeSchema(t, observer)
 
 	_, err := engine.Rollback(t.Context(), session, queueOptions(t, rewritten(first)))
 	if !errors.Is(err, engine.ErrDrifted) {
@@ -927,8 +928,8 @@ func TestAnEditedMigrationRefusesARollbackToo(t *testing.T) {
 		t.Errorf("the refusal does not say why a rollback's is the stronger one:\n%v", err)
 	}
 
-	if after := describeSchema(t, observer, target); after != applied {
-		t.Errorf("the refused rollback changed the schema:\n%s", diffLines(applied, after))
+	if after := describeSchema(t, observer); after != applied {
+		t.Errorf("the refused rollback changed the schema:\n%s", schema.Difference(applied, after))
 	}
 
 	t.Log("Going down, the undo about to run would be derived from bytes that are not the ones")
@@ -994,14 +995,14 @@ func TestRollingBackTheLastBatchLeavesTheOneBeforeItApplied(t *testing.T) {
 				t.Fatalf("applying the first batch: %v", err)
 			}
 
-			afterFirst := describeSchema(t, observer, target)
+			afterFirst := describeSchema(t, observer)
 
 			if _, err := engine.Apply(t.Context(), session,
 				queueOptions(t, first, second)); err != nil {
 				t.Fatalf("applying the second batch: %v", err)
 			}
 
-			if describeSchema(t, observer, target) == afterFirst {
+			if describeSchema(t, observer) == afterFirst {
 				t.Fatal("the second batch changed nothing another session can see, so the " +
 					"assertion below would pass for the wrong reason")
 			}
@@ -1017,9 +1018,9 @@ func TestRollingBackTheLastBatchLeavesTheOneBeforeItApplied(t *testing.T) {
 					len(result.Runs))
 			}
 
-			if after := describeSchema(t, observer, target); after != afterFirst {
+			if after := describeSchema(t, observer); after != afterFirst {
 				t.Errorf("the schema did not return to what the first batch left:\n%s",
-					diffLines(afterFirst, after))
+					schema.Difference(afterFirst, after))
 			}
 
 			t.Log("This is migr down with no arguments: one invocation is the unit an operator")
@@ -1042,7 +1043,7 @@ func TestASecondRollbackOfTheLastBatchTakesTheBatchBeforeIt(t *testing.T) {
 		t.Fatalf("Ensure: %v", err)
 	}
 
-	empty := describeSchema(t, observer, target)
+	empty := describeSchema(t, observer)
 
 	if _, err := engine.Apply(t.Context(), session, queueOptions(t, first)); err != nil {
 		t.Fatalf("applying the first batch: %v", err)
@@ -1065,8 +1066,8 @@ func TestASecondRollbackOfTheLastBatchTakesTheBatchBeforeIt(t *testing.T) {
 		}
 	}
 
-	if after := describeSchema(t, observer, target); after != empty {
-		t.Errorf("two rollbacks did not return the schema to empty:\n%s", diffLines(empty, after))
+	if after := describeSchema(t, observer); after != empty {
+		t.Errorf("two rollbacks did not return the schema to empty:\n%s", schema.Difference(empty, after))
 	}
 
 	t.Log("Latest is direction-blind, so after the first rollback the highest batch in the table")
@@ -1088,7 +1089,7 @@ func TestSteppingOneUpAndOneDownRoundTripsTheSchemaDigest(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 
-	afterFirst := describeSchema(t, observer, target)
+	afterFirst := describeSchema(t, observer)
 
 	stepped, err := engine.Apply(t.Context(), session,
 		narrowed(t, engine.Steps(1), first, second))
@@ -1111,9 +1112,9 @@ func TestSteppingOneUpAndOneDownRoundTripsTheSchemaDigest(t *testing.T) {
 		t.Fatalf("--step 1 undid %d migrations, want one", len(back.Runs))
 	}
 
-	if after := describeSchema(t, observer, target); after != afterFirst {
+	if after := describeSchema(t, observer); after != afterFirst {
 		t.Errorf("one step up and one step down did not round-trip:\n%s",
-			diffLines(afterFirst, after))
+			schema.Difference(afterFirst, after))
 	}
 }
 
@@ -1132,7 +1133,7 @@ func TestNarrowingToAVersionLandsTheSchemaOnTheStateThatVersionDescribes(t *test
 		t.Fatalf("applying up to the first: %v", err)
 	}
 
-	atFirst := describeSchema(t, observer, target)
+	atFirst := describeSchema(t, observer)
 
 	if strings.Contains(atFirst, "nickname") {
 		t.Fatalf("--to the first version applied the second as well:\n%s", atFirst)
@@ -1147,9 +1148,9 @@ func TestNarrowingToAVersionLandsTheSchemaOnTheStateThatVersionDescribes(t *test
 		t.Fatalf("rolling back to the first: %v", err)
 	}
 
-	if after := describeSchema(t, observer, target); after != atFirst {
+	if after := describeSchema(t, observer); after != atFirst {
 		t.Errorf("--to did not land on the state that version describes:\n%s",
-			diffLines(atFirst, after))
+			schema.Difference(atFirst, after))
 	}
 
 	t.Log("Both runs name the same version and both leave the database at it -- applying")
@@ -1205,7 +1206,7 @@ func TestADirtyRowReadBackFromTheServerRefusesBothDirections(t *testing.T) {
 				t.Fatalf("Apply: %v", err)
 			}
 
-			applied := describeSchema(t, observer, target)
+			applied := describeSchema(t, observer)
 			stopped := recordedRuns(t, session)[0]
 			stopped.Batch = 2
 
@@ -1228,8 +1229,8 @@ func TestADirtyRowReadBackFromTheServerRefusesBothDirections(t *testing.T) {
 				t.Errorf("the refusal does not name where the run stopped: %v", up)
 			}
 
-			if after := describeSchema(t, observer, target); after != applied {
-				t.Errorf("a refused run changed the schema:\n%s", diffLines(applied, after))
+			if after := describeSchema(t, observer); after != applied {
+				t.Errorf("a refused run changed the schema:\n%s", schema.Difference(applied, after))
 			}
 
 			t.Log("PostgreSQL has transactional DDL and checkRunnable still refuses a multi-run")

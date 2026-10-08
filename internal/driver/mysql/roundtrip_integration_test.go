@@ -4,7 +4,6 @@ package mysql
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,38 +12,8 @@ import (
 
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
-
-// objectQuery names every table and view this database holds, tagged with what SHOW CREATE calls it.
-//
-// Two columns would need a reader of their own, and TABLE_TYPE is "BASE TABLE" with a space in it --
-// so the tag is narrowed to the one word SHOW CREATE takes and the pair is concatenated here.
-//
-// What belongs to a fixture is then decided here rather than by the query: the name is folded the way
-// the catalog stores it before it is compared, since a server running under lower_case_table_names
-// stores it lowercased, and the history table is excluded by the name the session resolved -- which
-// matters because eachServer names that after the running test too, so it is the fixture's prefix
-// exactly. A digest carrying migr's own bookkeeping describes something other than the schema the
-// migration changed.
-//
-// The folding is the one thing here these two servers cannot discriminate, and this says so rather
-// than implying otherwise: both run lower_case_table_names = 0, where storedName is the identity, so
-// the mutation that drops it survives the whole suite -- the same gap TestTheExpansionFoldsATableName
-// records, with storedName itself held to both settings by an untagged test. It is kept because the
-// failure without it is loud rather than silent: under folding = 1 the catalog holds a lowercase
-// name, nothing matches the prefix, and every comparison fails as a schema the digest cannot see.
-const objectQuery = `
-SELECT CONCAT(CASE WHEN TABLE_TYPE = 'VIEW' THEN 'VIEW' ELSE 'TABLE' END, ' ', TABLE_NAME)
-  FROM information_schema.TABLES
- WHERE TABLE_SCHEMA = DATABASE()
- ORDER BY TABLE_NAME`
-
-// printedColumn is where SHOW CREATE puts the definition: second, whatever the row's width is.
-//
-// SHOW CREATE TABLE answers two columns and SHOW CREATE VIEW four -- the view's character set and
-// collation_connection follow the definition, and they differ between these two servers while being
-// fixed for either one. Reading the second column alone keeps the digest about the schema.
-const printedColumn = 1
 
 // fixture is the objects one round trip owns, named from the running test so no two cases collide.
 type fixture struct {
@@ -89,105 +58,49 @@ func (f fixture) named(suffix string) string {
 	return f.prefix + "_" + suffix
 }
 
-// describeSchema renders every object a fixture owns as sorted text, through the server's own printer.
+// M11-T6 moved this off SHOW CREATE and onto the snapshot, and the sorting it used to do is why.
+// A reversed drop_column appends the column, and no v1 operation can put it back where it was --
+// MySQL's AFTER having no field in the IR -- so a comparison of the server's own rendering had to
+// sort its lines to survive a round trip that was in fact correct. A snapshot holds what a table has
+// and never the order it has it in, so Canonical does that properly and the workaround is gone.
+//
+// What survives from the old shape is the prefix scope, because one engine gives every test in this
+// package the same database: the snapshot reads the whole of it, and what this fixture owns is the
+// part of it this comparison is about. The history table is excluded by Introspect itself (ADR 0069)
+// rather than by the filter, which matters because eachServer names it after the running test and
+// the prefix would otherwise match it.
+
+// describeSchema renders every object a fixture owns, as the neutral snapshot every driver answers with.
 func describeSchema(t *testing.T, c *mysqlConn, f fixture) string {
 	t.Helper()
 
-	var lines []string
-
-	for _, object := range f.objects(t, c) {
-		kind, name, found := strings.Cut(object, " ")
-		if !found {
-			t.Fatalf("the object probe answered %q, which names no kind", object)
-		}
-
-		lines = append(lines, createdLines(t, c, kind, name)...)
+	held, err := c.Introspect(t.Context())
+	if err != nil {
+		t.Fatalf("introspecting the database: %v", err)
 	}
 
-	slices.Sort(lines)
-
-	return strings.Join(lines, "\n")
+	return schema.Render(f.scoped(c, *held))
 }
 
-// objects lists what this database holds that belongs to the fixture, the history table apart.
-func (f fixture) objects(t *testing.T, c *mysqlConn) []string {
-	t.Helper()
-
+// scoped keeps the part of one database's schema this fixture owns, the rest belonging to other tests.
+func (f fixture) scoped(c *mysqlConn, held schema.Snapshot) schema.Snapshot {
 	stored := storedName(f.prefix, c.folding)
 
-	var owned []string
+	var kept schema.Snapshot
 
-	for _, object := range read(t, c, objectQuery) {
-		_, name, found := strings.Cut(object, " ")
-		if !found || name == c.stored || !strings.HasPrefix(name, stored) {
-			continue
+	for _, table := range held.Tables {
+		if strings.HasPrefix(table.Name, stored) {
+			kept.Tables = append(kept.Tables, table)
 		}
-
-		owned = append(owned, object)
 	}
 
-	return owned
-}
-
-// createdLines renders one object's definition as lines, each carrying the object it belongs to.
-func createdLines(t *testing.T, c *mysqlConn, kind, name string) []string {
-	t.Helper()
-
-	var lines []string
-
-	for line := range strings.SplitSeq(printed(t, c, kind, name), "\n") {
-		trimmed := strings.TrimSuffix(strings.TrimSpace(line), ",")
-		if trimmed == "" {
-			continue
+	for _, view := range held.Views {
+		if strings.HasPrefix(view.Name, stored) {
+			kept.Views = append(kept.Views, view)
 		}
-
-		lines = append(lines, name+" "+trimmed)
 	}
 
-	return lines
-}
-
-// printed reads the server's own rendering of one object, which SHOW CREATE puts in its second column.
-func printed(t *testing.T, c *mysqlConn, kind, name string) string {
-	t.Helper()
-
-	rows, err := c.runner().QueryContext(t.Context(), "SHOW CREATE "+kind+" "+quote(name))
-	if err != nil {
-		t.Fatalf("describing %s %s: %v", kind, name, err)
-	}
-
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		t.Fatalf("describing %s %s: %v", kind, name, err)
-	}
-
-	if len(columns) <= printedColumn {
-		t.Fatalf("SHOW CREATE %s answered %d columns, so there is no definition in it", kind,
-			len(columns))
-	}
-
-	if !rows.Next() {
-		t.Fatalf("SHOW CREATE %s %s answered no rows: %v", kind, name, rows.Err())
-	}
-
-	held := make([]sql.NullString, len(columns))
-
-	cells := make([]any, len(columns))
-	for i := range cells {
-		cells[i] = &held[i]
-	}
-
-	if err := rows.Scan(cells...); err != nil {
-		t.Fatalf("describing %s %s: %v", kind, name, err)
-	}
-
-	if err := rows.Err(); err != nil {
-		t.Fatalf("describing %s %s: %v", kind, name, err)
-	}
-
-	return held[printedColumn].String
+	return kept
 }
 
 // addedColumn is the column add_column adds and alter_column then widens.
@@ -467,7 +380,7 @@ func pointerToColumn(c ir.Column) *ir.Column {
 	return &c
 }
 
-func TestTheDigestDescribesTheFixtureAndNotMigrsOwnBookkeeping(t *testing.T) {
+func TestASnapshotDescribesTheFixtureAndNotMigrsOwnBookkeeping(t *testing.T) {
 	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
 		f := newFixture(t, c)
 
@@ -479,32 +392,50 @@ func TestTheDigestDescribesTheFixtureAndNotMigrsOwnBookkeeping(t *testing.T) {
 			t.Fatalf("Ensure: %v", err)
 		}
 
-		if digest := describeSchema(t, c, f); digest != "" {
-			t.Errorf("the history table is in the digest:\n%s", digest)
+		if described := describeSchema(t, c, f); described != "" {
+			t.Errorf("the history table is in the snapshot:\n%s", described)
 			t.Log("eachServer names it after the running test, which is the fixture's prefix")
-			t.Log("exactly -- so the prefix filter matches it and only the exclusion keeps it out.")
-			t.Log("A digest carrying migr's own bookkeeping describes something other than the")
-			t.Log("schema the migration changed.")
+			t.Log("exactly -- so the prefix scope matches it and only Introspect's own exclusion")
+			t.Log("keeps it out. A comparison carrying migr's bookkeeping describes something other")
+			t.Log("than the schema the migration changed, and every migr diff over this database")
+			t.Log("would propose dropping the migration history (ADR 0069).")
 		}
 	})
 }
 
-func TestEveryDigestLineNamesTheObjectItDescribes(t *testing.T) {
+func TestTheScopeKeepsThisFixtureAndLeavesEveryOtherTestsObjects(t *testing.T) {
 	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
 		f := newFixture(t, c)
 
 		applyOps(t, c, buildScript(t, f))
 
-		for _, line := range strings.Split(describeSchema(t, c, f), "\n") {
-			name, _, found := strings.Cut(line, " ")
-			if !found || !slices.Contains(f.owned(), name) {
-				t.Errorf("this digest line belongs to no object the fixture owns:\n%s", line)
-				t.Log("A line carries its object's name first so that sorting cannot interleave two")
-				t.Log("objects, and so a failure's diff names what disagreed rather than only how.")
-				t.Log("MySQL lets two tables carry indexes of one name, which is where lines from")
-				t.Log("two objects would otherwise read identically.")
+		held, err := c.Introspect(t.Context())
+		if err != nil {
+			t.Fatalf("Introspect: %v", err)
+		}
+
+		scoped := f.scoped(c, *held)
+		if len(scoped.Tables)+len(scoped.Views) == 0 {
+			t.Fatalf("the scope kept nothing of a fixture that was just built:\n%s",
+				schema.Render(*held))
+		}
+
+		for _, table := range scoped.Tables {
+			if !slices.Contains(f.owned(), table.Name) {
+				t.Errorf("the scope kept %q, which this fixture does not own", table.Name)
 			}
 		}
+
+		for _, view := range scoped.Views {
+			if !slices.Contains(f.owned(), view.Name) {
+				t.Errorf("the scope kept the view %q, which this fixture does not own", view.Name)
+			}
+		}
+
+		t.Log("One engine gives every test in this package the same database, so the snapshot reads")
+		t.Log("objects this round trip never built. Scoping is what keeps the comparison about this")
+		t.Log("fixture -- and a scope that kept nothing would make every round trip here pass by")
+		t.Log("comparing two empty schemas.")
 	})
 }
 
@@ -549,14 +480,14 @@ func roundTrip(t *testing.T, c *mysqlConn, f fixture, op ir.Operation) {
 
 	if restored := describeSchema(t, c, f); restored != before {
 		t.Fatalf("reversing %s did not restore the schema it changed:\n%s",
-			op.Kind(), diffLines(before, restored))
+			op.Kind(), schema.Difference(before, restored))
 	}
 
 	applyOps(t, c, ir.Operations{op})
 
 	if again := describeSchema(t, c, f); again != after {
 		t.Fatalf("re-applying %s after its reverse reached a different schema:\n%s",
-			op.Kind(), diffLines(after, again))
+			op.Kind(), schema.Difference(after, again))
 	}
 }
 
@@ -645,7 +576,7 @@ func TestABuildRollsBackToTheSchemaItFound(t *testing.T) {
 
 		if restored := describeSchema(t, c, f); restored != empty {
 			t.Fatalf("rolling the build back left the schema changed:\n%s",
-				diffLines(empty, restored))
+				schema.Difference(empty, restored))
 		}
 	})
 
@@ -674,7 +605,7 @@ func TestATeardownIsRebuiltFromWhatItRecorded(t *testing.T) {
 
 		if rebuilt := describeSchema(t, c, f); rebuilt != built {
 			t.Fatalf("the teardown's reverse did not rebuild what it removed:\n%s",
-				diffLines(built, rebuilt))
+				schema.Difference(built, rebuilt))
 		}
 	})
 
@@ -712,7 +643,7 @@ func TestOnlyAnAuthoredUndoTakesARawOperationBack(t *testing.T) {
 
 		if restored := describeSchema(t, c, f); restored != before {
 			t.Fatalf("the authored undo did not take the raw statement back:\n%s",
-				diffLines(before, restored))
+				schema.Difference(before, restored))
 		}
 	})
 
@@ -805,13 +736,15 @@ func checkTheForeignKeysOwnIndexIsNotRecorded(t *testing.T, c *mysqlConn, f fixt
 		return
 	}
 
-	if strings.Contains(restored, "FOREIGN KEY") {
+	orders := scopedTable(t, c, f, f.orders)
+
+	if len(orders.ForeignKeys) != 0 {
 		t.Errorf("the key itself is still there, so this reads as something else:\n%s",
-			diffLines(before, restored))
+			schema.Difference(before, restored))
 	}
 
-	if !strings.Contains(restored, "KEY "+quote(f.named("fk"))) {
-		t.Errorf("what is left is not the key's own index:\n%s", diffLines(before, restored))
+	if !holdsIndex(orders, f.named("fk")) {
+		t.Errorf("what is left is not the key's own index:\n%s", schema.Difference(before, restored))
 	}
 
 	applyOps(t, c, ir.Operations{
@@ -844,11 +777,39 @@ func checkTheImpliedNotNullIsNotRestored(t *testing.T, c *mysqlConn, f fixture) 
 		return
 	}
 
-	if !strings.Contains(restored, quote("id")+" bigint") ||
-		!strings.Contains(restored, "NOT NULL") {
-		t.Errorf("the column is not left NOT NULL, so this reads as something else:\n%s",
-			diffLines(before, restored))
+	column, there := scopedTable(t, c, f, f.archive).Column("id")
+	if !there {
+		t.Fatalf("the column the key was over is gone:\n%s", restored)
 	}
+
+	if column.Nullable {
+		t.Errorf("the column is not left NOT NULL, so this reads as something else:\n%s",
+			schema.Difference(before, restored))
+	}
+}
+
+// scopedTable reads one of this fixture's tables back as the snapshot holds it.
+func scopedTable(t *testing.T, c *mysqlConn, f fixture, name string) schema.Table {
+	t.Helper()
+
+	held, err := c.Introspect(t.Context())
+	if err != nil {
+		t.Fatalf("introspecting the database: %v", err)
+	}
+
+	table, there := f.scoped(c, *held).Table(name)
+	if !there {
+		t.Fatalf("the snapshot does not hold %q:\n%s", name, schema.Render(*held))
+	}
+
+	return table
+}
+
+// holdsIndex reports whether a table carries an index of one name, whatever that index covers.
+func holdsIndex(table schema.Table, name string) bool {
+	return slices.ContainsFunc(table.Indexes, func(held schema.Index) bool {
+		return held.Name == name
+	})
 }
 
 // applyOps runs a fixture's operations the way a planner would, in order and one statement at a time.
@@ -911,37 +872,4 @@ func reverseAll(t *testing.T, ops ir.Operations) ir.Operations {
 	}
 
 	return reversed
-}
-
-// diffLines renders what two schema digests disagree about, so a failure names objects.
-func diffLines(want, got string) string {
-	var out strings.Builder
-
-	for _, line := range linesMissingFrom(want, got) {
-		out.WriteString("  - " + line + "\n")
-	}
-
-	for _, line := range linesMissingFrom(got, want) {
-		out.WriteString("  + " + line + "\n")
-	}
-
-	return out.String()
-}
-
-// linesMissingFrom returns the lines of one digest the other does not hold.
-func linesMissingFrom(from, other string) []string {
-	held := make(map[string]bool)
-	for _, line := range strings.Split(other, "\n") {
-		held[line] = true
-	}
-
-	var missing []string
-
-	for _, line := range strings.Split(from, "\n") {
-		if line != "" && !held[line] {
-			missing = append(missing, line)
-		}
-	}
-
-	return missing
 }

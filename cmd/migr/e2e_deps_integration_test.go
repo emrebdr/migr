@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/config"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // A declared dependency, resolved against a real server, pointing backwards in time.
@@ -145,7 +146,7 @@ func TestADeclaredDependencyAppliesBeforeTheMigrationThatDeclaresIt(t *testing.T
 		t.Logf("clearing what an earlier run left behind: %v", err)
 	}
 
-	before := digest(t)
+	before := digest(t, depsHistoryTable+"_round_trip")
 
 	t.Cleanup(func() {
 		if err := migr(t, path, "down"); err != nil {
@@ -163,8 +164,8 @@ func TestADeclaredDependencyAppliesBeforeTheMigrationThatDeclaresIt(t *testing.T
 		t.Fatalf("up: %v", err)
 	}
 
-	applied := digest(t)
-	if !strings.Contains(applied, "e2e_deps_items.sku character varying(32)") {
+	applied := digest(t, depsHistoryTable+"_round_trip")
+	if !strings.Contains(applied, "e2e_deps_items.sku string(32)") {
 		t.Errorf("the schema does not hold the declared column after up:\n%s", applied)
 	}
 
@@ -186,8 +187,9 @@ func TestADeclaredDependencyAppliesBeforeTheMigrationThatDeclaresIt(t *testing.T
 		t.Fatalf("down: %v", err)
 	}
 
-	if got := digest(t); got != before {
-		t.Errorf("the schema did not return to where it started\n got %s\nwant %s", got, before)
+	if got := digest(t, depsHistoryTable+"_round_trip"); got != before {
+		t.Errorf("the schema did not return to where it started:\n%s",
+			schema.Difference(before, got))
 	}
 
 	t.Log("A rollback undoes by (batch, ordinal) descending rather than by version, so it gave the")

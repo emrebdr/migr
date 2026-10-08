@@ -119,18 +119,23 @@ a rollback that dropped the *wrong* thing, which is precisely what a derived inv
 may import it: the deny is on the `internal/driver/` prefix with `cmd/migr` carved out, so the one
 package permitted to drive the whole stack is the one package permitted to ask.
 
-`Digest` takes an **`Ask`** rather than a connection, because its two callers cannot reach the server
-the same way. `cmd/migr` asks through `driver.Conn.Query` and inherits the read-only transaction
-[ADR 0032](0032-host-callback-server.md) gives it; this driver's own suite describes a schema from
-*inside* an open transaction, to see what a migration changed before the rollback discards it — and
-[ADR 0017](0017-transaction-boundaries.md) has a session refuse a second transaction, so `Query`
-cannot serve it at all. Duplicating the probes so each caller could own its fetcher would produce two
-digests that drift, which is the one thing a digest must not do.
+`Digest` took an **`Ask`** rather than a connection, because its two callers could not reach the
+server the same way. `cmd/migr` asked through `driver.Conn.Query` and inherited the read-only
+transaction [ADR 0032](0032-host-callback-server.md) gives it; this driver's own suite describes a
+schema from *inside* an open transaction, to see what a migration changed before the rollback
+discards it — and [ADR 0017](0017-transaction-boundaries.md) has a session refuse a second
+transaction, so `Query` could not serve it at all. Duplicating the probes so each caller could own
+its fetcher would have produced two digests that drift, which is the one thing a digest must not do.
 
-This is **not** introspection. `internal/schema`'s `Snapshot` is M11-T1 and per-driver introspection
-is M11-T2; M11-T6 is where the round trip moves onto the neutral snapshot and `pgtest` goes away.
-Until then, a done-when asking for "introspection snapshot comparison" has nothing else it can mean —
-the same wall M3-T5 hit, recorded there under `snapshotSupersededBy`.
+This was **not** introspection. `internal/schema`'s `Snapshot` is M11-T1 and per-driver introspection
+is M11-T2; until then, a done-when asking for "introspection snapshot comparison" had nothing else it
+could mean — the same wall M3-T5 hit.
+
+**M11-T6 deleted the digest and the seam with it** ([ADR 0074](0074-the-neutral-round-trip.md)).
+`Conn.Introspect` answers both callers: it is on the contract, so `cmd/migr` needs no probe of its
+own, and `pgConn.probe` already reads through this session's transaction when it has one — so the one
+case that forced `Ask` to exist is served by the contract. `pgtest` keeps only `Drop`, which M7-T10
+needs for a reason no snapshot touches.
 
 ### E. What the end-to-end Go migrations do
 
@@ -167,6 +172,7 @@ same pair, and the day it does is the day it is written down.
   cost and it is the point: a project that will not build is a validation failure worth catching.
 - `internal/cli` gained a wrapper `engine.Source`. It exists only for validate, and only because
   "reached a database" is a fact about the session rather than about the error.
-- The digest is `M11-T6`'s to delete, along with `pgtest`.
+- The digest was `M11-T6`'s to delete, and it deleted it: the round trip compares
+  `schema.Snapshot` now, and `pgtest` keeps only `Drop` (ADR 0074).
 - TypeScript inherits all of this: M7-T8 is the wiring task, and by then `sourceFor` needs only the
   `sdkTask` row for `typescript` removed.

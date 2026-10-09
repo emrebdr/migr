@@ -10,6 +10,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
+	"github.com/emrebdr/migr/internal/fold"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
@@ -165,6 +166,32 @@ func runGated(t *testing.T, allowed engine.Allowance, src source, c compiler,
 	t.Helper()
 
 	return runOnline(t, Options{Allow: allowed}, src, c, found...)
+}
+
+// A fixture that drops something has to say where that something came from, or the reference check
+// reports it -- correctly, since a project whose migrations drop a table nothing creates describes a
+// schema that cannot exist. Staging it as the schema the database already holds is what makes these
+// fixtures coherent without renumbering the operations every assertion names.
+
+// holdingOnly builds the schema a fixture acts on, by folding the operations that would have built it.
+func holdingOnly(t *testing.T, built ir.Operations) *schema.Snapshot {
+	t.Helper()
+
+	held, refusals := fold.Forward(schema.Snapshot{}, built)
+	if len(refusals) > 0 {
+		t.Fatalf("the staged schema does not fold: %v", refusals)
+	}
+
+	return &held
+}
+
+// runAgainst validates a staged project under one allowance, against a schema it may already act on.
+func runAgainst(t *testing.T, allowed engine.Allowance, live *schema.Snapshot, src source,
+	c compiler, found ...migration.Migration,
+) Report {
+	t.Helper()
+
+	return runOnline(t, Options{Allow: allowed, Schema: live}, src, c, found...)
 }
 
 // runOnline validates a staged project under options a test has already part-filled.

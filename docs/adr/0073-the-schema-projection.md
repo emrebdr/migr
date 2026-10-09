@@ -205,7 +205,10 @@ start"* is about an adapter that exists and does not.
 
 **M10-T3 is unblocked and M11-T6 is half done.** That task's "the projection has no task" paragraph
 is answered; its reference-integrity check is `fold.Forward` over the introspected snapshot, reading
-the refusals as findings. M11-T6's pure half — `Forward(a, Diff(a, b))` is `b` — is asserted over
+the refusals as findings. It turned out to need **two** starting points rather than one — the
+introspected snapshot and an empty one, reporting only what both refuse — because a migration this
+command writes refuses a replay from nothing, drift correction being what it is
+([ADR 0075](0075-reference-integrity.md)). M11-T6's pure half — `Forward(a, Diff(a, b))` is `b` — is asserted over
 every one of `internal/diff`'s own fixtures, and its per-engine half is a fifth leg of the diff
 conformance suite: the fixture folded forward compares equal to what each of the five engines read it
 back as. What is left there is the two per-driver catalog digests.

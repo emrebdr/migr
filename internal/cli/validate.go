@@ -21,12 +21,15 @@ import (
 // noDatabase is what an offline validation run says for itself, since the claim is the command's point.
 const noDatabase = "no database was opened"
 
-// missedCheck is what an offline run owes about the check it could not make (ADR 0064).
+// missedCheck is what an offline run owes about the checks it could not make (ADR 0064, M10-T3).
 //
 // A capability verdict is resolved inside Open, so a run with no connection cannot ask what this
 // server will refuse -- and reporting "no problems found" without saying so would be the pass
-// ADR 0028 B2 rejected. The remedy is in the sentence, since the flag is what closes the gap.
-const missedCheck = "Nothing was checked against a server; --connect asks the one migr.yaml names."
+// ADR 0028 B2 rejected. The reference check owes the same sentence for its own reason: neither of
+// its two bases is sound alone, so a run with one of them judges no references at all. The remedy
+// is in the sentence, since the flag is what closes both gaps.
+const missedCheck = "Neither what this server refuses nor the references the migrations make was " +
+	"checked;\n--connect asks the one migr.yaml names."
 
 // newValidateCmd builds the `migr validate` subcommand.
 func newValidateCmd(opts *options) *cobra.Command {
@@ -60,7 +63,7 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	caps, err := t.declared(cmd.Context(), opts)
+	answered, err := t.declared(cmd.Context(), opts)
 	if err != nil {
 		return err
 	}
@@ -94,14 +97,15 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 		Source:       read.source,
 		Planner:      plan.Planner{Compiler: d},
 		Allow:        allowanceFor(t, opts),
-		Capabilities: caps,
+		Capabilities: answered.caps,
+		Schema:       answered.live,
 		Rules:        rules,
 	})
 	if err != nil {
 		return err
 	}
 
-	return finish(cmd, opts, validationOf(t, caps, report))
+	return finish(cmd, opts, validationOf(t, answered, report))
 }
 
 // finish prints a validation report, and fails when the report is what a validation failure is.
@@ -173,20 +177,23 @@ type validation struct {
 	Warnings []fault `json:"warnings,omitempty"`
 	// Unchecked is every half nothing could judge, which is not the same as one that passed.
 	Unchecked []unchecked `json:"unchecked,omitempty"`
+	// Projections names what the references were judged against, so no problems is not nothing read.
+	Projections []string `json:"projections,omitempty"`
 }
 
 // validationOf renders what a validation run found against one project.
-func validationOf(t *target, caps *capability.Set, report validate.Report) validation {
+func validationOf(t *target, answered asked, report validate.Report) validation {
 	return validation{
-		Database:  t.name,
-		Driver:    t.db.Driver,
-		Connected: caps != nil,
-		Server:    serverOf(caps),
-		Language:  t.cfg.Migrations.Language,
-		Checked:   report.Checked(),
-		Problems:  faultsOf(report.Problems()),
-		Warnings:  faultsOf(report.Warnings()),
-		Unchecked: uncheckedOf(report.Unchecked()),
+		Database:    t.name,
+		Driver:      t.db.Driver,
+		Connected:   answered.caps != nil,
+		Server:      serverOf(answered.caps),
+		Language:    t.cfg.Migrations.Language,
+		Checked:     report.Checked(),
+		Problems:    faultsOf(report.Problems()),
+		Warnings:    faultsOf(report.Warnings()),
+		Unchecked:   uncheckedOf(report.Unchecked()),
+		Projections: report.Projections(),
 	}
 }
 
@@ -308,10 +315,25 @@ func (v validation) writeWarnings(b *strings.Builder) {
 // describeDatabase says what this run asked a database, and what it asked nothing at all.
 func (v validation) describeDatabase() string {
 	if !v.Connected {
-		return fmt.Sprintf("%s%s. %s", noDatabase, v.describeUnmade("so"), missedCheck)
+		return fmt.Sprintf("%s%s. %s%s", noDatabase, v.describeUnmade("so"), missedCheck,
+			v.describeProjections())
 	}
 
-	return fmt.Sprintf("%s%s.", v.describeServer(), v.describeUnmade("and"))
+	return fmt.Sprintf("%s%s.%s", v.describeServer(), v.describeUnmade("and"),
+		v.describeProjections())
+}
+
+// A reference is reported only where every projection refused it, so naming them is what keeps "no
+// problems found" from reading as "nothing was projected".
+
+// describeProjections names what the references were judged against, and nothing where none were.
+func (v validation) describeProjections() string {
+	if len(v.Projections) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("\nReferences were projected from %s, and are\nreported only where every "+
+		"one of them refused.", strings.Join(v.Projections, " and "))
 }
 
 // describeServer says which server the capability check was resolved against, naming the driver otherwise.

@@ -1,12 +1,13 @@
 // Package validate checks a set of migrations without running them: that each one can be read,
 // that every operation it emits compiles for the target engine, and that something can undo it.
 //
-// Status: the framework and the three checks knowable with no database (M5-T5); a third outcome
-// for the halves nothing could judge (M6-T10); destructive-operation detection (M10-T1);
-// capability preflight (M10-T2). Reference integrity is M10-T3 and a pluggable lint rule set
-// M10-T4 — each of which adds a Check rather than a second report. See
+// Status: complete (M10). The framework and the three checks knowable with no database (M5-T5); a
+// third outcome for the halves nothing could judge (M6-T10); destructive-operation detection
+// (M10-T1); capability preflight (M10-T2); a pluggable lint rule set (M10-T4); reference integrity
+// (M10-T3) -- each of which adds a Check rather than a second report. See
 // docs/adr/0028-validation-report.md, docs/adr/0040-running-a-go-migration.md,
-// docs/adr/0063-destructive-operations.md and docs/adr/0064-capability-preflight.md.
+// docs/adr/0063-destructive-operations.md, docs/adr/0064-capability-preflight.md,
+// docs/adr/0066-the-lint-rule-contract.md and docs/adr/0075-reference-integrity.md.
 //
 // # The destructive check is the one that reads something other than the migrations
 //
@@ -21,6 +22,36 @@
 // operation, carrying the object it destroys, because this is the command a project runs to find
 // out which kinds it has to permit before migr up refuses one of them.
 //
+// # The reference check judges against two projections, or it does not run
+//
+// A reference integrity check has to know what the schema will look like when a migration runs, and
+// internal/fold is what answers that: Forward folds and does not validate, so an add_column onto a
+// table nothing created and a key to a column nothing added are each a fold.Refusal naming both.
+// What this package decides is what to fold from, and the answer is that neither candidate is a
+// basis by itself:
+//
+//   - the live schema alone refuses every operation of every migration that has already run, since
+//     the schema is what they built. That is ADR 0064's C2 reached from the other side;
+//   - the project's own beginning alone refuses every operation of a migration migr diff wrote. A
+//     drift correction re-adds an index the project already created and drops a column the project
+//     never had, so replaying it from nothing cannot work -- and reporting that would have migr
+//     diff's own output fail this command.
+//
+// Both were measured. So the check folds each half through every projection it has and reports what
+// all of them refused: a reference satisfiable neither from the project's own beginning nor by the
+// database as it is. An applied migration goes silent, a project adopted into an existing database
+// goes silent, and two migrations creating one table against a database holding neither is still
+// caught -- which is why there is no suppressed class of refusal.
+//
+// Options.Schema is nil for a run that opened nothing, and then the check does not run at all. The
+// report says so, which is the sentence the capability check already owed for its own reason.
+//
+// Both halves are judged, the down folded onto the state its own up just left, because a rollback
+// runs newest first. The down is judged only where the up projected cleanly: a derived down is the
+// up inverted, so a broken up makes a broken down, and reporting both is two complaints about one
+// defect. A raw operation ends the projection, recording one Unchecked that says no migration after
+// it was judged either -- so a .sql project reports one entry rather than one per migration.
+//
 // # It never opens a database
 //
 // A driver is built from migr.yaml and asked to compile; nothing here calls Open. That is what
@@ -28,9 +59,10 @@
 // property of the package rather than of the caller — Options carries a plan.Planner, which holds
 // a driver.Compiler, and there is nowhere to put a session.
 //
-// That survived M10-T2, which is the task that made migr validate able to connect. What Options
-// gained is a *capability.Set: a value the caller resolved, which answers with no I/O by contract
-// (ADR 0012), so the command opens a database and this package still cannot. Nil means the run
+// That survived M10-T2 and M10-T3, the two tasks that made migr validate able to connect. What
+// Options gained is a *capability.Set and a *schema.Snapshot: two values the caller read, one
+// answering with no I/O by contract (ADR 0012) and the other a plain description, so the command
+// opens a database and this package still cannot. Nil means the run
 // opened none and the capability check does not run — and nil rather than a zero Set because an
 // unbuilt one refuses every operation, which is also what driver.Offline's own set does on purpose.
 // Options.check refuses an unbuilt set as the caller bug it is.

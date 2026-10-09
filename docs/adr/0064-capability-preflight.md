@@ -232,7 +232,11 @@ through a batch leaves the ones before it applied, and the run's own summary is 
 ## Notes
 
 M10-T3 (reference integrity) needs introspection, which needs the same connection — `--connect` is
-where it lands, and the report shape is already built.
+where it landed, and the report shape was already built
+([ADR 0075](0075-reference-integrity.md)). It also inverted this ADR's own test: `migr validate
+--connect` does introspect now. C2 still holds, by the mechanism rather than by not looking — a
+reference is reported only where the live schema **and** the project's own beginning both refuse it,
+so a migration whose `create_table` the live schema contradicts is judged by neither.
 
 M13-T6 reads the **lock** axis of the same verdict, which is why TASKS said `--require-safe` on
 `migr validate` *"arrives with M10-T2's online half"*. The flag that makes it reachable now exists;

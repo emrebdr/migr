@@ -7,6 +7,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // dropping is a migration that destroys three different things, one operation each.
@@ -23,11 +24,42 @@ func dropping(t *testing.T) ir.Operations {
 // nothing is an allowance that permits no destruction at all, which is what an empty config means.
 var nothing = engine.Allowance{}
 
+// restoring is what undoes the migration above, which is also what the database held before it.
+func restoring(t *testing.T) ir.Operations {
+	t.Helper()
+
+	return ir.Operations{
+		ir.CreateView{View: "listing", Query: "SELECT id FROM users"},
+		ir.AddColumn{Table: "users", Column: ir.Column{
+			Name: "email", Type: logical(t, "string(255)"), Nullable: true,
+		}},
+		ir.CreateTable{Table: "legacy", Columns: []ir.Column{
+			{Name: "id", Type: logical(t, "int64")},
+		}},
+	}
+}
+
+// dropped builds the schema the fixture above destroys, so each of its drops is a drop of something.
+func dropped(t *testing.T) *schema.Snapshot {
+	t.Helper()
+
+	return holdingOnly(t, ir.Operations{
+		ir.CreateTable{Table: "users", Columns: []ir.Column{
+			{Name: "id", Type: logical(t, "int64")},
+			{Name: "email", Type: logical(t, "string(255)"), Nullable: true},
+		}},
+		ir.CreateTable{Table: "legacy", Columns: []ir.Column{
+			{Name: "id", Type: logical(t, "int64")},
+		}},
+		ir.CreateView{View: "listing", Query: "SELECT id FROM users"},
+	})
+}
+
 func TestEveryDestructiveOperationIsReportedWithWhatItDestroys(t *testing.T) {
 	m := migrationAt(0, "drop_legacy")
 
-	report := runGated(t, nothing, source{m.Version: {up: dropping(t), down: dropping(t)}},
-		compiler{}, m)
+	report := runAgainst(t, nothing, dropped(t),
+		source{m.Version: {up: dropping(t), down: restoring(t)}}, compiler{}, m)
 
 	problems := report.Problems()
 	if len(problems) != 3 {
@@ -64,10 +96,12 @@ func TestEveryDestructiveOperationIsReportedWithWhatItDestroys(t *testing.T) {
 
 func TestAPermittedKindIsNotAProblem(t *testing.T) {
 	m := migrationAt(0, "drop_legacy")
-	staged := source{m.Version: {up: dropping(t), down: dropping(t)}}
+	staged := source{m.Version: {up: dropping(t), down: restoring(t)}}
 
-	report := runGated(t, engine.Allowance{Kinds: []ir.Kind{ir.KindDropTable, ir.KindDropView}},
-		staged, compiler{}, m)
+	live := dropped(t)
+
+	report := runAgainst(t, engine.Allowance{Kinds: []ir.Kind{ir.KindDropTable, ir.KindDropView}},
+		live, staged, compiler{}, m)
 
 	problems := report.Problems()
 	if len(problems) != 1 || problems[0].Kind != ir.KindDropColumn {
@@ -76,7 +110,7 @@ func TestAPermittedKindIsNotAProblem(t *testing.T) {
 		t.Fatalf("the report holds %+v, want only the kind nothing permitted", problems)
 	}
 
-	if !runGated(t, engine.Allowance{All: true}, staged, compiler{}, m).Clean() {
+	if !runAgainst(t, engine.Allowance{All: true}, live, staged, compiler{}, m).Clean() {
 		t.Error("--allow-destructive left a destructive operation reported")
 	}
 }
@@ -114,7 +148,7 @@ func TestAnAuthoredDownThatDropsSomethingIsNotJudgedEither(t *testing.T) {
 func TestADestructiveOperationStopsNoOtherCheck(t *testing.T) {
 	m := migrationAt(0, "drop_legacy")
 
-	report := runGated(t, nothing, source{m.Version: {
+	report := runAgainst(t, nothing, dropped(t), source{m.Version: {
 		up:   ir.Operations{ir.DropTable{Table: "legacy"}},
 		down: ir.Operations{raw("CREATE TABLE legacy (id bigint);")},
 	}}, compiler{refuseKind: ir.KindDropTable}, m)

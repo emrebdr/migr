@@ -13,6 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
 	"github.com/emrebdr/migr/internal/rule"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // Options is everything a validation run needs, none of which is a database.
@@ -27,6 +28,8 @@ type Options struct {
 	Allow engine.Allowance
 	// Capabilities is what the connected server declares, and is nil for a run that opened nothing.
 	Capabilities *capability.Set
+	// Schema is what the target database holds now, and is nil for a run that opened nothing.
+	Schema *schema.Snapshot
 	// Rules are the lint rules this project runs, and nil is a run that performs no lint pass.
 	Rules *rule.Set
 }
@@ -72,7 +75,13 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 		return Report{}, err
 	}
 
-	run := &runner{opts: opts, report: Report{checked: len(opts.Migrations)}}
+	run := &runner{
+		opts:        opts,
+		projections: projectionsFor(opts.Schema),
+		report:      Report{checked: len(opts.Migrations)},
+	}
+
+	run.report.projections = startingPoints(run.projections)
 
 	for _, m := range opts.Migrations {
 		run.migration(ctx, m)
@@ -81,10 +90,24 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 	return run.report, nil
 }
 
+// startingPoints names what the reference check was able to project from, which a report states.
+func startingPoints(held []*projection) []string {
+	named := make([]string, 0, len(held))
+	for _, one := range held {
+		named = append(named, one.from)
+	}
+
+	return named
+}
+
 // runner holds one validation run's inputs and the problems it has found so far.
 type runner struct {
 	// opts is what this run was given.
 	opts Options
+	// projections are the running folds the reference check judges against, one per starting point.
+	projections []*projection
+	// stopped reports whether a raw operation has ended the projection, which no later one revives.
+	stopped bool
 	// report is what it has found, in the order it found it.
 	report Report
 }
@@ -105,7 +128,11 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 
 	r.destructive(m, up.Operations)
 	r.compile(m, ir.Up, up.Operations)
-	r.lint(m, up, r.undo(ctx, m, up))
+
+	down := r.undo(ctx, m, up)
+
+	r.reference(m, up.Operations, down.emitted.Operations)
+	r.lint(m, up, down)
 }
 
 // destructive reports every operation in a migration's up half that destroys what nothing permits.

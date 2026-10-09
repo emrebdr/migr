@@ -177,20 +177,29 @@ func TestPlanJSONCarriesTheDisagreementsAsFields(t *testing.T) {
 	}
 }
 
-func TestValidateSaysNothingAboutWhatOnlyARunCanJudge(t *testing.T) {
+// M10-T2 asserted the opposite of this: that migr validate --connect never introspects, because the
+// projection that makes reading the live schema honest had no task. M10-T3 is that task, so the
+// command does read it now (ADR 0075) -- and the half that mattered is unchanged. A migration whose
+// create_table the live schema contradicts is still not reported, because the contradiction is in
+// the live projection alone and the project's own beginning folds it cleanly. That is ADR 0064's C2
+// held by the mechanism rather than by not looking.
+
+func TestValidateDoesNotJudgeAMigrationTheLiveSchemaAloneContradicts(t *testing.T) {
 	dir, f, drivers := contradicting(t)
 
 	stdout, _, _ := runScripted(t, dir, actTypes, drivers, "validate", "--connect")
 
-	if strings.Contains(stdout, "already holds a table") {
-		t.Errorf("migr validate judged a migration against the live schema:\n%s", stdout)
+	for _, unwanted := range []string{"already holds a table", "reference"} {
+		if strings.Contains(stdout, unwanted) {
+			t.Errorf("migr validate judged a migration against the live schema alone:\n%s", stdout)
+			t.Log("A check reading the live catalog alone calls a correct migration broken whenever")
+			t.Log("the migration that creates its table has not run yet (ADR 0064 C2). Reporting")
+			t.Log("only what both projections refuse is what makes reading it safe at all.")
+		}
 	}
 
-	if f.asked("introspect") {
-		t.Error("migr validate read the schema, which ADR 0064's C2 is the reason it must not")
-		t.Log("A check reading the live catalog calls a correct migration broken whenever the")
-		t.Log("migration that creates its table has not run yet, and the projection that would")
-		t.Log("fix that has no task -- so this is the run's gate and not a validate check.")
+	if !f.asked("introspect") {
+		t.Error("migr validate --connect did not read the schema, which the reference check needs")
 	}
 }
 

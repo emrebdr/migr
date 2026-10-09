@@ -62,6 +62,8 @@ const (
 	actMixes = "mixes"
 	// actWords emits a view and a check as well, whose bodies every engine rewords in its own way.
 	actWords = "words"
+	// actStrays names a table nothing creates and a column nothing adds, which M10-T3 catches.
+	actStrays = "strays"
 )
 
 // The declarations a scripted runtime reports, which compose with every act above.
@@ -331,15 +333,16 @@ func (r *scriptedRuntime) execute(m *protocol.Message) bool {
 
 // emitted counts the operations this script just sent, since the host checks the two agree (§4).
 func (r *scriptedRuntime) emitted(direction ir.Direction) int {
-	if r.act != actWords {
-		return 1
-	}
-
-	if direction == ir.Down {
+	switch {
+	case r.act == actStrays && direction == ir.Up:
 		return 2
+	case r.act != actWords:
+		return 1
+	case direction == ir.Down:
+		return 2
+	default:
+		return 3
 	}
-
-	return 3
 }
 
 // sentStatement is what actMixes sends itself, which plan mode holds and apply mode performs.
@@ -356,6 +359,8 @@ func (r *scriptedRuntime) operations(direction ir.Direction) string {
 		return columnOperationsFor(direction, true)
 	case actWords:
 		return wordedOperationsFor(direction)
+	case actStrays:
+		return strayOperationsFor(direction)
 	default:
 		return operationsFor(direction)
 	}
@@ -398,6 +403,23 @@ func wordedOperationsFor(direction ir.Direction) string {
 		`{"op":"add_check","table":%q,"name":"scripted_positive","expression":"id > 0"},`+
 		`{"op":"create_view","view":"seen","query":"SELECT id FROM scripted"}]}`,
 		scriptedTable, scriptedTable)
+}
+
+// strayTable is the table actStrays names, which no migration in any staged project creates.
+const strayTable = "stray_table"
+
+// strayOperationsFor renders M10-T3's two cases: a column on no table, and a key to no column.
+func strayOperationsFor(direction ir.Direction) string {
+	if direction == ir.Down {
+		return fmt.Sprintf(`{"operations":[{"op":"drop_column","table":%q,"column":"tier"}]}`,
+			strayTable)
+	}
+
+	return fmt.Sprintf(`{"operations":[`+
+		`{"op":"add_column","table":%q,"column":{"name":"tier","type":"int32","nullable":true}},`+
+		`{"op":"add_foreign_key","table":%q,"name":"fk_stray","columns":["id"],`+
+		`"references_table":%q,"references_columns":["ghost"]}]}`,
+		strayTable, scriptedTable, scriptedTable)
 }
 
 // unfillableOperationsFor renders a NOT NULL column added with no default to a table it never creates.

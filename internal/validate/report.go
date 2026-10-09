@@ -31,6 +31,8 @@ type Report struct {
 	unchecked []Unchecked
 	// checked is how many migrations were looked at, which a report of no problems still states.
 	checked int
+	// projections names what the reference check judged against, so no problems is not nothing read.
+	projections []string
 }
 
 // Problems returns every problem found, in the order they were found, as a copy.

@@ -24,8 +24,10 @@
 // An operation naming something that is not there is a Refusal rather than a panic
 // or a silent create: an add_column onto a table nothing created, an index over a
 // column nothing added, a reference to a table this schema does not hold. That is
-// what makes the same fold readable as M10-T3's reference-integrity check, where
-// those refusals are the findings rather than a problem.
+// what makes the same fold readable as internal/validate's reference-integrity
+// check (M10-T3), where those refusals are the findings rather than a problem --
+// folded from two starting points, since neither the live schema nor the project's
+// own beginning is a sound basis alone (ADR 0075).
 //
 // A refusal stops that operation and nothing after it. One exception ends the
 // projection entirely, and it is the reason this package has a caller that refuses

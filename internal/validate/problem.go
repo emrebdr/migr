@@ -18,12 +18,17 @@ const (
 	CheckCompile     Check = "compile"
 	CheckCapability  Check = "capability"
 	CheckReverse     Check = "reverse"
+	CheckReference   Check = "reference"
 	CheckLint        Check = "lint"
 )
 
+// reference sits here rather than beside capability, the other check that wants a database, because
+// this list is the order the checks run in: it needs both halves of a migration, and the down half
+// is what reverse has just worked out.
+
 // checks lists every check a run performs, in the order it performs them.
 var checks = []Check{CheckFormat, CheckDestructive, CheckCompile, CheckCapability, CheckReverse,
-	CheckLint}
+	CheckReference, CheckLint}
 
 // Checks returns every check a validation run performs, in order, as a copy.
 func Checks() []Check {

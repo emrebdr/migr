@@ -9,6 +9,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // emulating is a compiler that performs one operation only against a database it was not given.
@@ -34,12 +35,28 @@ func emulated(t *testing.T, ops ir.Operations) Report {
 		Source:     source{m.Version: {up: ops, down: ops}},
 		Planner:    plan.Planner{Compiler: emulating{}},
 		Allow:      engine.Allowance{All: true},
+		Schema:     altered(t),
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
 	return report
+}
+
+// The column these fixtures alter has to exist somewhere, or the reference check reports it -- and
+// it is right to: a project whose migrations alter a column nothing created describes a schema that
+// cannot exist. These cases are about an emulated operation rather than about that, so the column is
+// staged as one the database already holds.
+
+// altered builds the schema the alteration below acts on, which is one nullable column on one table.
+func altered(t *testing.T) *schema.Snapshot {
+	t.Helper()
+
+	return holdingOnly(t, ir.Operations{ir.CreateTable{Table: "users", Columns: []ir.Column{
+		{Name: "id", Type: logical(t, "int64")},
+		{Name: "email", Type: logical(t, "string(255)")},
+	}}})
 }
 
 // retype is an alteration a driver would perform by rebuilding the table.

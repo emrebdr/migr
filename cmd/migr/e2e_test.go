@@ -72,6 +72,33 @@ func migrOut(t *testing.T, config string, args ...string) string {
 	return out
 }
 
+// A report and the failure it adds up to go to different streams: migr validate prints what it
+// found on stdout and one line naming the outcome on stderr (ADR 0029). So a command that reports
+// and then fails needs a reader of stdout that does not treat the exit code as a setup error.
+
+// migrReport captures what a command printed on stdout, whatever it then exited with.
+func migrReport(t *testing.T, config string, args ...string) (string, error) {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("opening a pipe: %v", err)
+	}
+
+	captured := drained(t, r, args[0])
+
+	stdout := os.Stdout
+	os.Stdout = w
+	runErr := migr(t, config, args...)
+	os.Stdout = stdout
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing the pipe: %v", err)
+	}
+
+	return <-captured, runErr
+}
+
 // drained reads the pipe while the command is still writing to it, rather than after it returns.
 func drained(t *testing.T, r *os.File, command string) <-chan string {
 	t.Helper()

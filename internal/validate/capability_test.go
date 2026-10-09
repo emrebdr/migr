@@ -122,6 +122,7 @@ func TestAnOperationCompiledAgainstASessionIsStillJudgedAgainstTheServer(t *test
 	report := runOnline(t, Options{
 		Allow:        engine.Allowance{All: true},
 		Capabilities: declaring(t, ir.KindAlterColumn),
+		Schema:       altered(t),
 	}, src, emulating{}, m)
 
 	if len(report.Unchecked()) != 2 {

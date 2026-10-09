@@ -309,7 +309,7 @@ func TestLintRunsAfterEveryCheckThatJudgesTheSameMigration(t *testing.T) {
 
 func TestEveryCheckIsListedInTheOrderItRuns(t *testing.T) {
 	want := []Check{CheckFormat, CheckDestructive, CheckCompile, CheckCapability, CheckReverse,
-		CheckLint}
+		CheckReference, CheckLint}
 
 	if got := Checks(); !slices.Equal(got, want) {
 		t.Errorf("Checks() = %v, want %v", got, want)

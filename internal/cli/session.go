@@ -19,6 +19,7 @@ import (
 	"github.com/emrebdr/migr/internal/plan"
 	"github.com/emrebdr/migr/internal/rule"
 	"github.com/emrebdr/migr/internal/runtime"
+	"github.com/emrebdr/migr/internal/schema"
 	"github.com/emrebdr/migr/internal/source/sql"
 	"github.com/emrebdr/migr/internal/validate"
 )
@@ -323,15 +324,45 @@ func allEnding(stops []closer) closer {
 	}
 }
 
-// declared returns what the target server declares it can do, and nothing for a run not asked to connect.
-func (t *target) declared(ctx context.Context, opts *options) (*capability.Set, error) {
+// asked is what one session answered before it was closed, which is nothing for a run not connected.
+type asked struct {
+	// caps is what the server declares it can do, which only a connected run has (ADR 0064).
+	caps *capability.Set
+	// live is the schema that database holds now, which the reference check projects from (M10-T3).
+	live *schema.Snapshot
+}
+
+// Both reads happen on one session and it closes straight after, which is ADR 0064's rule unchanged:
+// a verdict performs no I/O and a snapshot is a value, so neither outlives the connection. It takes
+// no migration lock and reads no history (ADR 0027) -- this is a report, and the reference check is
+// honest about a half-migrated database without being told how far it got.
+
+// A driver that answers no snapshot and no error is carried as a run with no live schema rather than
+// crashed over: the checks reading it already treat a missing one as a run that opened nothing, and
+// the report names what it was able to project, so nothing claims a basis it did not have.
+
+// logSchema records what the database answered, and that it answered nothing where it did.
+func logSchema(opts *options, t *target, live *schema.Snapshot) {
+	if live == nil {
+		opts.log.Info("the driver reported no schema at all", "database", t.name,
+			"driver", t.db.Driver)
+
+		return
+	}
+
+	opts.log.Info("read the schema the database holds", "database", t.name,
+		"tables", len(live.Tables), "views", len(live.Views))
+}
+
+// declared returns what the target database answered, and nothing for a run not asked to connect.
+func (t *target) declared(ctx context.Context, opts *options) (asked, error) {
 	if !opts.connect {
-		return nil, nil
+		return asked{}, nil
 	}
 
 	_, conn, err := dial(ctx, opts, t)
 	if err != nil {
-		return nil, err
+		return asked{}, err
 	}
 
 	caps := conn.Capabilities()
@@ -339,11 +370,18 @@ func (t *target) declared(ctx context.Context, opts *options) (*capability.Set, 
 	opts.log.Info("read the server's capabilities", "database", t.name, "driver", t.db.Driver,
 		"server", caps.Server())
 
-	if err := conn.Close(context.WithoutCancel(ctx)); err != nil {
-		return nil, fmt.Errorf("closing the session the capabilities were read from: %w", err)
+	live, err := conn.Introspect(ctx)
+	if err != nil {
+		return asked{}, errors.Join(err, conn.Close(context.WithoutCancel(ctx)))
 	}
 
-	return &caps, nil
+	logSchema(opts, t, live)
+
+	if err := conn.Close(context.WithoutCancel(ctx)); err != nil {
+		return asked{}, fmt.Errorf("closing the session the database was read from: %w", err)
+	}
+
+	return asked{caps: &caps, live: live}, nil
 }
 
 // offlineSource returns what reads this project's migrations over sessions that open no database.

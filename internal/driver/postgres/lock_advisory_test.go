@@ -97,3 +97,22 @@ func TestAnUnsetHistoryTableStillYieldsAKey(t *testing.T) {
 		t.Log("block each other, which is the one thing the lock exists to do.")
 	}
 }
+
+func TestTheSeedTableKeysNoLockOfItsOwn(t *testing.T) {
+	keyed := func(seeds string) lockKey {
+		t.Helper()
+
+		built, err := New(driver.Options{Schema: "public", SeedTable: seeds})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		return built.(*pgDriver).key
+	}
+
+	if keyed("migr_seeds") != keyed("fixtures") {
+		t.Error("renaming the seed table moved the migration lock")
+		t.Log("Seeds are recorded beside the migration history and must run under its lock, or a")
+		t.Log("seed run and a migr up interleave -- which is exactly the mixing seeds never do.")
+	}
+}

@@ -57,6 +57,10 @@ type fake struct {
 	inTx bool
 	// live is the snapshot this database answers an introspection with, empty for a fresh database.
 	live *schema.Snapshot
+	// seedRuns is the seed history rows written, kept apart from runs as a second table is.
+	seedRuns []history.Record
+	// seedTable reports whether the seed history table exists.
+	seedTable bool
 
 	// mu guards the two fields below, which are the only ones a second goroutine could reach.
 	mu sync.Mutex
@@ -408,7 +412,14 @@ func (c *fakeConn) Capabilities() capability.Set {
 }
 
 // History reports this session's store.
-func (c *fakeConn) History() history.Store { return &fakeStore{fake: c.fake} }
+func (c *fakeConn) History() history.Store {
+	return &fakeStore{fake: c.fake, table: &c.fake.table, runs: &c.fake.runs}
+}
+
+// Seeds returns the seed history, which notes every call it is asked under a seed- prefix.
+func (c *fakeConn) Seeds() history.Store {
+	return &fakeStore{fake: c.fake, table: &c.fake.seedTable, runs: &c.fake.seedRuns, prefix: "seed-"}
+}
 
 // ServerVersion reports the version the declaration was resolved against.
 func (c *fakeConn) ServerVersion() string { return c.caps.Server() }
@@ -425,67 +436,74 @@ var _ driver.Conn = (*fakeConn)(nil)
 
 // fakeStore is a migration history with no database, reporting an absent table as a real one does.
 type fakeStore struct {
+	// fake is the database this store is a table of, which every call is noted against.
 	fake *fake
+	// table reports whether this store's table exists.
+	table *bool
+	// runs is the rows this store's table holds.
+	runs *[]history.Record
+	// prefix tells a seed store's calls from a migration store's in what the fake noted.
+	prefix string
 }
 
 // Ensure creates the history table, which is the write a dry run must never make.
 func (s *fakeStore) Ensure(context.Context) error {
-	s.fake.note("ensure")
-	s.fake.table = true
+	s.fake.note(s.prefix + "ensure")
+	*s.table = true
 
 	return nil
 }
 
 // List returns every recorded run, or the sentinel a database with no history table owes.
 func (s *fakeStore) List(context.Context) ([]history.Record, error) {
-	s.fake.note("list")
+	s.fake.note(s.prefix + "list")
 
-	if !s.fake.table {
+	if !*s.table {
 		return nil, history.ErrNoTable
 	}
 
-	return s.fake.runs, nil
+	return *s.runs, nil
 }
 
 // Latest returns the most recent run, or the sentinel a database with no history table owes.
 func (s *fakeStore) Latest(context.Context) (history.Record, bool, error) {
-	s.fake.note("latest")
+	s.fake.note(s.prefix + "latest")
 
-	if !s.fake.table {
+	if !*s.table {
 		return history.Record{}, false, history.ErrNoTable
 	}
 
-	if len(s.fake.runs) == 0 {
+	if len(*s.runs) == 0 {
 		return history.Record{}, false, nil
 	}
 
-	return s.fake.runs[len(s.fake.runs)-1], true, nil
+	return (*s.runs)[len(*s.runs)-1], true, nil
 }
 
 // Record appends a run that completed, inside the transaction that ran it.
 func (s *fakeStore) Record(_ context.Context, rec history.Record) error {
-	s.fake.note(describeWrite("record", s.fake.inTx))
+	s.fake.note(s.prefix + describeWrite("record", s.fake.inTx))
 
 	return s.write(rec, history.Applied, "", 0)
 }
 
 // MarkFailed appends a run that failed without changing the schema.
 func (s *fakeStore) MarkFailed(_ context.Context, rec history.Record, cause error) error {
-	s.fake.note(describeWrite("mark-failed", s.fake.inTx))
+	s.fake.note(s.prefix + describeWrite("mark-failed", s.fake.inTx))
 
 	return s.write(rec, history.Failed, cause.Error(), 0)
 }
 
 // MarkDirty appends a run that failed partway, naming the last statement that succeeded.
 func (s *fakeStore) MarkDirty(_ context.Context, rec history.Record, last int32, cause error) error {
-	s.fake.note(describeWrite("mark-dirty", s.fake.inTx))
+	s.fake.note(s.prefix + describeWrite("mark-dirty", s.fake.inTx))
 
 	return s.write(rec, history.Dirty, cause.Error(), last)
 }
 
 // MarkResolved appends an operator's assertion that a migration left between states is settled.
 func (s *fakeStore) MarkResolved(_ context.Context, rec history.Record, reason string) error {
-	s.fake.note(describeWrite("mark-resolved", s.fake.inTx))
+	s.fake.note(s.prefix + describeWrite("mark-resolved", s.fake.inTx))
 
 	return s.write(rec, history.Resolved, reason, 0)
 }
@@ -501,7 +519,7 @@ func (s *fakeStore) write(rec history.Record, outcome history.Outcome, failure s
 		return err
 	}
 
-	s.fake.runs = append(s.fake.runs, rec)
+	*s.runs = append(*s.runs, rec)
 
 	return nil
 }

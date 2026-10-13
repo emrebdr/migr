@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -94,6 +95,7 @@ func validate(cfg *Config, source string) error {
 	}
 
 	validateMigrations(v, cfg.Migrations)
+	validateSeeds(v, cfg, source)
 	validateDatabases(v, cfg.Databases)
 	validateLock(v, cfg.Lock)
 	validateRuntime(v, cfg.Runtime)
@@ -134,7 +136,104 @@ func validateDatabases(v *validator, dbs map[string]Database) {
 		db := dbs[name]
 		v.require("databases."+name+".driver", db.Driver)
 		v.require("databases."+name+".dsn", db.DSN.Reveal())
+		validateEnvironment(v, "databases."+name+".environment", db.Environment)
 	}
+}
+
+// validateEnvironment refuses an environment that cannot name one directory beside the seeds.
+func validateEnvironment(v *validator, path, env string) {
+	if reason := unnameable(env); reason != "" {
+		v.add(path, "%q names the seeds subdirectory this database runs, and %s -- it defaults "+
+			"to the database's own key, so set it explicitly", env, reason)
+	}
+}
+
+// unnameable says why a name cannot be one directory directly inside another, and nothing when it can.
+func unnameable(name string) string {
+	switch {
+	case strings.TrimSpace(name) == "":
+		return "is blank"
+	case strings.ContainsAny(name, `/\`):
+		return "a separator would make it a path rather than a directory"
+	case strings.HasPrefix(name, "."):
+		return "a leading dot is a file discovery passes over, so its seeds would never run"
+	default:
+		return ""
+	}
+}
+
+// validateSeeds checks the seeds block, which may share neither a table nor a directory with migrations.
+func validateSeeds(v *validator, cfg *Config, source string) {
+	v.require("seeds.dir", cfg.Seeds.Dir)
+
+	if v.require("seeds.table", cfg.Seeds.Table) && cfg.Seeds.Table == cfg.History.Table {
+		v.add("seeds.table", "%q is history.table too, and seeds keep a history of their own so "+
+			"that no seed is ever recorded as a migration", cfg.Seeds.Table)
+	}
+
+	validateDeclaredEnvironments(v, cfg)
+
+	if cfg.Seeds.Dir == "" || cfg.Migrations.Dir == "" {
+		return
+	}
+
+	if overlap := overlapping(anchor(cfg.Seeds.Dir, source),
+		anchor(cfg.Migrations.Dir, source)); overlap != "" {
+		v.add("seeds.dir", "%q %s migrations.dir %q, and seeds never mix with migrations",
+			cfg.Seeds.Dir, overlap, cfg.Migrations.Dir)
+	}
+}
+
+// validateDeclaredEnvironments checks the declared environments, which every database must be one of.
+func validateDeclaredEnvironments(v *validator, cfg *Config) {
+	declared := cfg.Seeds.Environments
+	if len(declared) == 0 {
+		return
+	}
+
+	for i, env := range declared {
+		path := fmt.Sprintf("seeds.environments[%d]", i)
+
+		if reason := unnameable(env); reason != "" {
+			v.add(path, "%q names a seeds subdirectory, and %s", env, reason)
+		} else if slices.Contains(declared[:i], env) {
+			v.add(path, "%q is declared twice, and once is what declares it", env)
+		}
+	}
+
+	for _, name := range sortedKeys(cfg.Databases) {
+		env := cfg.Databases[name].Environment
+		if env != "" && !slices.Contains(declared, env) {
+			v.add("databases."+name+".environment", "%q is not one of seeds.environments (%s), "+
+				"so its seeds directory would be refused as one no environment runs -- it "+
+				"defaults to the database's own key, so set it explicitly", env,
+				strings.Join(declared, ", "))
+		}
+	}
+}
+
+// overlapping says how one directory shares files with another, and nothing when the two are apart.
+func overlapping(seeds, migrations string) string {
+	seeds, migrations = filepath.Clean(seeds), filepath.Clean(migrations)
+
+	switch {
+	case seeds == migrations:
+		return "is"
+	case within(seeds, migrations):
+		return "is inside"
+	case within(migrations, seeds):
+		return "holds"
+	default:
+		return ""
+	}
+}
+
+// within reports whether one cleaned path lies beneath another.
+func within(inner, outer string) bool {
+	rel, err := filepath.Rel(outer, inner)
+
+	return err == nil && rel != "." && rel != ".." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // validateLock checks the migration lock block, where naming no strategy leaves it to the driver.

@@ -26,6 +26,8 @@ type pgConn struct {
 	tx pgx.Tx
 	// history is bound at Open, so History cannot fail to construct one and two calls share it.
 	history pgHistory
+	// seeds is the seed history, bound at Open beside it and taken under the same lock.
+	seeds pgHistory
 }
 
 // Exec runs one compiled statement, inside this session's transaction when it has one open.
@@ -59,6 +61,11 @@ func (c *pgConn) Capabilities() capability.Set {
 // History returns this session's view of the migration history, bound to it at Open.
 func (c *pgConn) History() history.Store {
 	return c.history
+}
+
+// Seeds returns this session's view of the seed history, bound to it at Open.
+func (c *pgConn) Seeds() history.Store {
+	return c.seeds
 }
 
 // ServerVersion returns the connected server's release, derived from the version detected at Open.

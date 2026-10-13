@@ -468,10 +468,14 @@ func TestEverythingTheOperationSetCannotExpressIsMarkedRatherThanOmitted(t *test
 func TestTheSnapshotHoldsNeitherTheHistoryTableNorItsIndexes(t *testing.T) {
 	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
 		table := owned(t, "app")
-		dropped(t, c, table, c.table)
+		dropped(t, c, table, c.table, c.seeds)
 
 		if err := c.History().Ensure(t.Context()); err != nil {
 			t.Fatalf("Ensure: %v", err)
+		}
+
+		if err := c.Seeds().Ensure(t.Context()); err != nil {
+			t.Fatalf("Ensure the seed history: %v", err)
 		}
 
 		applied(t, c, ir.Operations{ir.CreateTable{Table: table, Columns: []ir.Column{
@@ -480,8 +484,10 @@ func TestTheSnapshotHoldsNeitherTheHistoryTableNorItsIndexes(t *testing.T) {
 
 		snapshot := introspect(t, c)
 
-		if _, held := snapshot.Table(c.table); held {
-			t.Errorf("the snapshot holds %q, which a differ would propose dropping", c.table)
+		for _, name := range []string{c.table, c.seeds} {
+			if _, held := snapshot.Table(name); held {
+				t.Errorf("the snapshot holds %q, which a differ would propose dropping", name)
+			}
 		}
 
 		if _, held := snapshot.Table(table); !held {

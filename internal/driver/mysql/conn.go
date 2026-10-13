@@ -41,6 +41,10 @@ type mysqlConn struct {
 	table string
 	// stored is the history table's name as the server's catalog holds it, per lower_case_table_names.
 	stored string
+	// seeds is where seeds are recorded, under the lock the history table's name derives.
+	seeds string
+	// seedStored is the seed table's name as the server's catalog holds it.
+	seedStored string
 	// folding is that setting itself, so any table name a catalog lookup needs can be folded too.
 	folding int
 	// lockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
@@ -102,6 +106,11 @@ func (c *mysqlConn) Capabilities() capability.Set {
 // History returns this session's view of the migration history, bound to this session.
 func (c *mysqlConn) History() history.Store {
 	return mysqlHistory{session: c, table: c.table, stored: c.stored}
+}
+
+// Seeds returns this session's view of the seed history, bound to this session.
+func (c *mysqlConn) Seeds() history.Store {
+	return mysqlHistory{session: c, table: c.seeds, stored: c.seedStored}
 }
 
 // ServerVersion returns the variant and release the server reported at Open.

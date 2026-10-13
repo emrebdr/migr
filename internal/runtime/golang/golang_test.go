@@ -42,6 +42,31 @@ func TestASecondCommandReusesTheBuiltRunner(t *testing.T) {
 	}
 }
 
+func TestTwoDirectoriesInOneModuleNeverRebuildEachOther(t *testing.T) {
+	p := fixture(t)
+	seeds := seedsBeside(t, p)
+
+	migrations := commandFor(t, p)
+	spoil(t, migrations)
+
+	seeded := commandFor(t, seeds)
+	if seeded.Path == migrations.Path {
+		t.Fatalf("both directories build into %s, so each command replaces the other's runner",
+			seeded.Path)
+	}
+
+	if loaded := discovered(t, seeded); !slices.Equal(loaded, []string{"20260801T000000"}) {
+		t.Errorf("the seeds runner loaded %v, want the one seed", loaded)
+	}
+
+	if again := commandFor(t, p); !spoiled(t, again) {
+		t.Error("building the seeds runner made the migrations runner rebuild")
+		t.Log("A seeds directory and a migrations directory are two Go packages in one module, so")
+		t.Log("each needs a runner of its own -- one shared directory turns every alternate")
+		t.Log("migr up and migr seed into a full rebuild, and two concurrent ones into a race.")
+	}
+}
+
 func TestEditingAMigrationRebuilds(t *testing.T) {
 	p := fixture(t)
 	built := commandFor(t, p)
@@ -200,7 +225,7 @@ func TestAMigrationThatWillNotCompileIsReportedWithWhatTheCompilerSaid(t *testin
 		t.Errorf("the failure does not carry the compiler's own words: %v", refused)
 	}
 
-	if refused.Path != filepath.Join(p.Root, workDir, buildDir, sourceFile) {
+	if refused.Path != filepath.Join(cacheIn(p.Root, "migrations").dir, sourceFile) {
 		t.Errorf("the failure names %q, want the generated runner's stable path", refused.Path)
 	}
 }
@@ -218,7 +243,7 @@ func TestAFailedBuildLeavesNoStampToBeReadAsAHit(t *testing.T) {
 		t.Fatal("Command built a migrations package that does not compile")
 	}
 
-	if _, err := os.Stat(filepath.Join(p.Root, workDir, buildDir, stampFile)); err == nil {
+	if _, err := os.Stat(filepath.Join(cacheIn(p.Root, "migrations").dir, stampFile)); err == nil {
 		t.Error("a failed build left a stamp behind, so the next run would reuse a stale binary")
 	}
 }

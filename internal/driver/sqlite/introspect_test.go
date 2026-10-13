@@ -547,6 +547,10 @@ func TestTheSnapshotHoldsNeitherMigrsOwnHistoryNorSQLitesOwnTables(t *testing.T)
 		t.Fatalf("Ensure: %v", err)
 	}
 
+	if err := c.Seeds().Ensure(t.Context()); err != nil {
+		t.Fatalf("Ensure the seed history: %v", err)
+	}
+
 	apply(t, c, ir.CreateTable{Table: "app", Columns: []ir.Column{
 		{Name: "id", Type: mustType(t, "int64")},
 	}, PrimaryKey: []string{"id"}})
@@ -555,7 +559,7 @@ func TestTheSnapshotHoldsNeitherMigrsOwnHistoryNorSQLitesOwnTables(t *testing.T)
 
 	snapshot := introspect(t, c)
 
-	for _, name := range []string{c.table, "sqlite_sequence"} {
+	for _, name := range []string{c.table, c.seeds, "sqlite_sequence"} {
 		if _, held := snapshot.Table(name); held {
 			t.Errorf("the snapshot holds %q, which a differ would propose dropping", name)
 		}

@@ -27,6 +27,10 @@ func New(opts driver.Options) (driver.Driver, error) {
 		return nil, err
 	}
 
+	if err := checkHistoryTable(opts.Seeding()); err != nil {
+		return nil, err
+	}
+
 	if err := checkStrategy(opts.LockStrategy); err != nil {
 		return nil, err
 	}
@@ -36,8 +40,8 @@ func New(opts driver.Options) (driver.Driver, error) {
 		return nil, err
 	}
 
-	return &mysqlDriver{schema: opts.Schema, table: table, lockWait: lockWait,
-		statementLockWait: statementLockWait}, nil
+	return &mysqlDriver{schema: opts.Schema, table: table, seeds: opts.Seeding(),
+		lockWait: lockWait, statementLockWait: statementLockWait}, nil
 }
 
 // checkHistoryTable refuses a history table name this driver cannot compile its own schema for.
@@ -102,6 +106,8 @@ type mysqlDriver struct {
 	schema string
 	// table is where migrations are recorded, resolved by Options.Namespace rather than assumed.
 	table string
+	// seeds is where seeds are recorded, a second table that names no lock of its own.
+	seeds string
 	// lockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
 	lockWait time.Duration
 	// statementLockWait bounds each statement, and is migr.yaml's safety.lock_timeout.
@@ -151,7 +157,7 @@ func (d *mysqlDriver) establish(ctx context.Context, db *sql.DB, database string
 	}
 
 	session := &mysqlConn{db: db, conn: conn, database: database, table: d.table,
-		stored: d.table, lockWait: d.lockWait}
+		stored: d.table, seeds: d.seeds, seedStored: d.seeds, lockWait: d.lockWait}
 
 	if err := d.prepare(ctx, session); err != nil {
 		return nil, errors.Join(err, closeConn(conn))
@@ -190,6 +196,7 @@ func (d *mysqlDriver) prepare(ctx context.Context, session *mysqlConn) error {
 
 	session.version, session.caps = version, caps
 	session.folding, session.stored = folding, storedName(d.table, folding)
+	session.seedStored = storedName(d.seeds, folding)
 	session.lock = namespaceLock(session.database, d.table)
 
 	return nil

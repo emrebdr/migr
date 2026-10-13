@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/emrebdr/migr/internal/checksum"
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 )
@@ -398,4 +399,36 @@ func TestARecordedValueThisBuildCannotReadBackIsACorruptRow(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestASeedIsRecordedInTheSeedTableAndNowhereElse(t *testing.T) {
+	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
+		held := ensured(t, c)
+
+		seeds, ok := c.Seeds().(mysqlHistory)
+		if !ok || seeds.table != driver.DefaultSeedTable {
+			t.Fatalf("Seeds returned %#v, want this package's store over %q", c.Seeds(),
+				driver.DefaultSeedTable)
+		}
+
+		dropLater(t, c, seeds.table)
+		drop(t.Context(), c, seeds.table)
+
+		if err := seeds.Ensure(t.Context()); err != nil {
+			t.Fatalf("Ensure the seed history: %v", err)
+		}
+
+		if err := seeds.Record(t.Context(), run(t, 2, 3).Stamp()); err != nil {
+			t.Fatalf("Record a seed: %v", err)
+		}
+
+		if runs, err := seeds.List(t.Context()); err != nil || len(runs) != 1 {
+			t.Errorf("the seed history holds %d runs (%v), want the one recorded", len(runs), err)
+		}
+
+		if runs, err := held.List(t.Context()); err != nil || len(runs) != 0 {
+			t.Errorf("the migration history holds %d runs (%v) after a seed was recorded",
+				len(runs), err)
+		}
+	})
 }

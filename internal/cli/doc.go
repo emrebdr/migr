@@ -439,8 +439,24 @@
 // which candidates it has already put to somebody. A loop outside it would
 // re-propose every declined candidate forever.
 //
+// # Seeds
+//
+// migr seed applies the seeds in seeds.dir and in the subdirectory named for this
+// database's environment, through engine.Apply over a session whose History is
+// the seed table -- the seeding wrapper -- so the lock, the transactions, dirty,
+// drift and resume are a migration's own and nothing in internal/engine branches
+// on seeds. The lock is the migration lock: a driver keys it by the history table
+// alone, so a seed and a migr up exclude each other (ADR 0076, A).
+//
+// It refuses unless every migration has run, which is the whole of seeds never
+// mixing with migration ordering: a seed always meets the schema the migrations
+// leave. Seeds are ordered among themselves alone, so a seed declaring a migration
+// names a version nothing in its set carries. A seed emitting a schema change is
+// refused by the dataOnly source, and a subdirectory no environment names is
+// refused before anything connects, since its seeds would otherwise never run.
+//
 // Status: init, create, up, down, status, history, plan, validate, version, and
-// config -- which is M5 complete. diff is M11-T5, seed is M12-T1, and cutover is
-// M13-T10. TestEveryCommandIsInTheExitCodeMatrix is what makes each of them say
+// config -- which is M5 complete. diff is M11-T5, seed is M12-T1 (applying; M12-T5
+// lists and rolls back), and cutover is M13-T10. TestEveryCommandIsInTheExitCodeMatrix is what makes each of them say
 // which of the five endings it can reach before it ships.
 package cli

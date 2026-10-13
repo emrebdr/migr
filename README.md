@@ -112,8 +112,8 @@ is the way out: resume from the recorded index, or record what you did by hand. 
 set then applies and **reverses** against both servers, compared by the server's own printer, which
 makes this the first engine whose emulated inverse has run at all.
 
-**Now — M10, validation and safety.** Then introspection and schema diffing (M11), seeds and data
-transformations (M12), and the zero-downtime milestone (M13) — where "safe against a live production
+**Now — M12, seeds and data transformations.** Validation and safety (M10) and introspection and
+schema diffing (M11) are done; then the zero-downtime milestone (M13) — where "safe against a live production
 database" becomes something a test suite proves rather than something the README asserts.
 
 ---
@@ -260,8 +260,8 @@ suite is what holds that true as both SDKs evolve.
 | `migr validate` | read, compile, and reverse every migration, connecting to nothing | **works today** |
 | `migr validate --connect` | the same, plus what the target server declares it cannot perform | **works today** |
 | `migr resolve` | settle the migration a stopped run left between states | **works today** |
-| `migr diff` | introspect, diff against the desired schema, emit a migration | planned |
-| `migr seed` | data seeds, kept separate from schema migrations | planned |
+| `migr diff` | introspect, diff against the desired schema, emit a migration | **works today** |
+| `migr seed` | apply data seeds, kept in a history and a directory of their own, scoped per environment | **works today** — list and roll back are planned |
 
 Global flags `--config`, `--database`, `--json`, and `-v/--verbose` are registered now.
 `--json` switches **both** streams — JSON results on stdout, JSON logs on stderr — so
@@ -432,6 +432,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0073](docs/adr/0073-the-schema-projection.md) | Folding operations onto a schema, writing them back out, and `migr diff` |
 | [0074](docs/adr/0074-the-neutral-round-trip.md) | Comparing two moments of a schema through the snapshot rather than the catalog |
 | [0075](docs/adr/0075-reference-integrity.md) | Judging the references migrations make against two projections rather than one |
+| [0076](docs/adr/0076-seed-migrations.md) | Seeds: a second history on the same session, scoped by directory, run after every migration |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

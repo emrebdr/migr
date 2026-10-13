@@ -13,23 +13,34 @@ const root = "."
 
 // Discover returns every migration a directory holds, in the order they must run.
 func Discover(fsys fs.FS) ([]Migration, error) {
+	return DiscoverBeside(fsys, nil)
+}
+
+// DiscoverBeside is Discover passing over the subdirectories named, and refusing every other one.
+func DiscoverBeside(fsys fs.FS, beside []string) ([]Migration, error) {
 	entries, err := fs.ReadDir(fsys, root)
 	if err != nil {
 		return nil, describeUnreadable(err)
 	}
 
-	found, err := parseAll(entries)
+	found, err := parseAll(entries, beside)
 	if err != nil {
 		return nil, err
 	}
 
-	slices.SortStableFunc(found, byVersion)
+	return Merge(found)
+}
 
-	if err := checkDistinct(found); err != nil {
+// Merge orders migrations read from several directories as one set, refusing two that claim one version.
+func Merge(found ...[]Migration) ([]Migration, error) {
+	merged := slices.Concat(found...)
+	slices.SortStableFunc(merged, byVersion)
+
+	if err := checkDistinct(merged); err != nil {
 		return nil, err
 	}
 
-	return found, nil
+	return merged, nil
 }
 
 // describeUnreadable separates a directory that is not there from one that could not be read.
@@ -42,11 +53,11 @@ func describeUnreadable(err error) error {
 }
 
 // parseAll reads every entry the directory holds, refusing each one that is not a migration.
-func parseAll(entries []fs.DirEntry) ([]Migration, error) {
+func parseAll(entries []fs.DirEntry, beside []string) ([]Migration, error) {
 	found := make([]Migration, 0, len(entries))
 
 	for _, entry := range entries {
-		if hidden(entry) {
+		if hidden(entry) || entry.IsDir() && slices.Contains(beside, entry.Name()) {
 			continue
 		}
 

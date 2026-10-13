@@ -83,6 +83,9 @@ type Work func(ctx context.Context) error
 // DefaultHistoryTable is where migrations are recorded when migr.yaml names no other table.
 const DefaultHistoryTable = "migr_migrations"
 
+// DefaultSeedTable is where seeds are recorded when migr.yaml names no other table.
+const DefaultSeedTable = "migr_seeds"
+
 // DefaultLockWait is how long migr waits for the migration lock when migr.yaml names no timeout.
 const DefaultLockWait = 30 * time.Second
 
@@ -107,6 +110,8 @@ type Conn interface {
 	Capabilities() capability.Set
 	// History returns this session's view of the migration history, already bound to it.
 	History() history.Store
+	// Seeds returns this session's view of the seed history, a second table under the same lock.
+	Seeds() history.Store
 	// ServerVersion returns the connected server's version, as the driver detected it at Open.
 	ServerVersion() string
 	// Close releases the session and anything it holds.

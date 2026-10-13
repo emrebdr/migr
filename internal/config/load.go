@@ -23,6 +23,9 @@ import (
 // DefaultFilename is the config file looked for when --config is not given.
 const DefaultFilename = "migr.yaml"
 
+// DefaultSeedsDir is where seeds live when migr.yaml names no other directory.
+const DefaultSeedsDir = "./seeds"
+
 // Load reads, expands, defaults, and validates the config at path.
 func Load(path string) (*Config, error) {
 	src, err := os.ReadFile(path)
@@ -76,6 +79,7 @@ func parse(src []byte, source string, lookup func(string) (string, bool)) (*Conf
 // resolvePaths anchors every relative path in the config to its config file rather than to the cwd.
 func resolvePaths(cfg *Config, source string) {
 	cfg.Migrations.Dir = anchor(cfg.Migrations.Dir, source)
+	cfg.Seeds.Dir = anchor(cfg.Seeds.Dir, source)
 }
 
 // anchor joins a relative path to the directory its config file sits in, leaving absolute ones be.
@@ -104,6 +108,9 @@ func decode(file *ast.File, cfg *Config) error {
 func applyDefaults(cfg *Config) {
 	setString(&cfg.Migrations.Dir, "./migrations")
 	setString(&cfg.History.Table, driver.DefaultHistoryTable)
+	setString(&cfg.Seeds.Dir, DefaultSeedsDir)
+	setString(&cfg.Seeds.Table, driver.DefaultSeedTable)
+	setEnvironments(cfg)
 	setDuration(&cfg.Lock.Timeout, driver.DefaultLockWait)
 	setDuration(&cfg.Runtime.HandshakeTimeout, protocol.DefaultHandshake)
 	setDuration(&cfg.Runtime.RequestTimeout, protocol.DefaultRequest)
@@ -126,6 +133,16 @@ func applyDefaults(cfg *Config) {
 	}
 
 	setRuleDefaults(cfg)
+}
+
+// setEnvironments names each database's environment after its own key, where the document named none.
+func setEnvironments(cfg *Config) {
+	for name, db := range cfg.Databases {
+		if db.Environment == "" {
+			db.Environment = name
+			cfg.Databases[name] = db
+		}
+	}
 }
 
 // setRuleDefaults fills in every rule this build ships, keeping whatever the document said about it.

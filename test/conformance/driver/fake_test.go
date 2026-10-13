@@ -118,6 +118,11 @@ func (c *fakeConn) History() history.Store {
 	return nil
 }
 
+// Seeds returns no store, for the reason History returns none.
+func (c *fakeConn) Seeds() history.Store {
+	return nil
+}
+
 // ServerVersion reports the version this fake session was opened against.
 func (c *fakeConn) ServerVersion() string {
 	return c.caps.Server()

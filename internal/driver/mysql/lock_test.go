@@ -255,3 +255,17 @@ func sqlErrConnDone() error {
 func badConn() error {
 	return fmt.Errorf("releasing: %w", sqldriver.ErrBadConn)
 }
+
+func TestTheSeedTableNamesNoLockOfItsOwn(t *testing.T) {
+	built, err := New(driver.Options{SeedTable: "fixtures"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	d := built.(*mysqlDriver)
+	if d.table != driver.DefaultHistoryTable || d.seeds != "fixtures" {
+		t.Errorf("the driver locks on %q and records seeds in %q", d.table, d.seeds)
+		t.Log("The lock name is derived from the history table alone, so seeds recorded beside it")
+		t.Log("run under the lock migr up takes rather than one of their own.")
+	}
+}

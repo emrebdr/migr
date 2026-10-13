@@ -29,6 +29,8 @@ type sqliteConn struct {
 	path string
 	// table is where runs are recorded, resolved by Options.Namespace rather than assumed.
 	table string
+	// seeds is where seeds are recorded, beside the history and under the same lock.
+	seeds string
 	// lockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
 	lockWait time.Duration
 	// lock is the lock file this session holds the migration lock through, nil when it holds none.
@@ -68,6 +70,11 @@ func (c *sqliteConn) Capabilities() capability.Set {
 // History returns this session's view of the migration history, bound to this session.
 func (c *sqliteConn) History() history.Store {
 	return sqliteHistory{session: c, table: c.table}
+}
+
+// Seeds returns this session's view of the seed history, bound to this session.
+func (c *sqliteConn) Seeds() history.Store {
+	return sqliteHistory{session: c, table: c.seeds}
 }
 
 // ServerVersion returns the SQLite release this binary links, as it reported itself at Open.

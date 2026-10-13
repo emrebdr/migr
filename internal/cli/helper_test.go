@@ -76,6 +76,8 @@ const (
 	declaresCycle = "cycle"
 	// declaresUnknown has each migration declare a version no file in the directory carries.
 	declaresUnknown = "unknown"
+	// declaresFirst has every migration but the first declare it, which a seed reads as a migration.
+	declaresFirst = "first"
 )
 
 // strayVersion is the migration actLoadsExtra claims, which no file in any staged project carries.
@@ -243,6 +245,10 @@ func (r *scriptedRuntime) declaredBy(m migration.Migration,
 		return r.chained(m, found)
 	case declaresUnknown:
 		return []string{strayVersion}
+	case declaresFirst:
+		if m.Version != firstVersion {
+			return []string{firstVersion}
+		}
 	}
 
 	return []string{}

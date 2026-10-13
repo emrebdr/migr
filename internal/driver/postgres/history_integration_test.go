@@ -683,3 +683,33 @@ func TestTheHistoryTableIsCreatedWholeOrNotAtAll(t *testing.T) {
 	t.Log("second, so a rollback discards it whole. That is also why it is a setup step taken")
 	t.Log("before the migration transaction opens, and under the migration lock.")
 }
+
+func TestASeedIsRecordedInTheSeedTableAndNowhereElse(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			session, _ := ensured(t, dsnFor(server.env, server.dsn))
+
+			if session.seeds.table != driver.DefaultSeedTable {
+				t.Fatalf("the seed store is bound to %q, want %q", session.seeds.table,
+					driver.DefaultSeedTable)
+			}
+
+			if err := session.Seeds().Ensure(t.Context()); err != nil {
+				t.Fatalf("Ensure the seed history: %v", err)
+			}
+
+			if err := session.Seeds().Record(t.Context(), run(t, 2, 3, "20260929T120000").Stamp()); err != nil {
+				t.Fatalf("Record a seed: %v", err)
+			}
+
+			if runs, err := session.Seeds().List(t.Context()); err != nil || len(runs) != 1 {
+				t.Errorf("the seed history holds %d runs (%v), want the one recorded", len(runs), err)
+			}
+
+			if runs, err := session.History().List(t.Context()); err != nil || len(runs) != 0 {
+				t.Errorf("the migration history holds %d runs (%v) after a seed was recorded",
+					len(runs), err)
+			}
+		})
+	}
+}

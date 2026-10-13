@@ -54,6 +54,9 @@ func (c declaredConn) Capabilities() capability.Set { return c.caps }
 // History refuses: there is no server behind this session for a store to read or write.
 func (declaredConn) History() history.Store { return noServerHistory{} }
 
+// Seeds refuses every call, as History does.
+func (declaredConn) Seeds() history.Store { return noServerHistory{} }
+
 // ServerVersion reports the version the declaration was resolved against.
 func (c declaredConn) ServerVersion() string { return c.caps.Server() }
 

@@ -118,6 +118,11 @@ func (o *OfflineConn) History() history.Store {
 	return nil
 }
 
+// Seeds returns no store, for the reason History returns none.
+func (o *OfflineConn) Seeds() history.Store {
+	return nil
+}
+
 // ServerVersion reports nothing, since no server was reached to detect a version from.
 func (o *OfflineConn) ServerVersion() string {
 	return ""

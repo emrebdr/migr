@@ -15,6 +15,7 @@ const Version = 1
 type Config struct {
 	Version    int                 `yaml:"version"    json:"version"`
 	Migrations Migrations          `yaml:"migrations" json:"migrations"`
+	Seeds      Seeds               `yaml:"seeds"      json:"seeds"`
 	Databases  map[string]Database `yaml:"databases"  json:"databases"`
 	History    History             `yaml:"history"    json:"history"`
 	Lock       Lock                `yaml:"lock"       json:"lock"`
@@ -29,11 +30,23 @@ type Migrations struct {
 	Language Language `yaml:"language" json:"language"`
 }
 
+// Seeds describes where seeds live and which table records them, apart from the migrations.
+type Seeds struct {
+	// Dir holds the seeds every environment runs, and one subdirectory per environment for the rest.
+	Dir string `yaml:"dir"   json:"dir"`
+	// Table records which seeds have run, and is never the table the migration history is in.
+	Table string `yaml:"table" json:"table"`
+	// Environments names every environment a subdirectory may be for, where databases name fewer.
+	Environments []string `yaml:"environments" json:"environments,omitempty"`
+}
+
 // Database is a single migration target.
 type Database struct {
 	Driver string `yaml:"driver" json:"driver"`
 	DSN    Secret `yaml:"dsn"    json:"dsn"`
 	Schema string `yaml:"schema" json:"schema,omitempty"`
+	// Environment names the seeds subdirectory this database also runs, defaulting to its own key.
+	Environment string `yaml:"environment" json:"environment"`
 }
 
 // History configures where applied migrations are recorded.

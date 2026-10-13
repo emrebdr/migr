@@ -15,6 +15,8 @@ type Options struct {
 	Schema string
 	// HistoryTable is where migrations are recorded, and with Schema it names one installation.
 	HistoryTable string
+	// SeedTable is where seeds are recorded, on the same session and under the same lock.
+	SeedTable string
 	// LockStrategy is how migr.yaml asked for the migration lock, empty meaning the driver's own.
 	LockStrategy string
 	// LockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
@@ -30,6 +32,15 @@ func (o Options) Namespace() (schema, table string) {
 	}
 
 	return o.Schema, o.HistoryTable
+}
+
+// Seeding returns the table seeds are recorded in, defaulting what migr.yaml left unset.
+func (o Options) Seeding() string {
+	if o.SeedTable == "" {
+		return DefaultSeedTable
+	}
+
+	return o.SeedTable
 }
 
 // Waits returns the two lock bounds, defaulting whichever migr.yaml left unset.

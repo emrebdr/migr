@@ -41,6 +41,10 @@ func New(opts driver.Options) (driver.Driver, error) {
 		return nil, err
 	}
 
+	if err := checkHistoryTable(opts.Seeding()); err != nil {
+		return nil, err
+	}
+
 	if err := checkStrategy(opts.LockStrategy); err != nil {
 		return nil, err
 	}
@@ -50,7 +54,7 @@ func New(opts driver.Options) (driver.Driver, error) {
 		return nil, err
 	}
 
-	return &sqliteDriver{table: table, lockWait: lockWait,
+	return &sqliteDriver{table: table, seeds: opts.Seeding(), lockWait: lockWait,
 		statementLockWait: statementLockWait}, nil
 }
 
@@ -122,6 +126,8 @@ func checkWait(key string, wait time.Duration) error {
 type sqliteDriver struct {
 	// table is where migrations are recorded, resolved by Options.Namespace rather than assumed.
 	table string
+	// seeds is where seeds are recorded, in the same database file and under the same lock.
+	seeds string
 	// lockWait bounds the wait for the migration lock, and is migr.yaml's lock.timeout.
 	lockWait time.Duration
 	// statementLockWait bounds each statement, and is migr.yaml's safety.lock_timeout.
@@ -167,7 +173,7 @@ func (d *sqliteDriver) establish(ctx context.Context, db *sql.DB) (*sqliteConn, 
 		return nil, fmt.Errorf("%w: pinning a connection: %w", ErrConnect, err)
 	}
 
-	session := &sqliteConn{db: db, conn: conn, table: d.table, lockWait: d.lockWait}
+	session := &sqliteConn{db: db, conn: conn, table: d.table, seeds: d.seeds, lockWait: d.lockWait}
 
 	if err := applyPragmas(ctx, session, d.statementLockWait); err != nil {
 		return nil, errors.Join(err, closeConn(conn))

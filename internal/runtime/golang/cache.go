@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // workDir is the directory migr keeps its own build products in, inside the user's module.
@@ -29,15 +30,34 @@ const ignoreFile = ".gitignore"
 // ignoreAll is what that file holds, which ignores everything beneath it including itself.
 const ignoreAll = "*\n"
 
-// cache is the one directory this adapter builds in, and everything it holds.
+// moduleRoot names the build directory of a migrations directory that is the module's own root.
+const moduleRoot = "_module"
+
+// pathJoint stands for a separator in a directory's name, since each one builds in one flat directory.
+const pathJoint = "__"
+
+// cache is the directory this adapter builds one migrations directory's runner in.
 type cache struct {
 	// dir is the build directory itself, inside the module rather than beside it.
 	dir string
+	// work is migr's own directory above it, which the ignore file is written into.
+	work string
 }
 
-// cacheIn returns the build directory for one module, creating nothing until something is built.
-func cacheIn(moduleDir string) cache {
-	return cache{dir: filepath.Join(moduleDir, workDir, buildDir)}
+// cacheIn returns the build directory for one migrations directory, creating nothing until it builds.
+func cacheIn(moduleDir, relative string) cache {
+	work := filepath.Join(moduleDir, workDir)
+
+	return cache{dir: filepath.Join(work, buildDir, cacheName(relative)), work: work}
+}
+
+// cacheName renders a directory's place in its module as one name, so two never share a runner.
+func cacheName(relative string) string {
+	if relative == "" || relative == "." {
+		return moduleRoot
+	}
+
+	return strings.ReplaceAll(filepath.ToSlash(relative), "/", pathJoint)
 }
 
 // source is the generated runner's path, which is what a build failure names.
@@ -52,7 +72,7 @@ func (c cache) binary() string {
 
 // pkg is the package pattern go build is pointed at, relative to the module it runs in.
 func (c cache) pkg() string {
-	return "./" + filepath.ToSlash(filepath.Join(workDir, buildDir))
+	return "./" + filepath.ToSlash(filepath.Join(workDir, buildDir, filepath.Base(c.dir)))
 }
 
 // holds reports whether a binary built from this exact stamp is already sitting here.
@@ -73,7 +93,7 @@ func (c cache) prepare() error {
 		return fmt.Errorf("making %s: %w", c.dir, err)
 	}
 
-	return writeIgnore(filepath.Dir(c.dir))
+	return writeIgnore(c.work)
 }
 
 // writeIgnore writes the ignore file if there is none, and never touches one somebody edited.

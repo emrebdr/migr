@@ -138,6 +138,17 @@ var codes = []coded{
 		stage: stagedApplied, want: ExitValidation},
 	{name: "the migration lock a diff takes to read", command: "diff",
 		stage: lockedGoProject, want: ExitLock, scripted: true},
+	{name: "seed", command: "seed", stage: stagedSeedable, want: ExitOK},
+	{name: "a seed run over migrations still to run", command: "seed", stage: seededProject,
+		want: ExitRuntime},
+	{name: "a seeds directory no environment runs", command: "seed", stage: stagedStraySeeds,
+		want: ExitValidation},
+	{name: "both selectors at once", command: "seed", args: []string{"--step", "1", "--to", noonVersion},
+		stage: stagedSeedable, want: ExitValidation},
+	{name: "the migration lock a seed run takes", command: "seed", stage: stagedSeedLocked,
+		want: ExitLock},
+	{name: "a seed edited since it ran", command: "seed", stage: stagedSeedDrifted,
+		want: ExitDrift},
 }
 
 // A row says whether a runtime answers for its migrations, because two rows turn on the answer:

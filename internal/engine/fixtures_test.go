@@ -199,6 +199,11 @@ func (r *recorder) History() history.Store {
 	return r.store
 }
 
+// Seeds returns the seed history, which no engine test reaches.
+func (r *recorder) Seeds() history.Store {
+	return nil
+}
+
 // ServerVersion reports the version the declaration was resolved against.
 func (r *recorder) ServerVersion() string { return r.caps.Server() }
 

@@ -443,15 +443,20 @@ func TestTheSnapshotHoldsNeitherTheHistoryTableNorItsIndexes(t *testing.T) {
 			t.Fatalf("Ensure: %v", err)
 		}
 
+		if err := session.Seeds().Ensure(t.Context()); err != nil {
+			t.Fatalf("Ensure the seed history: %v", err)
+		}
+
 		apply(t, session, ir.Operations{ir.CreateTable{Table: "app", Columns: []ir.Column{
 			{Name: "id", Type: probeType(t, "int64")},
 		}, PrimaryKey: []string{"id"}}})
 
 		snapshot := introspect(t, session)
 
-		if _, held := snapshot.Table(session.history.table); held {
-			t.Errorf("the snapshot holds %q, which a differ would propose dropping",
-				session.history.table)
+		for _, name := range []string{session.history.table, session.seeds.table} {
+			if _, held := snapshot.Table(name); held {
+				t.Errorf("the snapshot holds %q, which a differ would propose dropping", name)
+			}
 		}
 
 		if _, held := snapshot.Table("app"); !held {

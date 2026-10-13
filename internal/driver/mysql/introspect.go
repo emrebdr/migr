@@ -17,17 +17,17 @@ import (
 const (
 	tableQuery = "SELECT TABLE_NAME, TABLE_TYPE, coalesce(TABLE_COLLATION, '') " +
 		"FROM information_schema.TABLES " +
-		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME <> ? ORDER BY TABLE_NAME"
+		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME NOT IN (?, ?) ORDER BY TABLE_NAME"
 
 	viewQuery = "SELECT TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS " +
-		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME <> ?"
+		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME NOT IN (?, ?)"
 
 	columnsQuery = "SELECT c.TABLE_NAME, c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, " +
 		"c.COLUMN_DEFAULT, c.EXTRA, coalesce(c.COLLATION_NAME, '') " +
 		"FROM information_schema.COLUMNS c " +
 		"JOIN information_schema.TABLES t ON t.TABLE_SCHEMA = c.TABLE_SCHEMA " +
 		"AND t.TABLE_NAME = c.TABLE_NAME " +
-		"WHERE c.TABLE_SCHEMA = DATABASE() AND t.TABLE_TYPE = 'BASE TABLE' AND c.TABLE_NAME <> ? " +
+		"WHERE c.TABLE_SCHEMA = DATABASE() AND t.TABLE_TYPE = 'BASE TABLE' AND c.TABLE_NAME NOT IN (?, ?) " +
 		"ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION"
 
 	keysQuery = "SELECT k.TABLE_NAME, k.CONSTRAINT_NAME, t.CONSTRAINT_TYPE, k.COLUMN_NAME, " +
@@ -39,13 +39,13 @@ const (
 		"LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS r " +
 		"ON r.CONSTRAINT_SCHEMA = k.TABLE_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME " +
 		"AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME " +
-		"WHERE k.TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME <> ? " +
+		"WHERE k.TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME NOT IN (?, ?) " +
 		"ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION"
 
 	indexesQuery = "SELECT TABLE_NAME, INDEX_NAME, coalesce(COLUMN_NAME, ''), NON_UNIQUE, " +
 		"coalesce(COLLATION, ''), coalesce(SUB_PART, 0) " +
 		"FROM information_schema.STATISTICS " +
-		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME <> ? " +
+		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME NOT IN (?, ?) " +
 		"ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX"
 )
 
@@ -59,12 +59,12 @@ const (
 		"FROM information_schema.CHECK_CONSTRAINTS c " +
 		"JOIN information_schema.TABLE_CONSTRAINTS t " +
 		"ON t.CONSTRAINT_SCHEMA = c.CONSTRAINT_SCHEMA AND t.CONSTRAINT_NAME = c.CONSTRAINT_NAME " +
-		"WHERE c.CONSTRAINT_SCHEMA = DATABASE() AND t.TABLE_NAME <> ? " +
+		"WHERE c.CONSTRAINT_SCHEMA = DATABASE() AND t.TABLE_NAME NOT IN (?, ?) " +
 		"ORDER BY t.TABLE_NAME, c.CONSTRAINT_NAME"
 
 	mariaChecksQuery = "SELECT TABLE_NAME, CONSTRAINT_NAME, CHECK_CLAUSE, 'YES' " +
 		"FROM information_schema.CHECK_CONSTRAINTS " +
-		"WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME <> ? " +
+		"WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME NOT IN (?, ?) " +
 		"ORDER BY TABLE_NAME, CONSTRAINT_NAME"
 )
 
@@ -350,7 +350,7 @@ func columnFindings(extra, collation, table string) []string {
 
 // probe runs one of this file's reads, inside this session's transaction when it has one open.
 func (c *mysqlConn) probe(ctx context.Context, query string) (*sql.Rows, error) {
-	rows, err := c.runner().QueryContext(ctx, query, c.stored)
+	rows, err := c.runner().QueryContext(ctx, query, c.stored, c.seedStored)
 	if err != nil {
 		return nil, c.failedProbe("the catalog", err)
 	}

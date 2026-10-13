@@ -2,6 +2,8 @@ package golang
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 
 	"github.com/emrebdr/migr/internal/runtime"
 )
@@ -69,7 +71,12 @@ func (a *Adapter) prepare(ctx context.Context, p runtime.Project) (string, error
 // buildFor returns the cached binary for these exact inputs, building one only when there is none.
 func buildFor(ctx context.Context, chain toolchain, mod module, dir string,
 	runner []byte, migrations string) (string, error) {
-	store := cacheIn(mod.dir)
+	relative, err := filepath.Rel(mod.dir, dir)
+	if err != nil {
+		return "", fmt.Errorf("%w: %s is not under %s", ErrOutsideModule, dir, mod.dir)
+	}
+
+	store := cacheIn(mod.dir, relative)
 
 	digest, err := stamp(chain, mod, migrations, dir, runner)
 	if err != nil {

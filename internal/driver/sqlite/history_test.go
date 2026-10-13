@@ -410,3 +410,31 @@ func TestARecordedValueThisBuildCannotReadBackIsACorruptRow(t *testing.T) {
 		})
 	}
 }
+
+func TestASeedIsRecordedInTheSeedTableAndNowhereElse(t *testing.T) {
+	c, held := ensured(t)
+
+	seeds, ok := c.Seeds().(sqliteHistory)
+	if !ok || seeds.table != driver.DefaultSeedTable {
+		t.Fatalf("Seeds returned %#v, want this package's store over %q", c.Seeds(),
+			driver.DefaultSeedTable)
+	}
+
+	if err := seeds.Ensure(t.Context()); err != nil {
+		t.Fatalf("Ensure the seed history: %v", err)
+	}
+
+	if err := seeds.Record(t.Context(), run(t, 2, 3).Stamp()); err != nil {
+		t.Fatalf("Record a seed: %v", err)
+	}
+
+	if runs, err := seeds.List(t.Context()); err != nil || len(runs) != 1 {
+		t.Errorf("the seed history holds %d runs (%v), want the one recorded", len(runs), err)
+	}
+
+	if runs, err := held.List(t.Context()); err != nil || len(runs) != 0 {
+		t.Errorf("the migration history holds %d runs (%v) after a seed was recorded", len(runs), err)
+		t.Log("Seeds keep a history of their own, so a seed is never reconciled as a migration and")
+		t.Log("migr status never reports one.")
+	}
+}

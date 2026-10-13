@@ -27,6 +27,10 @@ func New(opts driver.Options) (driver.Driver, error) {
 		return nil, err
 	}
 
+	if err := checkHistoryTable(opts.Seeding()); err != nil {
+		return nil, err
+	}
+
 	if err := checkStrategy(opts.LockStrategy); err != nil {
 		return nil, err
 	}
@@ -39,6 +43,7 @@ func New(opts driver.Options) (driver.Driver, error) {
 	return &pgDriver{
 		schema:            opts.Schema,
 		table:             table,
+		seeds:             opts.Seeding(),
 		key:               namespaceKey(schema, table),
 		lockWait:          lockWait,
 		statementLockWait: statementLockWait,
@@ -68,6 +73,8 @@ type pgDriver struct {
 	schema string
 	// table is where migrations are recorded, resolved by Options.Namespace rather than assumed.
 	table string
+	// seeds is where seeds are recorded, a second table that keys no lock of its own.
+	seeds string
 	key   lockKey
 	// lockWait bounds an acquire server-side, and is migr.yaml's lock.timeout.
 	lockWait time.Duration
@@ -137,6 +144,7 @@ func (d *pgDriver) establish(ctx context.Context, conn *pgx.Conn) (*pgConn, erro
 		lockWait: d.lockWait,
 	}
 	session.history = pgHistory{session: session, table: d.table}
+	session.seeds = pgHistory{session: session, table: d.seeds}
 
 	return session, nil
 }

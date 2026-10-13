@@ -12,11 +12,16 @@
 //
 // # What is written, and where
 //
-// Everything lands in <module root>/.migr/go: the generated main.go, the built
-// runner, and the stamp the runner was built from. A .gitignore holding "*" is
-// written beside them the first time, and never over one somebody has edited, so
-// migr's build products stay out of a commit without migr touching the user's own
-// ignore file.
+// Everything lands in <module root>/.migr/go/<directory>: the generated main.go,
+// the built runner, and the stamp the runner was built from. <directory> is the
+// migrations directory's place in the module with its separators spelled "__",
+// and "_module" for the module's own root, so a project's migrations and its seeds
+// -- two Go packages in one module -- each keep a runner of their own rather than
+// rebuilding the other's on every alternate command (M12-T1, ADR 0076). Two names
+// that collide cost a rebuild and never a wrong binary, since the stamp covers the
+// directory. A .gitignore holding "*" is written into .migr the first time, and
+// never over one somebody has edited, so migr's build products stay out of a
+// commit without migr touching the user's own ignore file.
 //
 // A directory whose name begins with "." is invisible to the go tool's own
 // patterns, so the generated runner cannot break the user's go build ./..., go vet

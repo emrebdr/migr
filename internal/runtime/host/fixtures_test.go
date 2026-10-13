@@ -95,6 +95,9 @@ func (s *session) Capabilities() capability.Set { return s.caps }
 // History is never reached from a callback.
 func (s *session) History() history.Store { return nil }
 
+// Seeds returns no store, for the reason History returns none.
+func (s *session) Seeds() history.Store { return nil }
+
 // ServerVersion reports what host.info renders.
 func (s *session) ServerVersion() string { return s.version }
 

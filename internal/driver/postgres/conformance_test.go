@@ -48,6 +48,9 @@ func (c declaredConn) Capabilities() capability.Set { return c.caps }
 // History refuses: there is no server behind this session for a store to read or write.
 func (declaredConn) History() history.Store { return noServerHistory{} }
 
+// Seeds refuses every call, as History does.
+func (declaredConn) Seeds() history.Store { return noServerHistory{} }
+
 // noServerHistory refuses every call, rather than a nil no caller could have checked.
 type noServerHistory struct{}
 

@@ -65,6 +65,24 @@ func projectAt(root string) runtime.Project {
 	}
 }
 
+// seedsBeside adds a seeds package to a copied fixture, holding one seed, and describes it.
+func seedsBeside(t *testing.T, p runtime.Project) runtime.Project {
+	t.Helper()
+
+	dir := filepath.Join(p.Root, "seeds")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("making %s: %v", dir, err)
+	}
+
+	edit(t, p, filepath.Join("seeds", "20260801T000000_add_teams.go"),
+		strings.Replace(addTeams, "package migrations", "package seeds", 1))
+
+	seeds := p
+	seeds.Dir = dir
+
+	return seeds
+}
+
 // copyTree copies one testdata directory, since a build writes into the module it builds.
 func copyTree(t *testing.T, from, to string) {
 	t.Helper()

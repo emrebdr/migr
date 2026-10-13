@@ -80,6 +80,9 @@ func (c *conn) Capabilities() capability.Set { return c.caps }
 // History is never reached from a callback.
 func (c *conn) History() history.Store { return nil }
 
+// Seeds returns no store, for the reason History returns none.
+func (c *conn) Seeds() history.Store { return nil }
+
 // ServerVersion reports what host.info renders.
 func (c *conn) ServerVersion() string { return "17.2" }
 

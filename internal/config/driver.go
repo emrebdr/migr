@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/emrebdr/migr/internal/driver"
 )
@@ -68,8 +69,29 @@ func (c *Config) DriverOptions(db Database) driver.Options {
 	return driver.Options{
 		Schema:            db.Schema,
 		HistoryTable:      c.History.Table,
+		SeedTable:         c.Seeds.Table,
 		LockStrategy:      string(c.Lock.Strategy),
 		LockWait:          c.Lock.Timeout.Duration(),
 		StatementLockWait: c.Safety.LockTimeout.Duration(),
 	}
+}
+
+// Environments returns every environment a seeds subdirectory may be for, sorted and once each.
+func (c *Config) Environments() []string {
+	if len(c.Seeds.Environments) > 0 {
+		named := slices.Clone(c.Seeds.Environments)
+		slices.Sort(named)
+
+		return slices.Compact(named)
+	}
+
+	named := make([]string, 0, len(c.Databases))
+
+	for _, name := range sortedKeys(c.Databases) {
+		named = append(named, c.Databases[name].Environment)
+	}
+
+	slices.Sort(named)
+
+	return slices.Compact(named)
 }

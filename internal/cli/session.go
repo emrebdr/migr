@@ -40,8 +40,19 @@ type target struct {
 	name string
 	// db is what that key resolved to, DSN included.
 	db config.Database
-	// fsys is the migrations directory, which a command reads only if it needs the files.
+	// dir is the directory this target reads migrations from, which is migrations.dir unless seeding.
+	dir string
+	// fsys is that directory, which a command reads only if it needs the files.
 	fsys fs.FS
+}
+
+// at returns this target reading another directory, which is how seeds reach the same machinery.
+func (t *target) at(dir string) *target {
+	moved := *t
+	moved.dir = dir
+	moved.fsys = os.DirFS(dir)
+
+	return &moved
 }
 
 // closer ends whatever a source started, and is nil for a source that started nothing.
@@ -79,7 +90,7 @@ func resolve(opts *options) (*target, error) {
 	}
 
 	return &target{cfg: cfg, root: root, name: name, db: db,
-		fsys: os.DirFS(cfg.Migrations.Dir)}, nil
+		dir: cfg.Migrations.Dir, fsys: os.DirFS(cfg.Migrations.Dir)}, nil
 }
 
 // discovered reads the migrations directory and orders it, without reading a file's contents.
@@ -93,7 +104,7 @@ func (t *target) discovered(opts *options) ([]migration.Migration, error) {
 		return nil, err
 	}
 
-	opts.log.Debug("discovered migrations", "dir", t.cfg.Migrations.Dir, "migrations", len(found))
+	opts.log.Debug("discovered migrations", "dir", t.dir, "migrations", len(found))
 
 	return found, nil
 }
@@ -445,9 +456,9 @@ func (t *target) start(ctx context.Context, opts *options, conn driver.Conn, lan
 
 // project describes this run to a runtime, which is told the language it is being started for.
 func (t *target) project(lang config.Language) (runtime.Project, error) {
-	dir, err := filepath.Abs(t.cfg.Migrations.Dir)
+	dir, err := filepath.Abs(t.dir)
 	if err != nil {
-		return runtime.Project{}, fmt.Errorf("resolving %s: %w", t.cfg.Migrations.Dir, err)
+		return runtime.Project{}, fmt.Errorf("resolving %s: %w", t.dir, err)
 	}
 
 	return runtime.Project{

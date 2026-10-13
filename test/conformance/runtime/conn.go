@@ -213,6 +213,11 @@ func (c *conn) History() history.Store {
 	return nil
 }
 
+// Seeds reports no store, for the reason History reports none.
+func (c *conn) Seeds() history.Store {
+	return nil
+}
+
 // ServerVersion reports what host.info tells a migration it is running against.
 func (c *conn) ServerVersion() string {
 	return serverVersion

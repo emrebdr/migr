@@ -68,6 +68,8 @@ const (
 	actBackfills = "backfills"
 	// actBackfillsBeside emits a column and the backfill of it, which runs as one statement.
 	actBackfillsBeside = "backfills-beside"
+	// actFillsThenDrops backfills going up and drops a table going down, a seed whose down is schema.
+	actFillsThenDrops = "fills-then-drops"
 )
 
 // The declarations a scripted runtime reports, which compose with every act above.
@@ -374,6 +376,8 @@ func (r *scriptedRuntime) operations(direction ir.Direction) string {
 	case actBackfills:
 		return `{"operations":[{"op":"data_backfill","table":"users","column":"plan",` +
 			`"type":"string(16)","value":{"literal":"free"}}]}`
+	case actFillsThenDrops:
+		return fillsThenDropsFor(direction)
 	case actBackfillsBeside:
 		return `{"operations":[{"op":"add_column","table":"users","column":{"name":"plan",` +
 			`"type":"string(16)","nullable":true}},{"op":"data_backfill","table":"users",` +
@@ -381,6 +385,16 @@ func (r *scriptedRuntime) operations(direction ir.Direction) string {
 	default:
 		return operationsFor(direction)
 	}
+}
+
+// fillsThenDropsFor renders a backfill going up and a dropped table going down.
+func fillsThenDropsFor(direction ir.Direction) string {
+	if direction == ir.Down {
+		return fmt.Sprintf(`{"operations":[{"op":"drop_table","table":%q}]}`, scriptedTable)
+	}
+
+	return `{"operations":[{"op":"data_backfill","table":"users","column":"plan",` +
+		`"type":"string(16)","value":{"literal":"free"}}]}`
 }
 
 // operationsFor renders the one operation a scripted migration emits for one direction.

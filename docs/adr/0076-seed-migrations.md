@@ -175,7 +175,9 @@ row, so a seed has a correct way to write data today; M12-T2 is where it gets a 
   each driver.
 - A Go project's runner cache moved from `.migr/go` to `.migr/go/migrations`, so an existing project
   rebuilds once.
-- `migr seed` cannot list or undo a seed until M12-T5; `migr status` and `migr history` do not
+- ~~`migr seed` cannot list or undo a seed until M12-T5~~ — M12-T5 added `migr seed status`,
+  `history`, `down` and `resolve` (ADR 0080). `migr status` and `migr history` still do not
   mention seeds at all, by design rather than omission, and a test holds that.
-- PostgreSQL's integration suite drops its seed table through `pgtest.Drop`, the second thing nothing
-  in a migration can clean up, until M12-T5 can roll a seed back.
+- ~~PostgreSQL's integration suite drops its seed table through `pgtest.Drop`, the second thing nothing
+  in a migration can clean up, until M12-T5 can roll a seed back.~~ It rolls its seed back with
+  `migr seed down` since M12-T5 (ADR 0080).

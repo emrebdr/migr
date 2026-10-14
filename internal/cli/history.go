@@ -110,6 +110,10 @@ type executionLog struct {
 	Recorded bool `json:"history_table"`
 	// Runs is every recorded run, in the order the runs happened.
 	Runs []loggedRun `json:"runs"`
+	// Environment is the one a seed log's database runs under, absent from the migration log.
+	Environment string `json:"environment,omitempty"`
+	// about is what the runs ran, which the zero value reads as migrations.
+	about subject
 }
 
 // logOf renders a history log, which a database with no history table has none of.
@@ -175,16 +179,20 @@ var migrationColumn = slices.IndexFunc(logColumns, func(c logColumn) bool {
 func (l executionLog) String() string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "history — database %q\n", l.Database)
+	about := l.about.or()
+
+	fmt.Fprintf(&b, "%shistory — database %q%s\n", about.command, l.Database,
+		describeEnvironment(l.Environment))
 
 	if !l.Recorded {
-		b.WriteString("\nthis database has no migration history table yet; nothing has run against it.\n")
+		fmt.Fprintf(&b, "\nthis database has no %s yet; nothing has run against it.\n",
+			about.table)
 
 		return b.String()
 	}
 
 	if len(l.Runs) == 0 {
-		b.WriteString("\nthis database's migration history table holds no runs yet.\n")
+		fmt.Fprintf(&b, "\nthis database's %s holds no runs yet.\n", about.table)
 
 		return b.String()
 	}
@@ -201,8 +209,11 @@ func (l executionLog) writeTable(b *strings.Builder) {
 	widths := widthsOf(l.Runs)
 	indent := strings.Repeat(" ", detailIndent(widths))
 
+	heads := headings()
+	heads[migrationColumn] = l.about.or().noun
+
 	b.WriteString("\n")
-	writeCells(b, headings(), widths)
+	writeCells(b, heads, widths)
 
 	for _, run := range l.Runs {
 		writeCells(b, cellsOf(run), widths)

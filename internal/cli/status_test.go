@@ -255,7 +255,7 @@ func TestStatusCountsOneMigrationFileInTheSingular(t *testing.T) {
 	}
 
 	if !strings.Contains(stdout, "there is 1 migration file on disk") {
-		t.Errorf("status counted one file as %q:\n%s", describeFiles(1), stdout)
+		t.Errorf("status counted one file as %q:\n%s", migrationReports.files(1), stdout)
 		t.Log("The count is written into a sentence, so a helper that agrees with itself in the")
 		t.Log("plural and not in the singular reads as a typo in the tool rather than in the text.")
 	}

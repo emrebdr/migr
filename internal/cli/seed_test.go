@@ -8,9 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/checksum"
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/schema"
 	"github.com/emrebdr/migr/internal/source/golang"
@@ -473,4 +476,358 @@ func stagedSeedDrifted(t *testing.T) (string, *fake, *driver.Registry) {
 	stageSeed(t, dir, "", seedFile(0, "countries"), inserting("countries_edited").body())
 
 	return dir, f, drivers
+}
+
+// stagedSeeded is a seedable project whose seeds have run, for the cases that undo or read them.
+func stagedSeeded(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := stagedSeedable(t)
+
+	if _, _, err := runWith(t, dir, noon, drivers, "seed"); err != nil {
+		t.Fatalf("staging the seeds that ran: %v", err)
+	}
+
+	return dir, f, drivers
+}
+
+// stagedSeedless is a migrated project naming seeds it has no directory for.
+func stagedSeedless(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := project(t, twoTables()...)
+	write(t, filepath.Join(dir, config.DefaultFilename), seedingConfig)
+	migrated(t, dir, drivers)
+
+	return dir, f, drivers
+}
+
+// stagedSeededOneWay is a migrated project whose one seed ran and says it cannot be undone.
+func stagedSeededOneWay(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := project(t, twoTables()...)
+	write(t, filepath.Join(dir, config.DefaultFilename), seedingConfig)
+	stageSeed(t, dir, "", seedFile(0, "imported"),
+		declaring("imported", "INSERT INTO users (id) VALUES (1);", "the rows came from a dump").body())
+	migrated(t, dir, drivers)
+
+	if _, _, err := runWith(t, dir, noon, drivers, "seed"); err != nil {
+		t.Fatalf("staging the one-way seed: %v", err)
+	}
+
+	return dir, f, drivers
+}
+
+// stagedSeedDirty is a seedable project whose common seed's run stopped between states.
+func stagedSeedDirty(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := stagedSeedable(t)
+
+	f.recordSeed(t, history.Record{
+		Batch:         1,
+		Ordinal:       1,
+		Version:       seedAt(0),
+		Name:          "countries",
+		Direction:     ir.Up,
+		Outcome:       history.Dirty,
+		Checksum:      checksum.Checksum{Source: checksum.OfSource(nil), IR: checksum.OfSource(nil)},
+		Duration:      tick,
+		LastStatement: 1,
+		Error:         errRefused.Error(),
+	})
+
+	return dir, f, drivers
+}
+
+// seededUp returns the versions a fake database holds a completed seed apply for, in order.
+func seededUp(f *fake) []string {
+	var versions []string
+
+	for _, rec := range f.seedRuns {
+		if rec.Outcome == history.Applied && rec.Direction == ir.Up {
+			versions = append(versions, rec.Version)
+		}
+	}
+
+	return versions
+}
+
+// undone returns the versions a fake database holds a completed seed rollback for, in order.
+func undone(f *fake) []string {
+	var versions []string
+
+	for _, rec := range f.seedRuns {
+		if rec.Outcome == history.Applied && rec.Direction == ir.Down {
+			versions = append(versions, rec.Version)
+		}
+	}
+
+	return versions
+}
+
+func TestSeedStatusListsTheSeedsOfThisEnvironmentAndNoMigration(t *testing.T) {
+	dir, _, drivers := stagedSeeded(t)
+	stageSeed(t, dir, "", seedFile(3, "currencies"), inserting("currencies").body())
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "seed", "status")
+	if err != nil {
+		t.Fatalf("seed status: %v", err)
+	}
+
+	for _, want := range []string{`seed status — database "default", environment "default"`,
+		"applied  " + seedFile(0, "countries"), "applied  " + seedFile(1, "demo_users"),
+		"pending  " + seedFile(3, "currencies"), "3 seeds: 2 applied, 1 pending"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("seed status does not show %q:\n%s", want, stdout)
+		}
+	}
+
+	for _, absent := range []string{versionAt(0), versionAt(1), seedFile(2, "admin")} {
+		if strings.Contains(stdout, absent) {
+			t.Errorf("seed status lists %s, which is a migration or another environment's:\n%s",
+				absent, stdout)
+		}
+	}
+}
+
+func TestSeedStatusTakesNoLockAndWritesNothing(t *testing.T) {
+	dir, f, drivers := stagedSeeded(t)
+	f.calls = nil
+
+	if _, _, err := runWith(t, dir, noon, drivers, "seed", "status"); err != nil {
+		t.Fatalf("seed status: %v", err)
+	}
+
+	for _, call := range f.calls {
+		if call == "lock" || strings.HasSuffix(call, "ensure") || strings.HasSuffix(call, "record") {
+			t.Errorf("seed status asked the session for %q: %q", call, f.calls)
+		}
+	}
+}
+
+func TestSeedStatusReportsAnEditedAndAStoppedSeed(t *testing.T) {
+	dir, _, drivers := stagedSeedDirty(t)
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "seed", "status")
+	if err != nil {
+		t.Fatalf("seed status: %v", err)
+	}
+
+	if !strings.Contains(stdout, "dirty    "+seedFile(0, "countries")) {
+		t.Errorf("seed status does not show the stopped seed as dirty:\n%s", stdout)
+	}
+}
+
+func TestSeedHistoryPrintsTheSeedRunsAndNoMigrationRun(t *testing.T) {
+	dir, _, drivers := stagedSeeded(t)
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "seed", "history")
+	if err != nil {
+		t.Fatalf("seed history: %v", err)
+	}
+
+	for _, want := range []string{`seed history — database "default", environment "default"`,
+		seedAt(0), seedAt(1), "2 runs"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("seed history does not show %q:\n%s", want, stdout)
+		}
+	}
+
+	if strings.Contains(stdout, versionAt(0)) {
+		t.Errorf("seed history prints a migration run:\n%s", stdout)
+	}
+}
+
+func TestSeedDownRollsTheLastSeedBatchBackNewestFirstAndNoMigration(t *testing.T) {
+	dir, f, drivers := stagedSeeded(t)
+	ran := len(f.statements)
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "seed", "down")
+	if err != nil {
+		t.Fatalf("seed down: %v", err)
+	}
+
+	if got := undone(f); !slices.Equal(got, []string{seedAt(1), seedAt(0)}) {
+		t.Errorf("seed down rolled back %q, want both seeds, newest first", got)
+	}
+
+	if got := f.statements[ran:]; len(got) != 2 {
+		t.Errorf("seed down ran %q, want each seed's own down", got)
+	}
+
+	if got := applied(f); len(got) != 2 {
+		t.Errorf("seed down left the migration history holding %q, want both migrations", got)
+		t.Log("Rolling a seed back is not rolling the schema back: the migrations stay applied.")
+	}
+
+	for _, want := range []string{`seed down — database "default", environment "default"`,
+		"rolled back 2 seeds"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("seed down does not report %q:\n%s", want, stdout)
+		}
+	}
+
+	if _, _, err := runWith(t, dir, noon, drivers, "seed"); err != nil || len(seededUp(f)) != 4 {
+		t.Errorf("seeding again after the rollback returned %v and holds %q", err, seededUp(f))
+	}
+}
+
+func TestSeedDownDryRunExecutesAndRecordsNothing(t *testing.T) {
+	dir, f, drivers := stagedSeeded(t)
+	ran, rows := len(f.statements), len(f.seedRuns)
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "seed", "down", "--dry-run")
+	if err != nil {
+		t.Fatalf("seed down --dry-run: %v", err)
+	}
+
+	if len(f.statements) != ran || len(f.seedRuns) != rows {
+		t.Errorf("a dry run touched the database: %q", f.calls)
+	}
+
+	if !strings.Contains(stdout, "would roll back 2 seeds") {
+		t.Errorf("the preview does not say what it would roll back:\n%s", stdout)
+	}
+}
+
+func TestSeedDownStepsBackOneSeedAtATime(t *testing.T) {
+	dir, f, drivers := stagedSeeded(t)
+
+	if _, _, err := runWith(t, dir, noon, drivers, "seed", "down", "--step", "1"); err != nil {
+		t.Fatalf("seed down --step 1: %v", err)
+	}
+
+	if got := undone(f); !slices.Equal(got, []string{seedAt(1)}) {
+		t.Errorf("seed down --step 1 rolled back %q, want the newest seed alone", got)
+	}
+}
+
+func TestSeedDownRefusesADatabaseTheMigrationsHaveNotAllRunAgainst(t *testing.T) {
+	dir, f, drivers := stagedSeeded(t)
+
+	if _, _, err := runWith(t, dir, noon, drivers, "down", "--step", "1"); err != nil {
+		t.Fatalf("rolling one migration back: %v", err)
+	}
+
+	rows := len(f.seedRuns)
+
+	_, _, err := runWith(t, dir, noon, drivers, "seed", "down")
+	if ExitCode(err) != ExitRuntime || !strings.Contains(err.Error(), "migr up") {
+		t.Fatalf("seed down returned %v (exit %d), want exit 1 naming migr up", err, ExitCode(err))
+	}
+
+	if len(f.seedRuns) != rows {
+		t.Errorf("a refused seed rollback wrote %d seed rows", len(f.seedRuns)-rows)
+		t.Log("A seed's down is written against the schema every migration leaves, so it waits")
+		t.Log("for that schema exactly as a seed's up does.")
+	}
+}
+
+func TestASeedWhoseDownChangesTheSchemaIsRefused(t *testing.T) {
+	dir, f, drivers := project(t, twoTables()...)
+	f.live = keyedUsers()
+	stageSeed(t, dir, "", seedAt(0)+"_plans"+golang.Ext, "package seeds\n")
+	migrated(t, dir, drivers)
+
+	if _, _, err := runScripted(t, dir, actFillsThenDrops, drivers, "seed"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	_, _, err := runScripted(t, dir, actFillsThenDrops, drivers, "seed", "down")
+	if ExitCode(err) != ExitValidation || !errors.Is(err, errSchemaInSeed) {
+		t.Fatalf("seed down returned %v (exit %d), want exit 2 for a schema change", err,
+			ExitCode(err))
+	}
+
+	if len(undone(f)) != 0 {
+		t.Errorf("a seed whose down changes the schema was rolled back")
+	}
+}
+
+func TestSeedResolveSettlesADirtySeedSoTheNextSeedRuns(t *testing.T) {
+	dir, f, drivers := stagedSeedDirty(t)
+
+	if _, _, err := runWith(t, dir, noon, drivers, "seed"); !errors.Is(err, engine.ErrDirty) {
+		t.Fatalf("seeding over a dirty seed returned %v, want the dirty refusal", err)
+	}
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "seed", "resolve", "--rolled-back",
+		"--reason", "removed the rows by hand")
+	if err != nil {
+		t.Fatalf("seed resolve: %v", err)
+	}
+
+	for _, want := range []string{`seed resolve — database "default", environment "default"`,
+		"This seed is no longer between states"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("seed resolve does not report %q:\n%s", want, stdout)
+		}
+	}
+
+	if f.runs[len(f.runs)-1].Outcome == history.Resolved {
+		t.Errorf("seed resolve wrote its row into the migration history")
+	}
+
+	if _, _, err := runWith(t, dir, noon, drivers, "seed"); err != nil {
+		t.Errorf("seeding after the dirty seed was settled: %v", err)
+	}
+}
+
+func TestADirtySeedsRefusalNamesTheSeedCommandsThatSettleIt(t *testing.T) {
+	dir, _, drivers := stagedSeedDirty(t)
+
+	_, _, err := runWith(t, dir, noon, drivers, "seed")
+	if err == nil {
+		t.Fatal("seeding over a dirty seed succeeded")
+	}
+
+	message := err.Error()
+	if !strings.Contains(message, "migr seed resolve") ||
+		strings.Contains(strings.ReplaceAll(message, "migr seed resolve", ""), "migr resolve") {
+		t.Errorf("the refusal does not send the operator to migr seed resolve:\n%s", message)
+		t.Log("migr resolve reads the migration history, where this seed's row is not, so it")
+		t.Log("would report nothing between states and leave the seed dirty for good.")
+	}
+}
+
+func TestSeedReportsCarryTheEnvironmentInJSON(t *testing.T) {
+	dir, _, drivers := stagedSeeded(t)
+
+	for _, command := range []string{"status", "history"} {
+		stdout, _, err := runWith(t, dir, noon, drivers, "--json", "seed", command)
+		if err != nil {
+			t.Fatalf("seed %s --json: %v", command, err)
+		}
+
+		if !strings.Contains(stdout, `"environment": "default"`) {
+			t.Errorf("seed %s --json carries no environment:\n%s", command, stdout)
+		}
+	}
+}
+
+func TestAnAssertedSeedRepairRunsWhateverStateTheMigrationsAreIn(t *testing.T) {
+	dir, f, drivers := stagedSeedDirty(t)
+
+	if _, _, err := runWith(t, dir, noon, drivers, "down", "--step", "1"); err != nil {
+		t.Fatalf("rolling one migration back: %v", err)
+	}
+
+	if _, _, err := runWith(t, dir, noon, drivers, "seed", "resolve", "--resume"); ExitCode(err) !=
+		ExitRuntime {
+		t.Errorf("a seed resume over a migration still to run returned %v, want exit 1", err)
+	}
+
+	_, _, err := runWith(t, dir, noon, drivers, "seed", "resolve", "--rolled-back", "--reason",
+		"removed the rows by hand")
+	if err != nil {
+		t.Fatalf("an asserted seed repair over a migration still to run: %v", err)
+	}
+
+	if last := f.seedRuns[len(f.seedRuns)-1]; last.Outcome != history.Resolved {
+		t.Errorf("the seed history's last row is %s, want the resolution", last.Outcome)
+		t.Log("An asserted repair runs nothing, so nothing in it needs the migrations' schema --")
+		t.Log("and it is the repair an operator reaches for when other things are broken too.")
+	}
 }

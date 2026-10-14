@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/emrebdr/migr/internal/checksum"
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
@@ -149,6 +151,37 @@ var codes = []coded{
 		want: ExitLock},
 	{name: "a seed edited since it ran", command: "seed", stage: stagedSeedDrifted,
 		want: ExitDrift},
+	{name: "seed status", command: "seed status", stage: stagedSeedable, want: ExitOK},
+	{name: "seed status over a dirty and a drifted seed", command: "seed status",
+		stage: stagedSeedDirty, want: ExitOK},
+	{name: "seed status with no seeds directory", command: "seed status",
+		stage: stagedSeedless, want: ExitRuntime},
+	{name: "seed status naming a directory no environment runs", command: "seed status",
+		stage: stagedStraySeeds, want: ExitValidation},
+	{name: "seed history", command: "seed history", stage: stagedSeeded, want: ExitOK},
+	{name: "seed history over a database that will not answer", command: "seed history",
+		stage: stagedUnreachable, want: ExitRuntime},
+	{name: "seed down", command: "seed down", stage: stagedSeeded, want: ExitOK},
+	{name: "seed down over migrations still to run", command: "seed down",
+		stage: seededProject, want: ExitRuntime},
+	{name: "seed down over a seed that declares it cannot be undone", command: "seed down",
+		stage: stagedSeededOneWay, want: ExitRuntime},
+	{name: "seed down given both selectors", command: "seed down",
+		args: []string{"--step", "1", "--to", noonVersion}, stage: stagedSeeded,
+		want: ExitValidation},
+	{name: "the migration lock a seed rollback takes", command: "seed down",
+		stage: stagedSeedLocked, want: ExitLock},
+	{name: "seed down over a seed edited since it ran", command: "seed down",
+		stage: stagedSeedDrifted, want: ExitDrift},
+	{name: "seed resolve with no repair", command: "seed resolve", stage: stagedSeedDirty,
+		want: ExitValidation},
+	{name: "seed resolve recording a dirty seed rolled back", command: "seed resolve",
+		args:  []string{"--rolled-back", "--reason", "removed the rows by hand"},
+		stage: stagedSeedDirty, want: ExitOK},
+	{name: "seed resolve over seeds with nothing between states", command: "seed resolve",
+		args: []string{"--resume"}, stage: stagedSeeded, want: ExitOK},
+	{name: "seed resolve over migrations still to run", command: "seed resolve",
+		args: []string{"--resume"}, stage: seededProject, want: ExitRuntime},
 }
 
 // A row says whether a runtime answers for its migrations, because two rows turn on the answer:
@@ -163,7 +196,7 @@ func TestEveryCommandEndsWithTheCodeSection5Documents(t *testing.T) {
 
 			_, _, err := runOptions(t, dir, &options{clock: ticking(noon), drivers: drivers,
 				runtimes: registryFor(t, c.scripted)},
-				append([]string{c.command}, c.args...)...)
+				append(strings.Fields(c.command), c.args...)...)
 
 			if got := ExitCode(err); got != c.want {
 				t.Errorf("migr %s %v exited %d, want %d (%v)", c.command, c.args, got, c.want, err)
@@ -189,13 +222,26 @@ func TestEveryCommandIsInTheExitCodeMatrix(t *testing.T) {
 		covered[c.command] = struct{}{}
 	}
 
-	for _, cmd := range newRootCmd().Commands() {
-		if _, found := covered[cmd.Name()]; !found {
-			t.Errorf("migr %s produces no documented exit code in this matrix", cmd.Name())
+	for _, path := range commandPaths(newRootCmd(), "") {
+		if _, found := covered[path]; !found {
+			t.Errorf("migr %s produces no documented exit code in this matrix", path)
 			t.Log("An eleventh command is where a code stops meaning one thing across the CLI, so")
-			t.Log("adding one costs saying which of the five endings it can reach.")
+			t.Log("adding one costs saying which of the five endings it can reach -- and a")
+			t.Log("subcommand is a command, which a check reading only the top level would miss.")
 		}
 	}
+}
+
+// commandPaths names every command under one, subcommands included, as an operator types each.
+func commandPaths(cmd *cobra.Command, prefix string) []string {
+	var paths []string
+
+	for _, sub := range cmd.Commands() {
+		path := strings.TrimSpace(prefix + " " + sub.Name())
+		paths = append(append(paths, path), commandPaths(sub, path)...)
+	}
+
+	return paths
 }
 
 func TestAReportOverABrokenDatabaseStillSucceeds(t *testing.T) {

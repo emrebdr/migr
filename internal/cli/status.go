@@ -146,6 +146,10 @@ type statusReport struct {
 	Statuses []statusRow `json:"statuses"`
 	// Counts is how many versions resolved to each state, carrying every state so a script may read any.
 	Counts map[string]int `json:"counts"`
+	// Environment is the one a seed report's database runs under, absent from a migration report.
+	Environment string `json:"environment,omitempty"`
+	// about is what the rows are, which the zero value reads as migrations.
+	about subject
 }
 
 // statusOf renders a reconciliation report, which a database with no history table resolves to none of.
@@ -258,29 +262,42 @@ func countStates(statuses []history.Status) map[string]int {
 func (s statusReport) String() string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "status — database %q\n", s.Database)
+	about := s.about.or()
+
+	fmt.Fprintf(&b, "%sstatus — database %q%s\n", about.command, s.Database,
+		describeEnvironment(s.Environment))
 
 	if !s.Recorded {
-		fmt.Fprintf(&b, "\nthis database has no migration history table yet, so nothing has been\n"+
-			"reconciled. migr up would create it, and %s on disk.\n", describeFiles(s.Files))
+		fmt.Fprintf(&b, "\nthis database has no %s yet, so nothing has been\n"+
+			"reconciled. %s would create it, and %s on disk.\n", about.table, about.creator,
+			about.files(s.Files))
 
 		return b.String()
 	}
 
 	if len(s.Statuses) == 0 {
-		b.WriteString("\nnothing to report: no migration is in any state, and migr history\n" +
-			"shows the runs that left it that way.\n")
+		fmt.Fprintf(&b, "\nnothing to report: no %s is in any state, and migr %shistory\n"+
+			"shows the runs that left it that way.\n", about.noun, about.command)
 
 		return b.String()
 	}
 
 	s.writeRows(&b)
 
-	fmt.Fprintf(&b, "\n%s: %s\n", describeMigrations(len(s.Statuses)), joinCounts(s.Counts))
+	fmt.Fprintf(&b, "\n%s: %s\n", about.count(len(s.Statuses)), joinCounts(s.Counts))
 
 	s.writeOrderNote(&b)
 
 	return b.String()
+}
+
+// describeEnvironment names the environment a seed report is about, and nothing for a migration one.
+func describeEnvironment(environment string) string {
+	if environment == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(", environment %q", environment)
 }
 
 // writeOrderNote says what this sequence is, for a project whose own order needs a runtime to read.
@@ -289,21 +306,33 @@ func (s statusReport) writeOrderNote(b *strings.Builder) {
 		return
 	}
 
+	about := s.about.or()
+
 	fmt.Fprintf(b, "\nthe order above is version order: %s may declare a dependency that only a "+
-		"language runtime reports, and a report starts none. migr plan prints the order a run "+
-		"will use.\n", describeMigrations(s.Unread))
+		"language runtime reports, and a report starts none. migr %s prints the order a run "+
+		"will use.\n", about.count(s.Unread), orderShower(about))
+}
+
+// orderShower names the command that prints the order a run will use, which for seeds is a dry run.
+func orderShower(about subject) string {
+	if about.command != "" {
+		return about.command + "--dry-run"
+	}
+
+	return "plan"
 }
 
 // writeRows renders one line per version, aligned on the widest of each column.
 func (s statusReport) writeRows(b *strings.Builder) {
 	states, names := widest(s.Statuses, stateOfRow), widest(s.Statuses, nameOfRow)
 	runs := widest(s.Statuses, describeRun)
+	about := s.about.or()
 
 	b.WriteString("\n")
 
 	for _, row := range s.Statuses {
 		line := fmt.Sprintf("  %-*s  %-*s  %-*s  %s", states, row.State, names, nameOfRow(row),
-			runs, describeRun(row), describeState(row))
+			runs, describeRun(row), describeState(row, about))
 
 		fmt.Fprintf(b, "%s\n", strings.TrimRight(line, " "))
 	}
@@ -331,18 +360,18 @@ func describeRun(row statusRow) string {
 		row.Run.AppliedAt.Format(stamp))
 }
 
-// describeState says what a state means for this migration, and is total so a sixth breaks the build.
-func describeState(row statusRow) string {
+// describeState says what a state means for this row, and is total so a sixth breaks the build.
+func describeState(row statusRow, about subject) string {
 	switch row.State {
 	case history.StateApplied, history.StatePending:
 		return describeAsserted(row.Run)
 	case history.StateMissing:
-		return "no migration file carries this version"
+		return "no " + about.noun + " file carries this version"
 	case history.StateDrifted:
 		return fmt.Sprintf("edited since it was applied (recorded %s, now %s)",
 			shortDigest(row.RecordedSource), shortDigest(row.CurrentSource))
 	case history.StateDirty:
-		return describeDirty(row.Run, row.Checkpoint)
+		return describeDirty(row.Run, row.Checkpoint, about)
 	}
 
 	return "this build has no note for that state"
@@ -358,7 +387,7 @@ func describeAsserted(run *recordedRun) string {
 }
 
 // describeDirty says how far a run got before it left the schema between states.
-func describeDirty(run *recordedRun, at *checkpoint) string {
+func describeDirty(run *recordedRun, at *checkpoint, about subject) string {
 	if run == nil {
 		return "left the schema between states"
 	}
@@ -367,19 +396,23 @@ func describeDirty(run *recordedRun, at *checkpoint) string {
 		return fmt.Sprintf("stopped running in chunks: operation %d, %s and %s written, through "+
 			"key (%s) -- the next migr %s carries on from there", at.Operation,
 			describeChunks(at.Chunks), describeWritten(at.Written), strings.Join(at.Cursor, ", "),
-			describeResumer(run.Direction))
+			describeResumer(run.Direction, about))
 	}
 
 	return fmt.Sprintf("stopped after statement %d of the %s run", run.LastStatement, run.Direction)
 }
 
 // describeResumer names the command that carries a stopped chunked run on, which a rollback's is not.
-func describeResumer(dir ir.Direction) string {
-	if dir == ir.Up {
+func describeResumer(dir ir.Direction, about subject) string {
+	if dir == ir.Up && about.command == "" {
 		return "up"
 	}
 
-	return "resolve --resume"
+	if dir == ir.Up {
+		return "seed"
+	}
+
+	return about.command + "resolve --resume"
 }
 
 // shortDigest keeps enough of a rendered digest to compare two by eye.
@@ -389,15 +422,6 @@ func shortDigest(rendered string) string {
 	}
 
 	return rendered[:digestPrefix]
-}
-
-// describeFiles counts the migration files on disk with the verb and noun that agree with the count.
-func describeFiles(n int) string {
-	if n == 1 {
-		return "there is 1 migration file"
-	}
-
-	return fmt.Sprintf("there are %d migration files", n)
 }
 
 // joinCounts names how many resolved to each state, in the order the states are declared.

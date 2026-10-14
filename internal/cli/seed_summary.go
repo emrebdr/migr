@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"strings"
+
+	"github.com/emrebdr/migr/internal/ir"
 )
 
 // seedSummary is what one seed run did against one database, in the form --json reports it.
@@ -11,6 +13,8 @@ type seedSummary struct {
 	Database string `json:"database"`
 	// Environment is the one this database runs under, which chose the seeds it ran.
 	Environment string `json:"environment"`
+	// Direction is whether this run applied seeds or rolled them back.
+	Direction ir.Direction `json:"direction"`
 	// Batch is what every seed in this run was recorded under, zero when nothing ran.
 	Batch int64 `json:"batch,omitempty"`
 	// Runs is one entry per seed performed, in the order they were performed.
@@ -27,6 +31,8 @@ type seedPlan struct {
 	Database string `json:"database"`
 	// Environment is the one this database runs under.
 	Environment string `json:"environment"`
+	// Direction is whether this run would apply seeds or roll them back.
+	Direction ir.Direction `json:"direction"`
 	// DryRun is always true, so a recorded document says for itself that nothing happened.
 	DryRun bool `json:"dry_run"`
 	// Recorded reports whether this database has a seed history table at all.
@@ -41,13 +47,15 @@ type seedPlan struct {
 
 // seedSummaryOf renders a run's summary as a seed run, naming the environment that chose its seeds.
 func seedSummaryOf(run runSummary, environment string) seedSummary {
-	return seedSummary{Database: run.Database, Environment: environment, Batch: run.Batch,
+	return seedSummary{Database: run.Database, Environment: environment,
+		Direction: run.Direction, Batch: run.Batch,
 		Runs: run.Runs, Skipped: run.Skipped, Duration: run.Duration}
 }
 
 // seedPlanOf renders a preview as a seed run's, naming the environment that chose its seeds.
 func seedPlanOf(preview planSummary, environment string) seedPlan {
-	return seedPlan{Database: preview.Database, Environment: environment, DryRun: true,
+	return seedPlan{Database: preview.Database, Environment: environment,
+		Direction: preview.Direction, DryRun: true,
 		Recorded: preview.Recorded, Batch: preview.Batch, Steps: preview.Steps,
 		Skipped: preview.Skipped}
 }
@@ -56,11 +64,11 @@ func seedPlanOf(preview planSummary, environment string) seedPlan {
 func (s seedSummary) String() string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "seed — database %q, environment %q%s\n", s.Database, s.Environment,
-		describeBatch(s.Batch))
+	fmt.Fprintf(&b, "%s — database %q, environment %q%s\n", seedCommand(s.Direction),
+		s.Database, s.Environment, describeBatch(s.Batch))
 
 	if len(s.Runs) == 0 {
-		fmt.Fprintf(&b, "\nnothing to seed%s\n", describeSkipped(s.Skipped))
+		fmt.Fprintf(&b, "\nnothing to %s%s\n", seedVerb(s.Direction), describeSkipped(s.Skipped))
 
 		return b.String()
 	}
@@ -72,8 +80,8 @@ func (s seedSummary) String() string {
 			describeWork(run), run.Duration)
 	}
 
-	fmt.Fprintf(&b, "\nseeded %s in %s%s\n", describeSeeds(len(s.Runs)), s.Duration,
-		describeSkipped(s.Skipped))
+	fmt.Fprintf(&b, "\n%s %s in %s%s\n", seedPast(s.Direction), describeSeeds(len(s.Runs)),
+		s.Duration, describeSkipped(s.Skipped))
 
 	return b.String()
 }
@@ -82,15 +90,16 @@ func (s seedSummary) String() string {
 func (s seedPlan) String() string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "seed — database %q, environment %q (dry run)%s\n", s.Database, s.Environment,
-		describeBatch(s.Batch))
+	fmt.Fprintf(&b, "%s — database %q, environment %q (dry run)%s\n", seedCommand(s.Direction),
+		s.Database, s.Environment, describeBatch(s.Batch))
 
 	if !s.Recorded {
-		b.WriteString("\nthis database has no seed history table yet; migr seed would create it\n")
+		fmt.Fprintf(&b, "\nthis database has no seed history table yet; migr %s would create it\n",
+			seedCommand(s.Direction))
 	}
 
 	if len(s.Steps) == 0 {
-		fmt.Fprintf(&b, "\nnothing to seed%s\n", describeSkipped(s.Skipped))
+		fmt.Fprintf(&b, "\nnothing to %s%s\n", seedVerb(s.Direction), describeSkipped(s.Skipped))
 
 		return b.String()
 	}
@@ -102,8 +111,8 @@ func (s seedPlan) String() string {
 			describePlannedWork(step))
 	}
 
-	fmt.Fprintf(&b, "\nwould seed %s%s. nothing was executed and nothing was recorded.\n",
-		describeSeeds(len(s.Steps)), describeSkipped(s.Skipped))
+	fmt.Fprintf(&b, "\nwould %s %s%s. nothing was executed and nothing was recorded.\n",
+		seedVerb(s.Direction), describeSeeds(len(s.Steps)), describeSkipped(s.Skipped))
 
 	s.writeUnsupported(&b)
 
@@ -121,8 +130,35 @@ func (s seedPlan) writeUnsupported(b *strings.Builder) {
 		return
 	}
 
-	fmt.Fprintf(b, "\n%s this server declares it cannot perform, so migr seed refuses the seed "+
-		"they are in.\n", describeUnpermitted(unsupported))
+	fmt.Fprintf(b, "\n%s this server declares it cannot perform, so migr %s refuses the seed "+
+		"they are in.\n", describeUnpermitted(unsupported), seedCommand(s.Direction))
+}
+
+// seedCommand names the command that runs seeds this way, as an operator types it after migr.
+func seedCommand(dir ir.Direction) string {
+	if dir == ir.Down {
+		return "seed down"
+	}
+
+	return "seed"
+}
+
+// seedVerb says what running seeds this way does, for a run that has not done it.
+func seedVerb(dir ir.Direction) string {
+	if dir == ir.Down {
+		return "roll back"
+	}
+
+	return "seed"
+}
+
+// seedPast says what running seeds this way did.
+func seedPast(dir ir.Direction) string {
+	if dir == ir.Down {
+		return "rolled back"
+	}
+
+	return "seeded"
 }
 
 // describeSeeds counts seeds with the right noun.

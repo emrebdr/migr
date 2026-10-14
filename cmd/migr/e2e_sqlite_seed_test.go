@@ -187,3 +187,68 @@ func TestAGoSeedRunsBesideGoMigrationsAndMigrDiffSeesNoTraceOfIt(t *testing.T) {
 		t.Fatalf("a migr up after seeding: %v", err)
 	}
 }
+
+// keyedSeed is a .sql seed adding one row under a fixed key, so running it twice is a key violation.
+func keyedSeed(id, email string) string {
+	return "-- migr:up\nINSERT INTO e2e_users (id, email) VALUES (" + id + ", '" + email + "');\n\n" +
+		"-- migr:down\nDELETE FROM e2e_users WHERE id = " + id + ";\n"
+}
+
+func TestSeedsListRollBackAndRunAgainWithoutTouchingAMigration(t *testing.T) {
+	config, database := sqliteProject(t)
+	stageSeeds(t, config, map[string]string{
+		"20260929T130000_root.sql":         keyedSeed("7", "root@example.com"),
+		"default/20260929T130100_demo.sql": keyedSeed("8", "demo@example.com"),
+	})
+
+	if err := migr(t, config, "up"); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+
+	if err := migr(t, config, "seed"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	status := migrOut(t, config, "seed", "status")
+	for _, want := range []string{"applied  20260929T130000_root.sql",
+		"applied  20260929T130100_demo.sql", "2 seeds: 2 applied"} {
+		if !strings.Contains(status, want) {
+			t.Errorf("migr seed status does not show %q:\n%s", want, status)
+		}
+	}
+
+	rolledBack := migrOut(t, config, "seed", "down")
+	if !strings.Contains(rolledBack, "rolled back 2 seeds") {
+		t.Errorf("migr seed down did not report both seeds:\n%s", rolledBack)
+	}
+
+	if after := migrOut(t, config, "seed", "status"); !strings.Contains(after, "2 seeds: 2 pending") {
+		t.Errorf("migr seed status after the rollback does not show both pending:\n%s", after)
+	}
+
+	if runs := sqliteRecorded(t, database); sqliteApplied(runs, "up") != len(sqliteMigrations) ||
+		sqliteApplied(runs, "down") != 0 {
+		t.Errorf("rolling the seeds back touched the migration history: %d up, %d down",
+			sqliteApplied(runs, "up"), sqliteApplied(runs, "down"))
+	}
+
+	if err := migr(t, config, "seed"); err != nil {
+		t.Fatalf("seeding again over the rolled-back rows: %v", err)
+	}
+
+	logged := migrOut(t, config, "seed", "history")
+	if !strings.Contains(logged, "6 runs") {
+		t.Errorf("migr seed history does not hold the two applies, the two rollbacks and the "+
+			"two applies again:\n%s", logged)
+	}
+
+	for _, report := range []string{migrOut(t, config, "status"), migrOut(t, config, "history")} {
+		if strings.Contains(report, "20260929T1300") {
+			t.Errorf("a migration report mentions a seed:\n%s", report)
+		}
+	}
+
+	t.Log("Seeding a second time succeeded, and each seed inserts under a fixed primary key: the")
+	t.Log("rows the first run wrote are gone, which is the rollback measured by the database's own")
+	t.Log("constraint rather than by a query this file composes.")
+}

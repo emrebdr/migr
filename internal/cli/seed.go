@@ -51,32 +51,26 @@ func newSeedCmd(opts *options) *cobra.Command {
 		return runSeed(cmd, opts, *narrow)
 	}
 
+	cmd.AddCommand(newSeedStatusCmd(opts), newSeedHistoryCmd(opts), newSeedDownCmd(opts),
+		newSeedResolveCmd(opts))
+
 	return cmd
 }
 
 // runSeed checks the schema is settled and then applies or previews the pending seeds against it.
-func runSeed(cmd *cobra.Command, opts *options, narrow narrowing) (err error) {
-	scope, err := narrow.scope(ir.Up)
+func runSeed(cmd *cobra.Command, opts *options, narrow narrowing) error {
+	return runSeedDirection(cmd, opts, narrow, ir.Up)
+}
+
+// runSeedDirection applies or rolls back seeds, or previews either, once every migration has run.
+func runSeedDirection(cmd *cobra.Command, opts *options, narrow narrowing,
+	dir ir.Direction) (err error) {
+	scope, err := narrow.scope(dir)
 	if err != nil {
 		return NewExitError(ExitValidation, err)
 	}
 
-	t, err := resolve(opts)
-	if err != nil {
-		return err
-	}
-
-	set, err := t.seeds(opts)
-	if err != nil {
-		return err
-	}
-
-	_, files, err := t.files(opts)
-	if err != nil {
-		return err
-	}
-
-	s, err := t.connect(cmd.Context(), opts)
+	s, set, err := openSeeds(cmd.Context(), opts, scope)
 	if err != nil {
 		return err
 	}
@@ -85,19 +79,46 @@ func runSeed(cmd *cobra.Command, opts *options, narrow narrowing) (err error) {
 		err = errors.Join(err, s.close(context.WithoutCancel(cmd.Context())))
 	}()
 
-	if err := s.checkMigrated(cmd.Context(), files); err != nil {
-		return err
-	}
-
-	if err := s.attachSeeds(cmd.Context(), opts, set, scope); err != nil {
-		return err
-	}
-
 	if narrow.dry {
-		return previewSeeds(cmd, opts, s, set)
+		return previewSeeds(cmd, opts, s, set, dir)
 	}
 
-	return performSeeds(cmd, opts, s, set)
+	return performSeeds(cmd, opts, s, set, dir)
+}
+
+// openSeeds connects, refuses a database any migration has not run against, and attaches the seeds.
+func openSeeds(ctx context.Context, opts *options, scope engine.Scope) (*session, seedSet, error) {
+	t, err := resolve(opts)
+	if err != nil {
+		return nil, seedSet{}, err
+	}
+
+	set, err := t.seeds(opts)
+	if err != nil {
+		return nil, seedSet{}, err
+	}
+
+	_, files, err := t.files(opts)
+	if err != nil {
+		return nil, seedSet{}, err
+	}
+
+	s, err := t.connect(ctx, opts)
+	if err != nil {
+		return nil, seedSet{}, err
+	}
+
+	if err := s.checkMigrated(ctx, files); err != nil {
+		return nil, seedSet{}, errors.Join(err, s.close(context.WithoutCancel(ctx)))
+	}
+
+	if err := s.attachSeeds(ctx, opts, set, scope); err != nil {
+		return nil, seedSet{}, errors.Join(err, s.close(context.WithoutCancel(ctx)))
+	}
+
+	s.conn = seeding{Conn: s.conn}
+
+	return s, set, nil
 }
 
 // shelf is one directory seeds are read from, and the seeds discovery found in it.
@@ -408,23 +429,25 @@ func (s seeding) History() history.Store {
 	return s.Seeds()
 }
 
-// performSeeds applies the pending seeds and reports what it did, even when also reporting a failure.
-func performSeeds(cmd *cobra.Command, opts *options, s *session, set seedSet) error {
-	result, runErr := engine.Apply(cmd.Context(), seeding{Conn: s.conn}, s.options)
+// performSeeds runs seeds one way and reports what it did, even when also reporting a failure.
+func performSeeds(cmd *cobra.Command, opts *options, s *session, set seedSet,
+	dir ir.Direction) error {
+	result, runErr := s.perform(cmd.Context(), dir)
 	runErr = seedFailure(runErr)
 
 	if runErr != nil && len(result.Runs) == 0 {
 		return runErr
 	}
 
-	summary := seedSummaryOf(summaryOf(s.database, ir.Up, result), set.environment)
+	summary := seedSummaryOf(summaryOf(s.database, dir, result), set.environment)
 
 	return errors.Join(runErr, writeResult(cmd.OutOrStdout(), opts, summary))
 }
 
-// previewSeeds reports what the pending seeds would run, having taken the lock and executed nothing.
-func previewSeeds(cmd *cobra.Command, opts *options, s *session, set seedSet) error {
-	previewed, err := engine.Preview(cmd.Context(), seeding{Conn: s.conn}, s.options, ir.Up)
+// previewSeeds reports what running seeds one way would do, having taken the lock and executed nothing.
+func previewSeeds(cmd *cobra.Command, opts *options, s *session, set seedSet,
+	dir ir.Direction) error {
+	previewed, err := engine.Preview(cmd.Context(), s.conn, s.options, dir)
 	if err != nil {
 		return seedFailure(err)
 	}
@@ -438,5 +461,5 @@ func seedFailure(err error) error {
 		return NewExitError(ExitValidation, err)
 	}
 
-	return selected(err)
+	return selected(wordedForSeeds(err))
 }

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,8 +13,8 @@ import (
 	"github.com/emrebdr/migr/internal/cli"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/driver/postgres"
-	"github.com/emrebdr/migr/internal/driver/postgres/pgtest"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
 )
 
@@ -21,9 +22,9 @@ import (
 //
 // SQLite takes one lock per database file whatever the tables are called, so only here can a seed
 // table that keyed a lock of its own be observed: a seed run would then proceed while migr up held
-// the lock it believes excludes every other run. Nothing in a migration can undo a seed yet (that is
-// M12-T5), so the seed table is dropped through pgtest.Drop -- the one place invariant #3 leaves for
-// SQL a test needs to compose.
+// the lock it believes excludes every other run. The suite leaves the server as it found it with
+// migr seed down and then migr down, in that order, since a seed's rollback needs the schema every
+// migration leaves; the seed history keeps its rows, so what is seeded is read as each seed's last.
 
 // seedTable keeps this suite's seed runs out of every other suite's.
 const seedTable = "migr_e2e_seeds"
@@ -93,7 +94,7 @@ func seededDigest(t *testing.T) string {
 	return schema.Render(*held)
 }
 
-// seededVersions returns what the seed table records as applied, through the store contract alone.
+// seededVersions returns the seeds whose last recorded run applied them, through the store contract.
 func seededVersions(t *testing.T) []string {
 	t.Helper()
 
@@ -102,36 +103,46 @@ func seededVersions(t *testing.T) []string {
 		t.Fatalf("reading the seed history: %v", err)
 	}
 
-	var versions []string
+	last := map[string]history.Record{}
+
+	var order []string
 
 	for _, rec := range runs {
-		if rec.Outcome == history.Applied {
-			versions = append(versions, rec.Version)
+		if _, seen := last[rec.Version]; !seen {
+			order = append(order, rec.Version)
+		}
+
+		last[rec.Version] = rec
+	}
+
+	var versions []string
+
+	for _, version := range order {
+		if rec := last[version]; rec.Outcome == history.Applied && rec.Direction == ir.Up {
+			versions = append(versions, version)
 		}
 	}
 
 	return versions
 }
 
+// unseeded rolls every applied seed back and then every migration, leaving the server as it was.
+func unseeded(t *testing.T, config string) error {
+	t.Helper()
+
+	return errors.Join(migr(t, config, "seed", "down"), migr(t, config, "down"))
+}
+
 func TestASeedRunWaitsOnTheLockMigrUpTakesAgainstPostgreSQL(t *testing.T) {
 	config := seedingProject(t)
 	outliving := context.WithoutCancel(t.Context())
 
-	if err := migr(t, config, "down"); err != nil {
+	if err := unseeded(t, config); err != nil {
 		t.Logf("clearing what an earlier run left behind: %v", err)
 	}
 
-	if err := pgtest.Drop(outliving, openedWith(outliving, t, ""), targetSchema, seedTable); err != nil {
-		t.Fatalf("clearing an earlier run's seed history: %v", err)
-	}
-
 	t.Cleanup(func() {
-		if err := pgtest.Drop(outliving, openedWith(outliving, t, ""), targetSchema,
-			seedTable); err != nil {
-			t.Errorf("dropping the seed history: %v", err)
-		}
-
-		if err := migr(t, config, "down"); err != nil {
+		if err := unseeded(t, config); err != nil {
 			t.Errorf("leaving the server as this suite found it: %v", err)
 		}
 	})

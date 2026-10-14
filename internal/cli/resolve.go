@@ -221,6 +221,10 @@ type resolution struct {
 	Batch int64 `json:"batch,omitempty"`
 	// Outcome is what this repair wrote the row as, absent where nothing was written.
 	Outcome history.Outcome `json:"outcome,omitempty"`
+	// Environment is the one a seed resolution's database runs under, absent from a migration's.
+	Environment string `json:"environment,omitempty"`
+	// about is what was between states, which the zero value reads as a migration.
+	about subject
 }
 
 // resolutionOf renders what a resolution found and did, which is a third rendering of one history row.
@@ -283,10 +287,14 @@ func resumingStatements(settled engine.Resolution) []resuming {
 func (r resolution) String() string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "resolve — database %q, %s\n", r.Database, r.Repair)
+	about := r.about.or()
+
+	fmt.Fprintf(&b, "%sresolve — database %q%s, %s\n", about.command, r.Database,
+		describeEnvironment(r.Environment), r.Repair)
 
 	if !r.Settled {
-		fmt.Fprintf(&b, "\nno migration here is between states, so there is nothing to resolve.\n")
+		fmt.Fprintf(&b, "\nno %s here is between states, so there is nothing to resolve.\n",
+			about.noun)
 
 		return b.String()
 	}
@@ -374,6 +382,6 @@ func (r resolution) writeOutcome(b *strings.Builder) {
 		return
 	}
 
-	fmt.Fprintf(b, "\nrecorded as %s in batch %d. This migration is no longer between states.\n",
-		r.Outcome, r.Batch)
+	fmt.Fprintf(b, "\nrecorded as %s in batch %d. This %s is no longer between states.\n",
+		r.Outcome, r.Batch, r.about.or().noun)
 }

@@ -187,6 +187,27 @@ func (f *fake) record(t *testing.T, rec history.Record) {
 	f.runs = append(f.runs, rec)
 }
 
+// recordSeed stages one seed history row the way record stages a migration one.
+func (f *fake) recordSeed(t *testing.T, rec history.Record) {
+	t.Helper()
+
+	rec.Driver = fakeName
+	rec.Runtime = string(config.LanguageSQL)
+
+	if rec.AppliedAt.IsZero() {
+		rec.AppliedAt = noon.UTC()
+	}
+
+	rec = rec.Stamp()
+
+	if err := rec.Validate(); err != nil {
+		t.Fatalf("staging a seed history row: %v", err)
+	}
+
+	f.seedTable = true
+	f.seedRuns = append(f.seedRuns, rec)
+}
+
 // asked reports whether a run made the named call.
 func (f *fake) asked(call string) bool {
 	for _, made := range f.calls {

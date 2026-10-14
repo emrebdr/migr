@@ -20,6 +20,11 @@ func compileDataCopy(op ir.DataCopy) ([]driver.Statement, error) {
 		return nil, refuse(op, problem)
 	}
 
+	return one(copyHead(op)), nil
+}
+
+// copyHead renders the insert a copy is, up to the clause a chunk narrows it by.
+func copyHead(op ir.DataCopy) string {
 	read := make([]string, len(op.Columns))
 	written := make([]string, len(op.Columns))
 
@@ -27,8 +32,8 @@ func compileDataCopy(op ir.DataCopy) ([]driver.Statement, error) {
 		read[i], written[i] = quote(pair.From), quote(pair.To)
 	}
 
-	return one("INSERT INTO " + quote(op.To) + " (" + strings.Join(written, ", ") + ")\nSELECT " +
-		strings.Join(read, ", ") + " FROM " + quote(op.From)), nil
+	return "INSERT INTO " + quote(op.To) + " (" + strings.Join(written, ", ") + ")\nSELECT " +
+		strings.Join(read, ", ") + " FROM " + quote(op.From)
 }
 
 // checkDataCopy reports why PostgreSQL cannot carry either table or any column pair.
@@ -53,17 +58,30 @@ func checkDataCopy(op ir.DataCopy) string {
 
 // compileDataBackfill renders an update writing one value into every NULL of one column.
 func compileDataBackfill(op ir.DataBackfill) ([]driver.Statement, error) {
+	if problem := checkDataBackfill(op); problem != "" {
+		return nil, refuse(op, problem)
+	}
+
+	return one(backfillHead(op) + " WHERE " + backfillCondition(op)), nil
+}
+
+// checkDataBackfill reports why PostgreSQL cannot carry a backfill's target or the value it writes.
+func checkDataBackfill(op ir.DataBackfill) string {
 	if problem := checkDataTarget(op.Table, op.Column, op.Type); problem != "" {
-		return nil, refuse(op, problem)
+		return problem
 	}
 
-	field := fmt.Sprintf("column %q", op.Column)
-	if problem := checkDefault(field, op.Value); problem != "" {
-		return nil, refuse(op, problem)
-	}
+	return checkDefault(fmt.Sprintf("column %q", op.Column), op.Value)
+}
 
-	return one("UPDATE " + quote(op.Table) + " SET " + quote(op.Column) + " = " +
-		backfilled(op.Value) + " WHERE " + quote(op.Column) + " IS NULL"), nil
+// backfillHead renders the update a backfill is, up to its WHERE.
+func backfillHead(op ir.DataBackfill) string {
+	return "UPDATE " + quote(op.Table) + " SET " + quote(op.Column) + " = " + backfilled(op.Value)
+}
+
+// backfillCondition renders what keeps a backfill to the NULLs of its column.
+func backfillCondition(op ir.DataBackfill) string {
+	return quote(op.Column) + " IS NULL"
 }
 
 // backfilled renders a backfill's value as the default clause would, without the DEFAULT keyword.
@@ -77,16 +95,26 @@ func backfilled(d *ir.Default) string {
 
 // compileDataTransform renders an update rewriting one column of every row from another.
 func compileDataTransform(op ir.DataTransform) ([]driver.Statement, error) {
+	if problem := checkDataTransform(op); problem != "" {
+		return nil, refuse(op, problem)
+	}
+
+	return one(transformHead(op)), nil
+}
+
+// checkDataTransform reports why PostgreSQL cannot carry a transform's target or the column it reads.
+func checkDataTransform(op ir.DataTransform) string {
 	if problem := checkDataTarget(op.Table, op.Column, op.Type); problem != "" {
-		return nil, refuse(op, problem)
+		return problem
 	}
 
-	if problem := checkIdentifier("from", op.From); problem != "" {
-		return nil, refuse(op, problem)
-	}
+	return checkIdentifier("from", op.From)
+}
 
-	return one("UPDATE " + quote(op.Table) + " SET " + quote(op.Column) + " = CAST(" +
-		transformed(op.Function, quote(op.From)) + " AS " + nativeType(op.Type) + ")"), nil
+// transformHead renders the update a transform is, up to the clause a chunk narrows it by.
+func transformHead(op ir.DataTransform) string {
+	return "UPDATE " + quote(op.Table) + " SET " + quote(op.Column) + " = CAST(" +
+		transformed(op.Function, quote(op.From)) + " AS " + nativeType(op.Type) + ")"
 }
 
 // transformed applies a transform function to a source, the text functions over its text.

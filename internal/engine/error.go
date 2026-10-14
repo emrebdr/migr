@@ -293,6 +293,38 @@ func describeDirty(dirty []history.Status) string {
 	return strings.Join(named, ", ")
 }
 
+// ErrCannotChunk marks a data-only migration this session or its history cannot run in chunks.
+var ErrCannotChunk = errors.New("this data operation cannot run in chunks here")
+
+// ErrNoChunkKey marks a chunked operation over a table with no primary key to page through.
+var ErrNoChunkKey = errors.New("this data operation has no key to run in chunks by")
+
+// ChunkError is a failure inside one chunked operation, naming the operation and the chunk it was on.
+type ChunkError struct {
+	// Index is the operation's place in the migration, counting from one.
+	Index int32
+	// Op is the operation.
+	Op ir.Operation
+	// Chunk is the chunk it failed on, counting from one, and zero before any chunk ran.
+	Chunk int64
+	// Err is what failed.
+	Err error
+}
+
+// Error names the operation and the chunk, then what failed.
+func (e *ChunkError) Error() string {
+	if e.Chunk == 0 {
+		return fmt.Sprintf("operation %d (%s): %v", e.Index, e.Op.Kind(), e.Err)
+	}
+
+	return fmt.Sprintf("chunk %d of operation %d (%s): %v", e.Chunk, e.Index, e.Op.Kind(), e.Err)
+}
+
+// Unwrap returns what failed, so errors.Is reaches a sentinel beneath it.
+func (e *ChunkError) Unwrap() error {
+	return e.Err
+}
+
 // ErrNotResumable marks a dirty migration whose recorded index no longer names a statement, for errors.Is.
 var ErrNotResumable = errors.New("this migration cannot be resumed from the recorded statement")
 
@@ -552,6 +584,8 @@ type DirtyError struct {
 	Ordinal int32
 	// TransactionalDDL is what the session declared, since a false one is what most needs explaining.
 	TransactionalDDL bool
+	// Checkpoint is how far a migration running in chunks got, and nil for one that ran statements.
+	Checkpoint *history.Checkpoint
 	// Err is what stopped it, a *StatementError where a statement did.
 	Err error
 }
@@ -575,8 +609,25 @@ const expandedLate = "\nThis engine compiles %d of this migration's operations a
 const autoCommitting = "\nThis session reports no transactional DDL, so a migration is not one " +
 	"all-or-nothing unit here.\n"
 
+// chunkedTemplate is what a migration running in chunks left, which the next migr up carries on from.
+const chunkedTemplate = `this migration stopped partway through running in chunks -- every chunk
+before the one that stopped committed, with a checkpoint saying how far it got.
+
+  failed at   %v
+  got to      %s
+  recorded    batch %d, ordinal %d, dirty at operation %d
+
+migr down refuses against this database until it is settled. The next migr up carries on from the
+checkpoint, after the last row it names; migr resolve --resume does the same, and --applied or
+--rolled-back record what you did yourself.`
+
 // Error names how far the run got, what stopped it, and what the row it wrote says.
 func (e *DirtyError) Error() string {
+	if e.Checkpoint != nil {
+		return fmt.Sprintf(chunkedTemplate, e.Err, DescribeCheckpoint(*e.Checkpoint), e.Batch,
+			e.Ordinal, e.LastStatement)
+	}
+
 	return fmt.Sprintf(dirtyTemplate,
 		e.LastStatement,
 		describeTotal(e.Statements, e.Deferred),
@@ -643,6 +694,8 @@ type DirtyStateError struct {
 	RecordedAt time.Time
 	// Cause is what the row says stopped it, which is text because a history column holds text.
 	Cause string
+	// Checkpoint is how far a migration running in chunks got, and nil for one that ran statements.
+	Checkpoint *history.Checkpoint
 }
 
 // dirtyStateTemplate puts what survived above what did not, since the whole refusal is that pair.
@@ -661,8 +714,26 @@ nothing here undoes it -- nothing here knows what the statement that failed left
 status and migr history print this row without failing, and migr resolve is what settles it:
 --resume runs on from statement %d, and --applied or --rolled-back record what you did yourself.`
 
+// chunkedStateTemplate is the refusal over a migration that stopped running in chunks.
+const chunkedStateTemplate = `%s: this migration's last %s run stopped partway through running in
+chunks.
+
+  got to       %s
+  stopped by   %s
+  recorded     batch %d, ordinal %d, at %s
+
+Neither up nor down runs against this database until it is settled. migr resolve --resume carries
+the %s run on from the checkpoint, after the last row it names, and --applied or --rolled-back
+record what you did yourself.`
+
 // Error names what survived the run that stopped, what stopped it, and what the row does not say.
 func (e *DirtyStateError) Error() string {
+	if e.Checkpoint != nil {
+		return fmt.Sprintf(chunkedStateTemplate, describeMigration(e.Migration, e.Version),
+			e.Direction, DescribeCheckpoint(*e.Checkpoint), describeStopped(e.Cause), e.Batch,
+			e.Ordinal, e.RecordedAt.UTC().Format(stamp), e.Direction)
+	}
+
 	return fmt.Sprintf(dirtyStateTemplate,
 		describeMigration(e.Migration, e.Version),
 		describeSurvived(e.LastStatement, e.Direction),
@@ -673,6 +744,26 @@ func (e *DirtyStateError) Error() string {
 		e.RecordedAt.UTC().Format(stamp),
 		e.LastStatement,
 	)
+}
+
+// DescribeCheckpoint says how far a chunked operation got, in the words every report uses.
+func DescribeCheckpoint(cp history.Checkpoint) string {
+	if cp.Chunks == 0 {
+		return fmt.Sprintf("operation %d, before its first chunk -- every operation before it "+
+			"finished", cp.Step+1)
+	}
+
+	return fmt.Sprintf("operation %d, %s and %s written, through key (%s)", cp.Step+1,
+		counted(cp.Chunks, "chunk"), counted(cp.Written, "row"), strings.Join(cp.Cursor, ", "))
+}
+
+// counted renders a count with its noun.
+func counted(n int64, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // Unwrap reports the sentinel so errors.Is(err, ErrDirty) succeeds, and nothing else.
@@ -699,8 +790,14 @@ func describeStopped(cause string) string {
 }
 
 // dirtyError refuses the whole run, naming the migration whose last run stopped partway.
-func dirtyError(st history.Status) error {
+func dirtyError(st history.Status, cps []history.Checkpoint) error {
+	var at *history.Checkpoint
+	if cp, found := history.Find(cps, st.Version, st.Recorded.Direction); found {
+		at = &cp
+	}
+
 	return &DirtyStateError{
+		Checkpoint:    at,
 		Migration:     st.Migration,
 		Version:       st.Version,
 		Direction:     st.Recorded.Direction,

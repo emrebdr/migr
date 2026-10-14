@@ -12,6 +12,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/driver/drivertest"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
 )
@@ -386,7 +387,7 @@ func TestASnapshotDescribesTheFixtureAndNotMigrsOwnBookkeeping(t *testing.T) {
 		f := newFixture(t, c)
 
 		t.Cleanup(func() {
-			drop(context.WithoutCancel(t.Context()), c, c.table)
+			drop(context.WithoutCancel(t.Context()), c, c.table, history.ProgressTable(c.table))
 		})
 
 		if err := c.History().Ensure(t.Context()); err != nil {

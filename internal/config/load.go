@@ -119,6 +119,12 @@ func applyDefaults(cfg *Config) {
 	setDuration(&cfg.Safety.LockTimeout, driver.DefaultStatementLockWait)
 	setDuration(&cfg.Safety.StatementTimeout, 30*time.Second)
 	setDuration(&cfg.Safety.ReplicaLagThreshold, 5*time.Second)
+	setDuration(&cfg.Safety.ChunkPause, driver.DefaultChunkPause)
+
+	if cfg.Safety.ChunkRows == nil {
+		rows := driver.DefaultChunkRows
+		cfg.Safety.ChunkRows = &rows
+	}
 
 	if cfg.Safety.LockRetries == 0 {
 		cfg.Safety.LockRetries = 5

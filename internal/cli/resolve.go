@@ -213,6 +213,8 @@ type resolution struct {
 	Statements int32 `json:"statements,omitempty"`
 	// Resuming is one entry per statement a resume will run, in the order it will run them.
 	Resuming []resuming `json:"resuming,omitempty"`
+	// Checkpoint is where a resume of a migration running in chunks carries on from.
+	Checkpoint *checkpoint `json:"checkpoint,omitempty"`
 	// Reason is the operator's account, on an asserted repair.
 	Reason string `json:"reason,omitempty"`
 	// Batch is the batch this repair's own row is recorded under.
@@ -238,6 +240,7 @@ func resolutionOf(database string, repair engine.Repair, settled engine.Resoluti
 		Direction:  settled.Direction,
 		Statements: settled.Statements,
 		Resuming:   resumingStatements(settled),
+		Checkpoint: checkpointOf(settled.Checkpoint),
 		Reason:     settled.Reason,
 		Batch:      settled.Batch,
 		Outcome:    writtenOutcome(settled),
@@ -259,7 +262,7 @@ func writtenOutcome(settled engine.Resolution) history.Outcome {
 
 // resumingStatements lists the statements a resume will run, numbered as the whole migration numbers them.
 func resumingStatements(settled engine.Resolution) []resuming {
-	if settled.Mode.Asserts() || settled.Pending() == 0 {
+	if settled.Mode.Asserts() || settled.Checkpoint != nil || settled.Pending() == 0 {
 		return nil
 	}
 
@@ -311,6 +314,15 @@ func (r resolution) writeIntent(b *strings.Builder) {
 	if r.Repair.Asserts() {
 		fmt.Fprintf(b, "\n  will record it as %s in batch %d, running nothing: %s\n",
 			describeRecorded(r.Repair), r.Batch, r.Reason)
+
+		return
+	}
+
+	if r.Checkpoint != nil {
+		fmt.Fprintf(b, "\n  will carry operation %d on in chunks after key (%s), where %s and %s "+
+			"had\n  committed, then record the %s run in batch %d\n", r.Checkpoint.Operation,
+			strings.Join(r.Checkpoint.Cursor, ", "), describeChunks(r.Checkpoint.Chunks),
+			describeWritten(r.Checkpoint.Written), r.Direction, r.Batch)
 
 		return
 	}

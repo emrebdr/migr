@@ -110,6 +110,8 @@ type Resolution struct {
 	Ran bool
 	// Run is what a resume executed, absent on a dry run and on an asserted repair.
 	Run *Run
+	// Checkpoint is how far a migration running in chunks got, which a resume carries on after.
+	Checkpoint *history.Checkpoint
 }
 
 // Pending reports how many statements a resume has left to run, which is zero where all of them ran.
@@ -219,7 +221,7 @@ func (e *executor) assert(ctx context.Context, st history.Status, ask Repair) (R
 	}
 
 	rec := e.assertedRecord(st, settled)
-	if err := e.store.MarkResolved(ctx, rec, ask.Reason); err != nil {
+	if err := e.settle(ctx, st, rec, ask.Reason); err != nil {
 		return settled, fmt.Errorf("recording the resolution of %s: %w",
 			describeVersion(st), err)
 	}
@@ -227,6 +229,22 @@ func (e *executor) assert(ctx context.Context, st history.Status, ask Repair) (R
 	settled.Ran = true
 
 	return settled, nil
+}
+
+// settle appends the resolution and clears any checkpoint, so nothing later carries on from it.
+func (e *executor) settle(ctx context.Context, st history.Status, rec history.Record, reason string) error {
+	store, remembers := e.store.(history.Checkpointer)
+	if !remembers {
+		return e.store.MarkResolved(ctx, rec, reason)
+	}
+
+	return e.conn.Transact(ctx, func(ctx context.Context) error {
+		if err := store.ClearCheckpoint(ctx, st.Version, st.Recorded.Direction); err != nil {
+			return err
+		}
+
+		return e.store.MarkResolved(ctx, rec, reason)
+	})
 }
 
 // assertedRecord builds the row an asserted repair writes, from the run that went dirty and this session.
@@ -264,6 +282,17 @@ func (e *executor) resume(ctx context.Context, st history.Status, ask Repair) (R
 	if err != nil {
 		return Resolution{}, err
 	}
+
+	cps, err := e.checkpoints(ctx)
+	if err != nil {
+		return Resolution{}, err
+	}
+
+	if cp, chunked := history.Find(cps, st.Version, dir); chunked {
+		return e.resumeChunked(ctx, item, ready, cp, ask)
+	}
+
+	ready.compiled = unchunked(ready.compiled)
 
 	settled := Resolution{
 		Mode:       ask.Mode,
@@ -304,6 +333,52 @@ func (e *executor) finishResume(ctx context.Context, item queued, settled Resolu
 	settled.Run = &run
 
 	return settled, nil
+}
+
+// resumeChunked carries a migration that stopped running in chunks on from its checkpoint.
+func (e *executor) resumeChunked(ctx context.Context, item queued, ready prepared,
+	cp history.Checkpoint, ask Repair,
+) (Resolution, error) {
+	e.from = 0
+
+	if err := checkChunkResume(ready, item.recorded, cp); err != nil {
+		return Resolution{}, e.fail(item, plan.Plan{}, err)
+	}
+
+	settled := Resolution{
+		Mode:       ask.Mode,
+		Migration:  item.migration,
+		Version:    item.migration.Version,
+		Direction:  ready.compiled.Direction,
+		Stopped:    item.recorded,
+		Statements: ready.compiled.Len(),
+		Plan:       ready.compiled,
+		Batch:      e.batch,
+		Checkpoint: &cp,
+	}
+
+	if ask.DryRun {
+		return settled, nil
+	}
+
+	run, err := e.performChunked(ctx, ready, &cp)
+	if err != nil {
+		return settled, err
+	}
+
+	settled.Ran = true
+	settled.Run = &run
+
+	return settled, nil
+}
+
+// unchunked runs a plan as statements, for a dirty run that stopped running them rather than chunks.
+func unchunked(compiled plan.Plan) plan.Plan {
+	for i := range compiled.Steps {
+		compiled.Steps[i].Chunked = false
+	}
+
+	return compiled
 }
 
 // recordComplete records a run whose every statement had already taken effect, running none of them.

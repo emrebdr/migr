@@ -29,6 +29,12 @@ type Run struct {
 	Started time.Time
 	// Duration is how long the run took, measured up to the history write rather than the commit.
 	Duration time.Duration
+	// Chunks is how many chunks it ran a data-only migration in, and zero where it ran statements.
+	Chunks int64
+	// Written is how many rows those chunks changed or inserted.
+	Written int64
+	// Resumed reports a run that carried on from the checkpoint an earlier run committed.
+	Resumed bool
 }
 
 // Skipped is one migration this invocation did not run, and the state it was left in.

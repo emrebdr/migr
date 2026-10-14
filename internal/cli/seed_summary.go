@@ -69,7 +69,7 @@ func (s seedSummary) String() string {
 
 	for _, run := range s.Runs {
 		fmt.Fprintf(&b, "  %d  %-*s  %s  %s\n", run.Ordinal, widest(s.Runs, fileOfRun), run.File,
-			describeStatements(int(run.Statements)), run.Duration)
+			describeWork(run), run.Duration)
 	}
 
 	fmt.Fprintf(&b, "\nseeded %s in %s%s\n", describeSeeds(len(s.Runs)), s.Duration,
@@ -99,7 +99,7 @@ func (s seedPlan) String() string {
 
 	for _, step := range s.Steps {
 		fmt.Fprintf(&b, "  %d  %-*s  %s\n", step.Ordinal, widest(s.Steps, fileOfStep), step.File,
-			describeStatements(step.Statements))
+			describePlannedWork(step))
 	}
 
 	fmt.Fprintf(&b, "\nwould seed %s%s. nothing was executed and nothing was recorded.\n",

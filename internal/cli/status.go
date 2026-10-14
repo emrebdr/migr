@@ -58,7 +58,27 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	return writeResult(cmd.OutOrStdout(), opts, statusOf(s.database, found, report))
+	cps, err := checkpointsOf(cmd.Context(), s.conn.History())
+	if err != nil {
+		return err
+	}
+
+	return writeResult(cmd.OutOrStdout(), opts, statusOf(s.database, found, report, cps))
+}
+
+// checkpointsOf reads how far every chunked migration got, where the history remembers it at all.
+func checkpointsOf(ctx context.Context, store history.Store) ([]history.Checkpoint, error) {
+	remembering, remembers := store.(history.Checkpointer)
+	if !remembers {
+		return nil, nil
+	}
+
+	cps, err := remembering.Checkpoints(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading how far a chunked migration got: %w", err)
+	}
+
+	return cps, nil
 }
 
 // recordedRun is the run that left a migration in the state it is in, absent when none did.
@@ -95,6 +115,8 @@ type statusRow struct {
 	RecordedSource string `json:"recorded_source,omitempty"`
 	// CurrentSource is what the file hashes to now, present only where it disagrees with the recorded one.
 	CurrentSource string `json:"current_source,omitempty"`
+	// Checkpoint is how far a dirty migration running in chunks got, absent for every other one.
+	Checkpoint *checkpoint `json:"checkpoint,omitempty"`
 }
 
 // orderBasis names what decided a report's sequence, since a report resolves only what needs no runtime.
@@ -127,12 +149,14 @@ type statusReport struct {
 }
 
 // statusOf renders a reconciliation report, which a database with no history table resolves to none of.
-func statusOf(database string, found []migration.Migration, report history.Report) statusReport {
+func statusOf(database string, found []migration.Migration, report history.Report,
+	cps []history.Checkpoint,
+) statusReport {
 	statuses, present := report.Resolved()
 
 	rows := make([]statusRow, 0, len(statuses))
 	for _, status := range statuses {
-		rows = append(rows, rowOf(status))
+		rows = append(rows, rowOf(status, cps))
 	}
 
 	unread := declarable(found)
@@ -171,12 +195,18 @@ func basisOf(unread int) orderBasis {
 }
 
 // rowOf renders one version's state, the run that decided it, and the digests a drifted one moved between.
-func rowOf(status history.Status) statusRow {
+func rowOf(status history.Status, cps []history.Checkpoint) statusRow {
 	row := statusRow{
 		Version: status.Version,
 		File:    describeFile(status.Migration),
 		State:   status.State,
 		Run:     runOf(status.Recorded),
+	}
+
+	if status.State == history.StateDirty {
+		if cp, found := history.Find(cps, status.Version, status.Recorded.Direction); found {
+			row.Checkpoint = checkpointOf(&cp)
+		}
 	}
 
 	if status.State == history.StateDrifted {
@@ -312,7 +342,7 @@ func describeState(row statusRow) string {
 		return fmt.Sprintf("edited since it was applied (recorded %s, now %s)",
 			shortDigest(row.RecordedSource), shortDigest(row.CurrentSource))
 	case history.StateDirty:
-		return describeDirty(row.Run)
+		return describeDirty(row.Run, row.Checkpoint)
 	}
 
 	return "this build has no note for that state"
@@ -328,12 +358,28 @@ func describeAsserted(run *recordedRun) string {
 }
 
 // describeDirty says how far a run got before it left the schema between states.
-func describeDirty(run *recordedRun) string {
+func describeDirty(run *recordedRun, at *checkpoint) string {
 	if run == nil {
 		return "left the schema between states"
 	}
 
+	if at != nil {
+		return fmt.Sprintf("stopped running in chunks: operation %d, %s and %s written, through "+
+			"key (%s) -- the next migr %s carries on from there", at.Operation,
+			describeChunks(at.Chunks), describeWritten(at.Written), strings.Join(at.Cursor, ", "),
+			describeResumer(run.Direction))
+	}
+
 	return fmt.Sprintf("stopped after statement %d of the %s run", run.LastStatement, run.Direction)
+}
+
+// describeResumer names the command that carries a stopped chunked run on, which a rollback's is not.
+func describeResumer(dir ir.Direction) string {
+	if dir == ir.Up {
+		return "up"
+	}
+
+	return "resolve --resume"
 }
 
 // shortDigest keeps enough of a rendered digest to compare two by eye.

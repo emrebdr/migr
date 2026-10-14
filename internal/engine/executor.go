@@ -30,6 +30,13 @@ type executor struct {
 	position int32
 	// from is how many of a migration's statements a resume skips, and zero for every other run.
 	from int32
+	// shift is how many ordinals the rows of chunked runs in progress took beyond their own.
+	shift int32
+}
+
+// ordinalOf returns the ordinal a queued migration's row is written at, after any chunked run's own.
+func (e *executor) ordinalOf(item queued) int32 {
+	return item.ordinal + e.shift
 }
 
 // newExecutor checks what a run was given and binds it to the session's history, before any lock.
@@ -149,6 +156,10 @@ func (e *executor) compileFor(_ context.Context, item queued, dir ir.Direction,
 
 // perform runs one prepared migration, recording it inside the transaction it runs in.
 func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
+	if ready.compiled.Chunked() > 0 {
+		return e.performChunked(ctx, ready, nil)
+	}
+
 	rec := e.newRecord(ready)
 	e.position = 0
 
@@ -160,7 +171,7 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 
 	return Run{
 		Migration:  ready.item.migration,
-		Ordinal:    ready.item.ordinal,
+		Ordinal:    rec.Ordinal,
 		Statements: ready.compiled.Len() - e.from,
 		Started:    rec.AppliedAt,
 		Duration:   rec.Duration,
@@ -339,7 +350,7 @@ func (e *executor) resumed() bool {
 func (e *executor) newRecord(ready prepared) history.Record {
 	return history.Record{
 		Batch:     e.batch,
-		Ordinal:   ready.item.ordinal,
+		Ordinal:   e.ordinalOf(ready.item),
 		Version:   ready.item.migration.Version,
 		Name:      ready.item.migration.Name,
 		Direction: ready.compiled.Direction,
@@ -384,7 +395,7 @@ func (e *executor) leftDirty(ready prepared, survived int32, cause error) error 
 		Statements:       ready.compiled.Len(),
 		Deferred:         ready.compiled.Deferred(),
 		Batch:            e.batch,
-		Ordinal:          ready.item.ordinal,
+		Ordinal:          e.ordinalOf(ready.item),
 		TransactionalDDL: e.conn.Capabilities().TransactionalDDL(),
 		Err:              cause,
 	}
@@ -395,7 +406,7 @@ func (e *executor) fail(item queued, compiled plan.Plan, err error) error {
 	return &MigrationError{
 		Migration: item.migration,
 		Batch:     e.batch,
-		Ordinal:   item.ordinal,
+		Ordinal:   e.ordinalOf(item),
 		Operation: operationOf(compiled, err),
 		Err:       err,
 	}
@@ -403,6 +414,11 @@ func (e *executor) fail(item queued, compiled plan.Plan, err error) error {
 
 // operationOf resolves the operation a statement failure came from, when the failure names one.
 func operationOf(compiled plan.Plan, err error) ir.Operation {
+	var chunk *ChunkError
+	if errors.As(err, &chunk) {
+		return chunk.Op
+	}
+
 	var failure *StatementError
 	if !errors.As(err, &failure) {
 		return nil

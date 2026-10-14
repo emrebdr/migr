@@ -30,7 +30,12 @@ func (e *executor) applyAll(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 
-	queue, skipped, err := classify(report, e.opts.Scope)
+	cps, err := e.checkpoints(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+
+	queue, skipped, err := classify(report, e.opts.Scope, cps)
 	if err != nil {
 		return Result{}, err
 	}
@@ -65,6 +70,10 @@ func (e *executor) applyQueue(ctx context.Context, queue []queued, skipped []Ski
 
 // applyOne asks what one migration does, prepares it, and runs it, recording it before it commits.
 func (e *executor) applyOne(ctx context.Context, item queued) (Run, error) {
+	if item.resume != nil {
+		return e.resumeChunks(ctx, item)
+	}
+
 	ready, err := e.forward(ctx, item)
 	if err != nil {
 		return Run{}, err

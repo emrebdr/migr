@@ -118,10 +118,13 @@ func TestTheDataOperationsReachARealDatabaseThroughEveryCommand(t *testing.T) {
 	planned := migrOut(t, config, "plan")
 	for _, want := range []string{
 		`rows: fills the NULLs of "people.nickname" with "anonymous", and no other row`,
-		`UPDATE "people" SET "nickname" = 'anonymous' WHERE "people"."nickname" IS NULL;`,
+		`chunks: 1000 rows at a time by "people" (id), pausing 100ms between them`,
+		`UPDATE "people" SET "nickname" = 'anonymous' WHERE "people"."id" > ? AND ` +
+			`"people"."id" <= ? AND "people"."nickname" IS NULL;`,
 		`rows: rewrites "people.email_key" in every row, from "email" through lower`,
 		`rows: copies every row of "people" into "people_archive", 2 columns`,
 		`INSERT INTO "people_archive" ("id", "email")`,
+		`3 operations run in chunks`,
 	} {
 		if !strings.Contains(planned, want) {
 			t.Errorf("migr plan does not show %q:\n%s", want, planned)

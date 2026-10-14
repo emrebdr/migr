@@ -30,6 +30,8 @@ type queued struct {
 	state history.State
 	// ordinal is its position within the batch, counting from one.
 	ordinal int32
+	// resume is the checkpoint a chunked run that stopped committed, and nil for every other run.
+	resume *history.Checkpoint
 }
 
 // resolved reads a report's statuses, refusing one over a database that turned out to have no history.
@@ -81,16 +83,18 @@ func selected(statuses []history.Status, queues func(history.Status) (bool, erro
 }
 
 // classify splits a reconciliation report into what an apply run will apply and what it will not.
-func classify(report history.Report, scope Scope) ([]queued, []Skipped, error) {
+func classify(report history.Report, scope Scope, cps []history.Checkpoint) ([]queued, []Skipped, error) {
 	statuses, err := resolved(report)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	queue, skipped, err := selected(statuses, runnable)
+	queue, skipped, err := selected(statuses, runnable(cps))
 	if err != nil {
 		return nil, nil, err
 	}
+
+	queue = resuming(queue, cps)
 
 	queue, dropped, err := scope.narrowUp(queue, statuses)
 	if err != nil {
@@ -101,13 +105,13 @@ func classify(report history.Report, scope Scope) ([]queued, []Skipped, error) {
 }
 
 // classifyDown splits it into what a rollback will undo, newest first, or refuses the whole run.
-func classifyDown(report history.Report, scope Scope) ([]queued, []Skipped, error) {
+func classifyDown(report history.Report, scope Scope, cps []history.Checkpoint) ([]queued, []Skipped, error) {
 	statuses, err := resolved(report)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	queue, skipped, err := selected(statuses, reversible)
+	queue, skipped, err := selected(statuses, reversible(cps))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -121,37 +125,69 @@ func classifyDown(report history.Report, scope Scope) ([]queued, []Skipped, erro
 }
 
 // runnable reports whether a reconciled migration should run, refusing the states nothing can.
-func runnable(st history.Status) (bool, error) {
-	switch st.State {
-	case history.StatePending:
-		return true, nil
-	case history.StateApplied, history.StateMissing:
-		return false, nil
-	case history.StateDrifted:
-		return false, driftedError(st, ir.Up, false)
-	case history.StateDirty:
-		return false, dirtyError(st)
-	}
+func runnable(cps []history.Checkpoint) func(history.Status) (bool, error) {
+	return func(st history.Status) (bool, error) {
+		switch st.State {
+		case history.StatePending:
+			return true, nil
+		case history.StateApplied, history.StateMissing:
+			return false, nil
+		case history.StateDrifted:
+			return false, driftedError(st, ir.Up, false)
+		case history.StateDirty:
+			if _, carries := resumableFrom(st, cps); carries {
+				return true, nil
+			}
 
-	return false, unknownStateError(st)
+			return false, dirtyError(st, cps)
+		}
+
+		return false, unknownStateError(st)
+	}
 }
 
 // reversible reports whether a reconciled migration should be undone, refusing the states nothing can.
-func reversible(st history.Status) (bool, error) {
-	switch st.State {
-	case history.StateApplied:
-		return true, nil
-	case history.StatePending:
-		return false, nil
-	case history.StateMissing:
-		return false, missingError(st)
-	case history.StateDrifted:
-		return false, driftedError(st, ir.Down, false)
-	case history.StateDirty:
-		return false, dirtyError(st)
+func reversible(cps []history.Checkpoint) func(history.Status) (bool, error) {
+	return func(st history.Status) (bool, error) {
+		switch st.State {
+		case history.StateApplied:
+			return true, nil
+		case history.StatePending:
+			return false, nil
+		case history.StateMissing:
+			return false, missingError(st)
+		case history.StateDrifted:
+			return false, driftedError(st, ir.Down, false)
+		case history.StateDirty:
+			return false, dirtyError(st, cps)
+		}
+
+		return false, unknownStateError(st)
+	}
+}
+
+// resumableFrom returns the checkpoint a stopped up run committed, since only an up carries on by itself.
+func resumableFrom(st history.Status, cps []history.Checkpoint) (history.Checkpoint, bool) {
+	if st.State != history.StateDirty || st.Recorded.Direction != ir.Up {
+		return history.Checkpoint{}, false
 	}
 
-	return false, unknownStateError(st)
+	return history.Find(cps, st.Version, ir.Up)
+}
+
+// resuming attaches its checkpoint to every queued migration that carries on from one.
+func resuming(queue []queued, cps []history.Checkpoint) []queued {
+	for i, item := range queue {
+		if item.state != history.StateDirty {
+			continue
+		}
+
+		if cp, found := history.Find(cps, item.migration.Version, ir.Up); found {
+			queue[i].resume = &cp
+		}
+	}
+
+	return queue
 }
 
 // skip records a migration that needed no run, and the state that decided that.

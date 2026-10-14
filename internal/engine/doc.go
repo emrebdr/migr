@@ -14,7 +14,8 @@
 // database contradicts, which is where ADR 0008's from trust problem closed. See
 // docs/adr/0069-per-driver-introspection.md, docs/adr/0021-apply-executor.md,
 // docs/adr/0022-rollback-executor.md, docs/adr/0023-batch-narrowing.md,
-// docs/adr/0024-dirty-runs.md and docs/adr/0026-dry-run-and-sql-sources.md.
+// docs/adr/0024-dirty-runs.md and docs/adr/0026-dry-run-and-sql-sources.md. A data-only migration
+// runs in chunks and carries on after an interruption as of M12-T3 (docs/adr/0078).
 //
 // # A preview reads what an apply ensures
 //
@@ -497,4 +498,23 @@
 // open transaction. PostgreSQL does; the contract cannot say so, and a store on a second connection
 // would break the guarantee silently. It is stated in internal/driver's package doc and asserted
 // per driver, exactly as ErrNoTable is (ADR 0019).
+//
+// # A data-only migration runs a chunk at a time, and carries on where it stopped
+//
+// A migration whose every operation is a data operation is marked by the planner to run in chunks
+// (M12-T3, ADR 0078), and chunk.go is its run: for each operation, the key from Introspect, then a
+// loop of the pacer's say, one driver.Chunker chunk, and that chunk's checkpoint, all in one
+// transaction. The first chunk's transaction also writes the dirty row, so a run killed between two
+// chunks leaves what a failed one does, and the last one's writes the applied row and clears the
+// checkpoint instead. The marker and the applied row are two rows in one batch, so a run that wrote
+// the marker takes the next ordinal, and executor.shift moves every later migration one on.
+//
+// A stopped run is carried on by the next Apply only where it was going up, a checkpoint names it,
+// and both digests and the chunking still match -- classify queues it with the checkpoint, and every
+// other dirty state is refused as before. Resolve's resume takes the same path in either direction,
+// and an asserted resolution clears the checkpoint in the transaction its row goes in.
+//
+// pace.go is the seam M13-T8 drives: a Pacer is asked before every chunk, the first included, with
+// what the chunks so far did, and answers how many rows the next covers, how long to wait for it,
+// and why it is waiting. The wait goes through a Sleeper, so no test here ever sleeps.
 package engine

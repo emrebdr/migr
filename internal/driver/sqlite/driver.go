@@ -73,7 +73,7 @@ func checkHistoryTable(table string) error {
 		return &HistoryError{Table: table, Detail: "history.table is required"}
 	}
 
-	for _, op := range history.Schema(table) {
+	for _, op := range append(history.Schema(table), history.ProgressSchema(table)...) {
 		if err := op.Validate(); err != nil {
 			return &HistoryError{Table: table, Detail: err.Error(), Err: err}
 		}

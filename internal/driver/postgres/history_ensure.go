@@ -47,7 +47,7 @@ func checkHistoryTable(table string) error {
 		return &HistoryError{Table: table, Detail: problem}
 	}
 
-	for _, op := range history.Schema(table) {
+	for _, op := range append(history.Schema(table), history.ProgressSchema(table)...) {
 		if err := op.Validate(); err != nil {
 			return &HistoryError{Table: table, Detail: err.Error(), Err: err}
 		}
@@ -63,12 +63,21 @@ func checkHistoryTable(table string) error {
 // describeDerived names the derived object a table name is too long for, not just the table.
 func describeDerived(table string, err error) string {
 	return fmt.Sprintf("the history schema cannot be compiled for a table named %q: %v. Note that "+
-		"the index is named after the table, so the usable length is shorter than an identifier's",
-		table, err)
+		"the index is named after the table, and so is the checkpoint table beside it, so the "+
+		"usable length is shorter than an identifier's", table, err)
 }
 
-// Ensure creates the history table if this database does not have it yet.
+// Ensure creates the history table and its checkpoint table if this database does not have them yet.
 func (h pgHistory) Ensure(ctx context.Context) error {
+	if err := h.ensureHistory(ctx); err != nil {
+		return err
+	}
+
+	return h.ensureProgress(ctx)
+}
+
+// ensureHistory creates the history table, or checks the one already there is one this build can write.
+func (h pgHistory) ensureHistory(ctx context.Context) error {
 	kind, found, err := h.relkind(ctx)
 	if err != nil {
 		return err
@@ -88,9 +97,14 @@ func (h pgHistory) Ensure(ctx context.Context) error {
 
 // relkind reports what holds the history name, and whether anything holds it at all.
 func (h pgHistory) relkind(ctx context.Context) (string, bool, error) {
+	return h.relkindOf(ctx, h.table)
+}
+
+// relkindOf reports what holds a name, and whether anything holds it at all.
+func (h pgHistory) relkindOf(ctx context.Context, name string) (string, bool, error) {
 	var kind string
 
-	err := h.session.runner().QueryRow(ctx, relkindQuery, h.table).Scan(&kind)
+	err := h.session.runner().QueryRow(ctx, relkindQuery, name).Scan(&kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, nil
 	}
@@ -104,7 +118,7 @@ func (h pgHistory) relkind(ctx context.Context) (string, bool, error) {
 
 // create compiles the neutral schema and runs every statement of it as one unit.
 func (h pgHistory) create(ctx context.Context) error {
-	stmts, err := h.compileSchema()
+	stmts, err := h.compileSchema(history.Schema(h.table))
 	if err != nil {
 		return err
 	}
@@ -114,11 +128,11 @@ func (h pgHistory) create(ctx context.Context) error {
 	})
 }
 
-// compileSchema turns the neutral history schema into statements, before any of them runs.
-func (h pgHistory) compileSchema() ([]driver.Statement, error) {
+// compileSchema turns a neutral schema into statements, before any of them runs.
+func (h pgHistory) compileSchema(ops ir.Operations) ([]driver.Statement, error) {
 	var stmts []driver.Statement
 
-	for _, op := range history.Schema(h.table) {
+	for _, op := range ops {
 		compiled, err := compile(op)
 		if err != nil {
 			return nil, h.wrap("compiling the history schema", err)

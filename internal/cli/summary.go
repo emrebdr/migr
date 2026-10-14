@@ -40,8 +40,43 @@ type ran struct {
 	File string `json:"file"`
 	// Statements is how many statements it executed.
 	Statements int32 `json:"statements"`
+	// Chunks is how many chunks it ran a data-only migration in, absent where it ran statements.
+	Chunks int64 `json:"chunks,omitempty"`
+	// Written is how many rows those chunks changed or inserted.
+	Written int64 `json:"written,omitempty"`
+	// Resumed reports a run that carried on from the checkpoint an earlier run committed.
+	Resumed bool `json:"resumed,omitempty"`
 	// Duration is how long the run took.
 	Duration elapsed `json:"duration_ms"`
+}
+
+// ranOf renders one run an invocation performed.
+func ranOf(run engine.Run) ran {
+	return ran{
+		Ordinal:    run.Ordinal,
+		Version:    run.Migration.Version,
+		File:       run.Migration.Filename(),
+		Statements: run.Statements,
+		Chunks:     run.Chunks,
+		Written:    run.Written,
+		Resumed:    run.Resumed,
+		Duration:   elapsed(run.Duration),
+	}
+}
+
+// describeWork says what a run executed: its statements, or the chunks a data-only one ran in.
+func describeWork(run ran) string {
+	if run.Chunks == 0 {
+		return describeStatements(int(run.Statements))
+	}
+
+	described := fmt.Sprintf("%s, %s written", describeChunks(run.Chunks),
+		describeWritten(run.Written))
+	if run.Resumed {
+		described += ", resumed"
+	}
+
+	return described
 }
 
 // planned is one migration an invocation would have performed, compiled but never executed.
@@ -56,6 +91,8 @@ type planned struct {
 	Statements int `json:"statements"`
 	// Deferred is how many of its operations this engine compiles only as each one runs.
 	Deferred int `json:"deferred,omitempty"`
+	// Chunked is how many of its operations run in chunks, whose statements are not counted.
+	Chunked int `json:"chunked,omitempty"`
 	// Refused is how many of its operations destroy what nothing permits, which migr up stops at.
 	Refused int `json:"refused,omitempty"`
 	// Unsupported is how many this server declares it cannot perform, which migr up also stops at.
@@ -120,13 +157,7 @@ func summaryOf(database string, dir ir.Direction, result engine.Result) runSumma
 
 	for _, run := range result.Runs {
 		total += run.Duration
-		summary.Runs = append(summary.Runs, ran{
-			Ordinal:    run.Ordinal,
-			Version:    run.Migration.Version,
-			File:       run.Migration.Filename(),
-			Statements: run.Statements,
-			Duration:   elapsed(run.Duration),
-		})
+		summary.Runs = append(summary.Runs, ranOf(run))
 	}
 
 	summary.Duration = elapsed(total)
@@ -153,8 +184,9 @@ func planOf(s *session, previewed engine.Previewed) planSummary {
 			Ordinal:     step.Ordinal,
 			Version:     step.Plan.Migration.Version,
 			File:        step.Plan.Migration.Filename(),
-			Statements:  len(step.Plan.Statements()),
+			Statements:  statementsOf(step.Plan),
 			Deferred:    int(step.Plan.Deferred()),
+			Chunked:     int(step.Plan.Chunked()),
 			Refused:     refusedIn(allowed, step.Plan),
 			Unsupported: unsupportedIn(caps, step.Plan),
 		})
@@ -231,7 +263,7 @@ func (s runSummary) String() string {
 
 	for _, run := range s.Runs {
 		fmt.Fprintf(&b, "  %d  %-*s  %s  %s\n", run.Ordinal, widest(s.Runs, fileOfRun), run.File,
-			describeStatements(int(run.Statements)), run.Duration)
+			describeWork(run), run.Duration)
 	}
 
 	fmt.Fprintf(&b, "\n%s %s in %s%s\n", pastTense(s.Direction), describeMigrations(len(s.Runs)),
@@ -261,7 +293,7 @@ func (s planSummary) String() string {
 
 	for _, step := range s.Steps {
 		fmt.Fprintf(&b, "  %d  %-*s  %s%s\n", step.Ordinal, widest(s.Steps, fileOfStep), step.File,
-			describeStatements(step.Statements), describeDeferred(step.Deferred))
+			describePlannedWork(step), describeDeferred(step.Deferred))
 	}
 
 	fmt.Fprintf(&b, "\nwould %s %s%s. nothing was executed and nothing was recorded.\n%s\n",
@@ -335,6 +367,24 @@ func describeDeferred(n int) string {
 	}
 
 	return fmt.Sprintf(", and %d operations compiled as they run", n)
+}
+
+// statementsOf counts what a plan would execute as statements, which a chunked one counts as none.
+func statementsOf(compiled plan.Plan) int {
+	if compiled.Chunked() > 0 {
+		return 0
+	}
+
+	return len(compiled.Statements())
+}
+
+// describePlannedWork says what a migration would execute: its statements, or its chunked operations.
+func describePlannedWork(step planned) string {
+	if step.Chunked > 0 {
+		return describeOperations(step.Chunked) + " in chunks"
+	}
+
+	return describeStatements(step.Statements)
 }
 
 // describeStatements counts statements with the right noun.

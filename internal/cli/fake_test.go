@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -61,6 +63,16 @@ type fake struct {
 	seedRuns []history.Record
 	// seedTable reports whether the seed history table exists.
 	seedTable bool
+	// checkpoints is how far a chunked migration got, as a migration store's checkpoint table holds it.
+	checkpoints []history.Checkpoint
+	// seedCheckpoints is the same for seeds, which keep a checkpoint table of their own.
+	seedCheckpoints []history.Checkpoint
+	// chunks is every slice a chunked run asked this session for, in order.
+	chunks []driver.Slice
+	// sliced is what each chunk reports in turn, a done chunk of one row once it runs out.
+	sliced []driver.Sliced
+	// chunkFails is the chunk, counting from one, this session refuses; zero refuses none.
+	chunkFails int
 
 	// mu guards the two fields below, which are the only ones a second goroutine could reach.
 	mu sync.Mutex
@@ -413,12 +425,13 @@ func (c *fakeConn) Capabilities() capability.Set {
 
 // History reports this session's store.
 func (c *fakeConn) History() history.Store {
-	return &fakeStore{fake: c.fake, table: &c.fake.table, runs: &c.fake.runs}
+	return &fakeStore{fake: c.fake, table: &c.fake.table, runs: &c.fake.runs, cps: &c.fake.checkpoints}
 }
 
 // Seeds returns the seed history, which notes every call it is asked under a seed- prefix.
 func (c *fakeConn) Seeds() history.Store {
-	return &fakeStore{fake: c.fake, table: &c.fake.seedTable, runs: &c.fake.seedRuns, prefix: "seed-"}
+	return &fakeStore{fake: c.fake, table: &c.fake.seedTable, runs: &c.fake.seedRuns,
+		cps: &c.fake.seedCheckpoints, prefix: "seed-"}
 }
 
 // ServerVersion reports the version the declaration was resolved against.
@@ -431,8 +444,35 @@ func (c *fakeConn) Close(context.Context) error {
 	return nil
 }
 
+// Chunk records the slice and reports what the test scripted, a done chunk of one row by default.
+func (c *fakeConn) Chunk(_ context.Context, s driver.Slice) (driver.Sliced, error) {
+	c.fake.note(describeWrite("chunk", c.fake.inTx))
+	c.fake.chunks = append(c.fake.chunks, s)
+
+	if len(c.fake.chunks) == c.fake.chunkFails {
+		return driver.Sliced{}, errRefused
+	}
+
+	if at := len(c.fake.chunks) - 1; at < len(c.fake.sliced) {
+		return c.fake.sliced[at], nil
+	}
+
+	return driver.Sliced{Written: 1, Last: []string{"1"}, Done: true}, nil
+}
+
+// CompileChunk renders a chunk as two statements naming what it reads and writes, for a plan to print.
+func (d *fakeDriver) CompileChunk(op ir.Operation, key []string) ([]driver.Statement, error) {
+	return []driver.Statement{
+		{SQL: "-- the bound of a chunk keyed by (" + strings.Join(key, ", ") + ")"},
+		{SQL: "-- one chunk of " + string(op.Kind())},
+	}, nil
+}
+
 // compile-time proof that the fake satisfies the contract a real session does.
-var _ driver.Conn = (*fakeConn)(nil)
+var (
+	_ driver.Conn    = (*fakeConn)(nil)
+	_ driver.Chunker = (*fakeConn)(nil)
+)
 
 // fakeStore is a migration history with no database, reporting an absent table as a real one does.
 type fakeStore struct {
@@ -444,6 +484,41 @@ type fakeStore struct {
 	runs *[]history.Record
 	// prefix tells a seed store's calls from a migration store's in what the fake noted.
 	prefix string
+	// cps is the checkpoints this store's checkpoint table holds.
+	cps *[]history.Checkpoint
+}
+
+// SaveCheckpoint replaces one migration's checkpoint, noting whether a transaction was open.
+func (s *fakeStore) SaveCheckpoint(ctx context.Context, cp history.Checkpoint) error {
+	s.fake.note(s.prefix + describeWrite("save-checkpoint", s.fake.inTx))
+
+	if err := cp.Validate(); err != nil {
+		return err
+	}
+
+	*s.cps = append(withoutCheckpoint(*s.cps, cp.Version, cp.Direction), cp)
+
+	return nil
+}
+
+// Checkpoints returns every checkpoint this store holds.
+func (s *fakeStore) Checkpoints(context.Context) ([]history.Checkpoint, error) {
+	return slices.Clone(*s.cps), nil
+}
+
+// ClearCheckpoint removes one migration's checkpoint, noting whether a transaction was open.
+func (s *fakeStore) ClearCheckpoint(_ context.Context, version string, dir ir.Direction) error {
+	s.fake.note(s.prefix + describeWrite("clear-checkpoint", s.fake.inTx))
+	*s.cps = withoutCheckpoint(*s.cps, version, dir)
+
+	return nil
+}
+
+// withoutCheckpoint returns the checkpoints less the one of a migration and direction.
+func withoutCheckpoint(cps []history.Checkpoint, version string, dir ir.Direction) []history.Checkpoint {
+	return slices.DeleteFunc(slices.Clone(cps), func(cp history.Checkpoint) bool {
+		return cp.Version == version && cp.Direction == dir
+	})
 }
 
 // Ensure creates the history table, which is the write a dry run must never make.
@@ -534,4 +609,7 @@ func describeWrite(call string, inTx bool) string {
 }
 
 // compile-time proof that the fake store satisfies the contract a real one does.
-var _ history.Store = (*fakeStore)(nil)
+var (
+	_ history.Store        = (*fakeStore)(nil)
+	_ history.Checkpointer = (*fakeStore)(nil)
+)

@@ -13,7 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 )
 
-func TestEnsureCreatesTheTableAndTheIndexItsLookupNeeds(t *testing.T) {
+func TestEnsureCreatesTheTableTheIndexItsLookupNeedsAndTheCheckpointTable(t *testing.T) {
 	_, held := ensured(t)
 
 	objects := read(t, held.session,
@@ -26,7 +26,8 @@ func TestEnsureCreatesTheTableAndTheIndexItsLookupNeeds(t *testing.T) {
 
 	slices.Sort(found)
 
-	want := []string{"index " + historyTable + "_version_idx", "table " + historyTable}
+	want := []string{"index " + historyTable + "_version_idx", "table " + historyTable,
+		"table " + historyTable + "_progress"}
 	if !slices.Equal(found, want) {
 		t.Errorf("Ensure left %v, want %v", found, want)
 	}
@@ -176,7 +177,7 @@ func TestTheBoundColumnOrderIsTheOneTheNeutralSchemaDeclares(t *testing.T) {
 func TestTheHistorySchemaCompilesThroughThisDriverAndNothingElse(t *testing.T) {
 	_, held := store(t)
 
-	stmts, err := held.compileSchema()
+	stmts, err := held.compileSchema(history.Schema(held.table))
 	if err != nil {
 		t.Fatalf("compileSchema: %v", err)
 	}

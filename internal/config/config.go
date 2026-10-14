@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/rule"
 )
@@ -78,6 +79,17 @@ type Safety struct {
 	MaxLockImpact       capability.LockImpact `yaml:"max_lock_impact"       json:"max_lock_impact"`
 	AutoRewrite         bool                  `yaml:"auto_rewrite"          json:"auto_rewrite"`
 	ReplicaLagThreshold Duration              `yaml:"replica_lag_threshold" json:"replica_lag_threshold"`
+	ChunkRows           *int                  `yaml:"chunk_rows"            json:"chunk_rows"`
+	ChunkPause          Duration              `yaml:"chunk_pause"           json:"chunk_pause"`
+}
+
+// Rows returns how many rows a chunk of a data-only migration covers, zero running none in chunks.
+func (s Safety) Rows() int {
+	if s.ChunkRows == nil {
+		return driver.DefaultChunkRows
+	}
+
+	return *s.ChunkRows
 }
 
 // Validation configures pre-execution checks.

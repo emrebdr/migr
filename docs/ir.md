@@ -1054,6 +1054,14 @@ tables and columns, and compiles to one statement. None of them has an inverse, 
 overwrites or adds what nothing records; a migration that uses one authors its `Down`
 ([ADR 0077](adr/0077-data-operations.md)).
 
+**How one runs is the engine's, and changes nothing here.** A migration holding nothing but data
+operations runs each one a keyed chunk at a time over the table's primary key — `data_copy`'s over
+its source — each chunk committed with a checkpoint, and an interrupted run carries on after the
+last one ([ADR 0078](adr/0078-chunked-data-operations.md)). A migration that also changes the schema
+runs them as the one statement this section describes, in its own transaction. Neither is a
+property of the operation: the bytes a migration emits, and so its checksum, are the same either
+way, and no SDK can tell which it will be.
+
 ### `data_copy`
 
 Inserts every row of one table into another, column by named column.
@@ -1068,8 +1076,8 @@ Inserts every row of one table into another, column by named column.
 | `to` | string | yes | The table written. Must differ from `from`. |
 | `columns` | array of `{from, to}` | yes | At least one pair; no target column written twice. |
 
-Every row is copied; the columns not listed take their defaults in `to`. It is one statement — a
-large table is M12-T3's chunked backfill, not this operation's.
+Every row is copied; the columns not listed take their defaults in `to`. It is one statement, and a
+data-only migration runs it in chunks of its source's primary key, as every data operation.
 
 ```json
 {

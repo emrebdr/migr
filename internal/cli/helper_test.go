@@ -66,6 +66,8 @@ const (
 	actStrays = "strays"
 	// actBackfills emits a data operation, which a seed may and a schema change may not.
 	actBackfills = "backfills"
+	// actBackfillsBeside emits a column and the backfill of it, which runs as one statement.
+	actBackfillsBeside = "backfills-beside"
 )
 
 // The declarations a scripted runtime reports, which compose with every act above.
@@ -342,7 +344,7 @@ func (r *scriptedRuntime) execute(m *protocol.Message) bool {
 // emitted counts the operations this script just sent, since the host checks the two agree (§4).
 func (r *scriptedRuntime) emitted(direction ir.Direction) int {
 	switch {
-	case r.act == actStrays && direction == ir.Up:
+	case r.act == actStrays && direction == ir.Up, r.act == actBackfillsBeside:
 		return 2
 	case r.act != actWords:
 		return 1
@@ -372,6 +374,10 @@ func (r *scriptedRuntime) operations(direction ir.Direction) string {
 	case actBackfills:
 		return `{"operations":[{"op":"data_backfill","table":"users","column":"plan",` +
 			`"type":"string(16)","value":{"literal":"free"}}]}`
+	case actBackfillsBeside:
+		return `{"operations":[{"op":"add_column","table":"users","column":{"name":"plan",` +
+			`"type":"string(16)","nullable":true}},{"op":"data_backfill","table":"users",` +
+			`"column":"plan","type":"string(16)","value":{"literal":"free"}}]}`
 	default:
 		return operationsFor(direction)
 	}

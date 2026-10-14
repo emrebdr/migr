@@ -8,17 +8,18 @@ import (
 	"strings"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/schema"
 )
 
 // The reads one snapshot is built from: one catalog table and four pragmas, plus what they omit.
 //
-// Everything SQLite names for itself is excluded -- sqlite_sequence, sqlite_stat1 -- and so is the
-// table migr records its own runs in, which a differ would otherwise propose dropping. tbl_name is
-// what excludes a table and everything attached to it in one predicate.
+// Everything SQLite names for itself is excluded -- sqlite_sequence, sqlite_stat1 -- and so are the
+// tables migr records its own runs and checkpoints in, which a differ would otherwise propose
+// dropping. tbl_name is what excludes a table and everything attached to it in one predicate.
 const (
 	objectsQuery = `SELECT type, name, coalesce(sql, '') FROM sqlite_schema ` +
-		`WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND tbl_name NOT IN (?, ?) ` +
+		`WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND tbl_name NOT IN (?, ?, ?, ?) ` +
 		`ORDER BY name`
 
 	tableColumnsQuery = `SELECT name, type, "notnull", coalesce(dflt_value, ''), pk, hidden ` +
@@ -82,7 +83,8 @@ type object struct {
 
 // readObjects lists the tables and views this database holds, in the order names sort.
 func (c *sqliteConn) readObjects(ctx context.Context) ([]object, error) {
-	rows, err := c.read(ctx, objectsQuery, c.table, c.seeds)
+	rows, err := c.read(ctx, objectsQuery, c.table, c.seeds, history.ProgressTable(c.table),
+		history.ProgressTable(c.seeds))
 	if err != nil {
 		return nil, err
 	}

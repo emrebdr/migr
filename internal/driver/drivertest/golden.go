@@ -31,6 +31,7 @@ const (
 	noTransaction   = " no-transaction"
 	unsupported     = marker + "unsupported "
 	needsSession    = marker + "needs-session "
+	chunkHeader     = marker + "chunk key "
 )
 
 // compileRuns is how often each operation compiles, since a map-order bug is intermittent.
@@ -369,6 +370,10 @@ func (s Suite) checkOrphans(root string, ops []ir.Operation) []string {
 	var problems []string
 
 	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
 		if !claimed[entry.Name()] {
 			problems = append(problems, fmt.Sprintf(
 				"%s: a golden file no operation compiles to; delete it or restore the operation",

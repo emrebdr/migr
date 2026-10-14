@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
 	conformance "github.com/emrebdr/migr/test/conformance/driver"
@@ -468,7 +469,8 @@ func TestEverythingTheOperationSetCannotExpressIsMarkedRatherThanOmitted(t *test
 func TestTheSnapshotHoldsNeitherTheHistoryTableNorItsIndexes(t *testing.T) {
 	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
 		table := owned(t, "app")
-		dropped(t, c, table, c.table, c.seeds)
+		dropped(t, c, table, c.table, c.seeds, history.ProgressTable(c.table),
+			history.ProgressTable(c.seeds))
 
 		if err := c.History().Ensure(t.Context()); err != nil {
 			t.Fatalf("Ensure: %v", err)
@@ -484,7 +486,8 @@ func TestTheSnapshotHoldsNeitherTheHistoryTableNorItsIndexes(t *testing.T) {
 
 		snapshot := introspect(t, c)
 
-		for _, name := range []string{c.table, c.seeds} {
+		for _, name := range []string{c.table, c.seeds, history.ProgressTable(c.table),
+			history.ProgressTable(c.seeds)} {
 			if _, held := snapshot.Table(name); held {
 				t.Errorf("the snapshot holds %q, which a differ would propose dropping", name)
 			}

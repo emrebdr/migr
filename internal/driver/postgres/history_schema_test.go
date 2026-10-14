@@ -38,7 +38,7 @@ CREATE INDEX "migr_migrations_version_idx" ON "migr_migrations" ("version");`
 func TestTheHistoryTableIsCreatedAsThisDialectSpellsIt(t *testing.T) {
 	store := pgHistory{table: driver.DefaultHistoryTable}
 
-	stmts, err := store.compileSchema()
+	stmts, err := store.compileSchema(history.Schema(store.table))
 	if err != nil {
 		t.Fatalf("compiling the history schema: %v", err)
 	}

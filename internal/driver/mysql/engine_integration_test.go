@@ -133,8 +133,8 @@ func fresh(t *testing.T, c *mysqlConn, table string) {
 		t.Fatalf("History returned %T, not this package's store", c.History())
 	}
 
-	dropLater(t, c, table, held.table)
-	drop(t.Context(), c, table, held.table)
+	dropLater(t, c, table, held.table, history.ProgressTable(held.table))
+	drop(t.Context(), c, table, held.table, history.ProgressTable(held.table))
 }
 
 // onlyRun returns the single row a failed invocation left, failing when it left any other number.

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/rule"
 )
@@ -171,6 +172,8 @@ func validateSeeds(v *validator, cfg *Config, source string) {
 			"that no seed is ever recorded as a migration", cfg.Seeds.Table)
 	}
 
+	validateProgressNames(v, cfg.History.Table, cfg.Seeds.Table)
+
 	validateDeclaredEnvironments(v, cfg)
 
 	if cfg.Seeds.Dir == "" || cfg.Migrations.Dir == "" {
@@ -181,6 +184,17 @@ func validateSeeds(v *validator, cfg *Config, source string) {
 		anchor(cfg.Migrations.Dir, source)); overlap != "" {
 		v.add("seeds.dir", "%q %s migrations.dir %q, and seeds never mix with migrations",
 			cfg.Seeds.Dir, overlap, cfg.Migrations.Dir)
+	}
+}
+
+// validateProgressNames refuses a history or seed table named as the other's checkpoint table.
+func validateProgressNames(v *validator, migrations, seeds string) {
+	if seeds != "" && seeds == history.ProgressTable(migrations) {
+		v.add("seeds.table", "%q is where history.table's checkpoints are kept", seeds)
+	}
+
+	if migrations != "" && migrations == history.ProgressTable(seeds) {
+		v.add("history.table", "%q is where seeds.table's checkpoints are kept", migrations)
 	}
 }
 
@@ -288,6 +302,16 @@ func validateSafety(v *validator, s Safety) {
 
 	if s.ReplicaLagThreshold <= 0 {
 		v.add("safety.replica_lag_threshold", "must be positive, got %s", s.ReplicaLagThreshold)
+	}
+
+	if s.Rows() < 0 {
+		v.add("safety.chunk_rows", "must not be negative, got %d; 0 runs every data operation as "+
+			"one statement", s.Rows())
+	}
+
+	if s.ChunkPause <= 0 {
+		v.add("safety.chunk_pause", "must be positive, got %s: chunks run back to back are an "+
+			"unthrottled backfill, which is itself an outage", s.ChunkPause)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/schema"
 	"github.com/emrebdr/migr/internal/source/golang"
 	"github.com/emrebdr/migr/internal/source/sql"
 )
@@ -353,6 +354,7 @@ func TestARuntimeSeedRunsWhereItIsData(t *testing.T) {
 
 func TestASeedMayWriteDataThroughATypedOperation(t *testing.T) {
 	dir, f, drivers := project(t, twoTables()...)
+	f.live = keyedUsers()
 	stageSeed(t, dir, "", seedAt(0)+"_plans"+golang.Ext, "package seeds\n")
 	migrated(t, dir, drivers)
 
@@ -365,6 +367,23 @@ func TestASeedMayWriteDataThroughATypedOperation(t *testing.T) {
 		t.Log("M12-T1 permitted raw alone because nothing else wrote data; the data operations")
 		t.Log("are what a seed is for, and data_transform's destruction is the seed's own business.")
 	}
+
+	if len(f.chunks) != 1 || !f.asked("seed-clear-checkpoint") || f.asked("clear-checkpoint") {
+		t.Errorf("a data-only seed ran %d chunks, and cleared the seed checkpoint %v and the "+
+			"migration one %v", len(f.chunks), f.asked("seed-clear-checkpoint"),
+			f.asked("clear-checkpoint"))
+		t.Log("A data-only seed runs in chunks like a migration does, and its checkpoint lives")
+		t.Log("beside the seed history -- a migration's checkpoint table is not the seeds' to touch.")
+	}
+}
+
+// keyedUsers is a live schema holding the users table a scripted backfill writes, keyed by id.
+func keyedUsers() *schema.Snapshot {
+	return &schema.Snapshot{Tables: []schema.Table{{
+		Name:       "users",
+		Columns:    []schema.Column{{Name: "id"}, {Name: "plan", Nullable: true}},
+		PrimaryKey: &schema.PrimaryKey{Columns: []string{"id"}},
+	}}}
 }
 
 func TestASeedDeclaringAMigrationAsADependencyIsRefused(t *testing.T) {

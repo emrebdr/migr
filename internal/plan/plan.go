@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/emrebdr/migr/internal/driver"
@@ -17,6 +18,8 @@ type Planner struct {
 	Compiler driver.Compiler
 	// Expander is the session an emulated operation is compiled against, and is nil where none is.
 	Expander driver.Expander
+	// ChunkRows is how many rows a chunk of a data-only migration covers, and zero runs none in chunks.
+	ChunkRows int
 }
 
 // Plan is one migration compiled to statements, in the order they must run.
@@ -39,6 +42,8 @@ type Step struct {
 	Statements []driver.Statement
 	// Deferred reports an operation compiled against the database immediately before it runs.
 	Deferred bool
+	// Chunked reports a data operation run a keyed chunk at a time, each chunk committed on its own.
+	Chunked bool
 }
 
 // An operation the compiler answers with driver.ErrNeedsSession becomes a deferred step rather than
@@ -69,7 +74,40 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction,
 		steps = append(steps, step)
 	}
 
-	return Plan{Migration: m, Direction: dir, Steps: steps}, nil
+	return Plan{Migration: m, Direction: dir, Steps: p.chunk(steps)}, nil
+}
+
+// A migration runs in chunks only where it holds nothing but data operations (ADR 0078). Each chunk
+// commits on its own, so a migration that also changed the schema could no longer be the one
+// transaction it runs in -- and splitting one around its data is M13-T4's. A data-only migration
+// needs no such split: no step of it reads what another left uncommitted.
+
+// chunk marks every step of a data-only migration as run in chunks, and leaves any other plan alone.
+func (p Planner) chunk(steps []Step) []Step {
+	if p.ChunkRows < 1 || !DataOnly(steps) {
+		return steps
+	}
+
+	for i := range steps {
+		steps[i].Chunked = true
+	}
+
+	return steps
+}
+
+// DataOnly reports a migration that holds at least one operation and nothing but data operations.
+func DataOnly(steps []Step) bool {
+	if len(steps) == 0 {
+		return false
+	}
+
+	for _, step := range steps {
+		if !slices.Contains(ir.DataKinds(), step.Op.Kind()) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // Step compiles one operation, holding the driver to statements that would actually run.
@@ -123,6 +161,16 @@ func (p Planner) Expand(ctx context.Context, m migration.Migration, step Step) (
 	return Step{Index: step.Index, Op: step.Op, Statements: stmts}, nil
 }
 
+// CompileChunk renders the statements one chunk of a step is, keyed by the given columns.
+func (p Planner) CompileChunk(step Step, key []string) ([]driver.Statement, error) {
+	chunker, chunks := p.Compiler.(driver.ChunkCompiler)
+	if !chunks {
+		return nil, ErrNoChunkCompiler
+	}
+
+	return chunker.CompileChunk(step.Op, key)
+}
+
 // checkCompiled refuses a compilation that reports success while changing nothing.
 func checkCompiled(stmts []driver.Statement) error {
 	if len(stmts) == 0 {
@@ -160,6 +208,19 @@ func (p Plan) Deferred() int32 {
 	}
 
 	return pending
+}
+
+// Chunked returns how many of the plan's operations run in chunks, each committed on its own.
+func (p Plan) Chunked() int32 {
+	var chunked int32
+
+	for _, step := range p.Steps {
+		if step.Chunked {
+			chunked++
+		}
+	}
+
+	return chunked
 }
 
 // Len returns how many statements the plan has compiled to so far, which is what a run counts through.

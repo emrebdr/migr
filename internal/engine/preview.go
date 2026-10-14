@@ -2,11 +2,13 @@ package engine
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // Previewed is what one direction would do against a database, having done none of it.
@@ -33,6 +35,24 @@ type Planned struct {
 	Direct []driver.Query
 	// Unrestorable is what this migration's record and the live schema disagree about, where judged.
 	Unrestorable []Disagreement
+	// Chunks is one entry per operation that runs in chunks, with the statements one chunk is.
+	Chunks []Chunking
+	// Resume is the checkpoint a stopped chunked run committed, which this one would carry on after.
+	Resume *history.Checkpoint
+}
+
+// Chunking is one operation a run would perform a keyed chunk at a time, as a preview can render it.
+type Chunking struct {
+	// Index is the operation's place in the migration, counting from one.
+	Index int32
+	// Table is the table whose key the chunks page through.
+	Table string
+	// Key names that table's primary key as the database holds it now, empty where it has none.
+	Key []string
+	// Statements are what one chunk between two keys is, with every bound argument a placeholder.
+	Statements []driver.Statement
+	// Err is why the run would refuse the operation or the preview could not render it.
+	Err error
 }
 
 // Preview reports what a direction would run against this database, and executes none of it.
@@ -71,7 +91,12 @@ func (e *executor) previewAll(ctx context.Context, dir ir.Direction) (Previewed,
 		return Previewed{}, err
 	}
 
-	queue, skipped, err := classifyFor(dir, report, e.opts.Scope)
+	cps, err := e.checkpoints(ctx)
+	if err != nil {
+		return Previewed{}, err
+	}
+
+	queue, skipped, err := classifyFor(dir, report, e.opts.Scope, cps)
 	if err != nil {
 		return Previewed{}, err
 	}
@@ -152,6 +177,53 @@ func (e *executor) expandExact(ctx context.Context, at int, ready *prepared) {
 	ready.compiled.Steps[0] = expanded
 }
 
+// chunkShapes renders one chunk of every chunked operation, keyed as the database holds the table now.
+func (e *executor) chunkShapes(ctx context.Context, compiled plan.Plan) []Chunking {
+	if compiled.Chunked() == 0 {
+		return nil
+	}
+
+	snapshot, err := e.conn.Introspect(ctx)
+	if err == nil && snapshot == nil {
+		err = errNoSnapshot
+	}
+
+	shapes := make([]Chunking, 0, len(compiled.Steps))
+
+	for _, step := range compiled.Steps {
+		shape := Chunking{Index: step.Index, Table: ChunkTable(step.Op), Err: err}
+		if err == nil {
+			shape = e.chunkShape(*snapshot, step, shape)
+		}
+
+		shapes = append(shapes, shape)
+	}
+
+	return shapes
+}
+
+// chunkShape reads one operation's key from a snapshot and renders a chunk of it through the driver.
+func (e *executor) chunkShape(snapshot schema.Snapshot, step plan.Step, shape Chunking) Chunking {
+	table, present := snapshot.Table(shape.Table)
+	if !present {
+		shape.Err = fmt.Errorf("%w: %q is not in the database yet, so it has no key to page "+
+			"through here", ErrNoChunkKey, shape.Table)
+
+		return shape
+	}
+
+	if table.PrimaryKey == nil || len(table.PrimaryKey.Columns) == 0 {
+		shape.Err = noKeyError(shape.Table)
+
+		return shape
+	}
+
+	shape.Key = table.PrimaryKey.Columns
+	shape.Statements, shape.Err = e.opts.Planner.CompileChunk(step, shape.Key)
+
+	return shape
+}
+
 // inspect reads the history and folds it, reporting a database with no history table as one.
 func (e *executor) inspect(ctx context.Context) (history.Report, bool, error) {
 	report, err := e.fold(ctx)
@@ -176,12 +248,14 @@ func (e *executor) plannedBatch(ctx context.Context, recorded bool) (int64, erro
 }
 
 // classifyFor splits a reconciliation report the way the direction being previewed needs it split.
-func classifyFor(dir ir.Direction, report history.Report, scope Scope) ([]queued, []Skipped, error) {
+func classifyFor(dir ir.Direction, report history.Report, scope Scope,
+	cps []history.Checkpoint,
+) ([]queued, []Skipped, error) {
 	switch dir {
 	case ir.Up:
-		return classify(report, scope)
+		return classify(report, scope, cps)
 	case ir.Down:
-		return classifyDown(report, scope)
+		return classifyDown(report, scope, cps)
 	}
 
 	return nil, nil, unknownDirectionError(dir)
@@ -202,6 +276,7 @@ func (e *executor) compileAll(ctx context.Context, queue []queued, dir ir.Direct
 		steps = append(steps, Planned{
 			Ordinal: item.ordinal, Plan: ready.compiled, Direct: ready.direct,
 			Unrestorable: e.judgedFirst(ctx, len(steps), ready),
+			Chunks:       e.chunkShapes(ctx, ready.compiled), Resume: item.resume,
 		})
 	}
 

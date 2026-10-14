@@ -22,6 +22,11 @@ func compileDataCopy(op ir.DataCopy) ([]driver.Statement, error) {
 		return nil, refuse(op, problem)
 	}
 
+	return one(copyHead(op)), nil
+}
+
+// copyHead renders the insert a copy is, up to the clause a chunk narrows it by.
+func copyHead(op ir.DataCopy) string {
 	read := make([]string, len(op.Columns))
 	written := make([]string, len(op.Columns))
 
@@ -29,8 +34,8 @@ func compileDataCopy(op ir.DataCopy) ([]driver.Statement, error) {
 		read[i], written[i] = quote(pair.From), quote(pair.To)
 	}
 
-	return one("INSERT INTO " + quote(op.To) + " (" + strings.Join(written, ", ") + ")\nSELECT " +
-		strings.Join(read, ", ") + " FROM " + quote(op.From)), nil
+	return "INSERT INTO " + quote(op.To) + " (" + strings.Join(written, ", ") + ")\nSELECT " +
+		strings.Join(read, ", ") + " FROM " + quote(op.From)
 }
 
 // checkDataCopy reports why MySQL cannot carry either table or any column pair.
@@ -59,8 +64,18 @@ func compileDataBackfill(op ir.DataBackfill) ([]driver.Statement, error) {
 		return nil, refuse(op, problem)
 	}
 
-	return one("UPDATE " + quote(op.Table) + " SET " + quote(op.Column) + " = " +
-		backfilled(op.Type, op.Value) + " WHERE " + quote(op.Column) + " IS NULL"), nil
+	return one(backfillHead(op) + " WHERE " + backfillCondition(op)), nil
+}
+
+// backfillHead renders the update a backfill is, up to its WHERE.
+func backfillHead(op ir.DataBackfill) string {
+	return "UPDATE " + quote(op.Table) + " SET " + quote(op.Column) + " = " +
+		backfilled(op.Type, op.Value)
+}
+
+// backfillCondition renders what keeps a backfill to the NULLs of its column.
+func backfillCondition(op ir.DataBackfill) string {
+	return quote(op.Column) + " IS NULL"
 }
 
 // checkDataBackfill reports why MySQL cannot carry a backfill's target or the value it writes.
@@ -106,16 +121,26 @@ func boolKeyword(literal string) (string, bool) {
 
 // compileDataTransform renders an update rewriting one column of every row from another.
 func compileDataTransform(op ir.DataTransform) ([]driver.Statement, error) {
+	if problem := checkDataTransform(op); problem != "" {
+		return nil, refuse(op, problem)
+	}
+
+	return one(transformHead(op)), nil
+}
+
+// checkDataTransform reports why MySQL cannot carry a transform's target or the column it reads.
+func checkDataTransform(op ir.DataTransform) string {
 	if problem := checkDataTarget(op.Table, op.Column, op.Type); problem != "" {
-		return nil, refuse(op, problem)
+		return problem
 	}
 
-	if problem := checkIdentifier("from", op.From); problem != "" {
-		return nil, refuse(op, problem)
-	}
+	return checkIdentifier("from", op.From)
+}
 
-	return one("UPDATE " + quote(op.Table) + " SET " + quote(op.Column) + " = " +
-		transformed(op.Function, quote(op.From))), nil
+// transformHead renders the update a transform is, up to the clause a chunk narrows it by.
+func transformHead(op ir.DataTransform) string {
+	return "UPDATE " + quote(op.Table) + " SET " + quote(op.Column) + " = " +
+		transformed(op.Function, quote(op.From))
 }
 
 // transformed applies a transform function to a source, the text functions over its text.

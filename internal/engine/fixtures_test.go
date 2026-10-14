@@ -225,6 +225,7 @@ type journal struct {
 	failed   error
 	dirty    error
 	resolved error
+	cps      []history.Checkpoint
 }
 
 // Ensure records the call and creates the table, unless a test staged a failure.
@@ -423,6 +424,12 @@ func (compiler) Compile(op ir.Operation) ([]driver.Statement, error) {
 		return statement(typed.Table), nil
 	case ir.DropView:
 		return statement(typed.View), nil
+	case ir.DataBackfill:
+		return statement("fill " + typed.Table), nil
+	case ir.DataTransform:
+		return statement("rewrite " + typed.Table), nil
+	case ir.DataCopy:
+		return statement("copy " + typed.From), nil
 	}
 
 	return nil, fmt.Errorf("the staged compiler was given %s", op.Kind())

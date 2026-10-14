@@ -67,6 +67,14 @@ type Options struct {
 	Scope Scope
 	// Allow is the destruction this run may perform, and an unset one permits none of it.
 	Allow Allowance
+	// Chunker is the session a data-only migration runs through a chunk at a time, nil where none is.
+	Chunker driver.Chunker
+	// Pacer sizes and times every chunk, and an unset one runs them back to back at the planner's size.
+	Pacer Pacer
+	// Sleep is how a pacer's wait is waited, and an unset one waits on a timer.
+	Sleep Sleeper
+	// Progress is told about every chunk that commits, and an unset one tells nobody.
+	Progress func(Progress)
 }
 
 // check reports what an apply run was not given, before it takes a lock it could not use.

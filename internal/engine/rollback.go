@@ -27,7 +27,12 @@ func (e *executor) rollbackAll(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 
-	queue, skipped, err := classifyDown(report, e.opts.Scope)
+	cps, err := e.checkpoints(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+
+	queue, skipped, err := classifyDown(report, e.opts.Scope, cps)
 	if err != nil {
 		return Result{}, err
 	}

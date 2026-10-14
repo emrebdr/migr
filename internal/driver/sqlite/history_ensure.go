@@ -31,8 +31,17 @@ const historyColumnQuery = `SELECT name FROM pragma_table_info(?)`
 // ordinaryTable is the sqlite_schema type of a plain table, which is the only kind this store uses.
 const ordinaryTable = "table"
 
-// Ensure creates the history table if this database does not have it yet.
+// Ensure creates the history table and its checkpoint table if this database does not have them yet.
 func (h sqliteHistory) Ensure(ctx context.Context) error {
+	if err := h.ensureHistory(ctx); err != nil {
+		return err
+	}
+
+	return h.ensureProgress(ctx)
+}
+
+// ensureHistory creates the history table, or checks the one already there is one this build can write.
+func (h sqliteHistory) ensureHistory(ctx context.Context) error {
 	kind, found, err := h.kind(ctx)
 	if err != nil {
 		return err
@@ -51,9 +60,14 @@ func (h sqliteHistory) Ensure(ctx context.Context) error {
 
 // kind reports what holds the history name, and whether anything holds it at all.
 func (h sqliteHistory) kind(ctx context.Context) (string, bool, error) {
+	return h.kindOf(ctx, h.table)
+}
+
+// kindOf reports what holds a name, and whether anything holds it at all.
+func (h sqliteHistory) kindOf(ctx context.Context, name string) (string, bool, error) {
 	var kind string
 
-	err := h.session.runner().QueryRowContext(ctx, kindQuery, h.table).Scan(&kind)
+	err := h.session.runner().QueryRowContext(ctx, kindQuery, name).Scan(&kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}
@@ -98,7 +112,7 @@ func (h sqliteHistory) checkKind(kind string) error {
 
 // create compiles the neutral schema and runs every statement of it as one unit.
 func (h sqliteHistory) create(ctx context.Context) error {
-	stmts, err := h.compileSchema()
+	stmts, err := h.compileSchema(history.Schema(h.table))
 	if err != nil {
 		return err
 	}
@@ -108,11 +122,11 @@ func (h sqliteHistory) create(ctx context.Context) error {
 	})
 }
 
-// compileSchema turns the neutral history schema into statements, before any of them runs.
-func (h sqliteHistory) compileSchema() ([]driver.Statement, error) {
+// compileSchema turns a neutral schema into statements, before any of them runs.
+func (h sqliteHistory) compileSchema(ops ir.Operations) ([]driver.Statement, error) {
 	var stmts []driver.Statement
 
-	for _, op := range history.Schema(h.table) {
+	for _, op := range ops {
 		compiled, err := compile(op)
 		if err != nil {
 			return nil, h.wrap("compiling the history schema", err)

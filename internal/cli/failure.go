@@ -144,6 +144,8 @@ type halted struct {
 	TransactionalDDL *bool `json:"transactional_ddl,omitempty"`
 	// Cause is what stopped it, in one line.
 	Cause string `json:"cause"`
+	// Chunk is how far a migration running in chunks got, absent for one that ran statements.
+	Chunk *checkpoint `json:"chunk,omitempty"`
 }
 
 // reportFailure writes what failed a command to stderr, as fields under --json and as itself otherwise.
@@ -357,6 +359,7 @@ func (f *failure) describeDirty(err error) {
 		Ordinal:          stopped.Ordinal,
 		TransactionalDDL: &stopped.TransactionalDDL,
 		Cause:            describeCause(stopped.Err),
+		Chunk:            checkpointOf(stopped.Checkpoint),
 	}
 }
 
@@ -379,6 +382,7 @@ func (f *failure) describeDirtyState(err error) {
 		Ordinal:       between.Ordinal,
 		RecordedAt:    &recorded,
 		Cause:         between.Cause,
+		Chunk:         checkpointOf(between.Checkpoint),
 	}
 }
 

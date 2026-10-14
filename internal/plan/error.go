@@ -17,6 +17,9 @@ var ErrNoOperation = errors.New("this is not an operation")
 // ErrNoExpander marks a deferred step handed to a planner with no session to expand it through.
 var ErrNoExpander = errors.New("a deferred operation needs a session to compile against")
 
+// ErrNoChunkCompiler marks a chunked step whose driver cannot render a chunk, for errors.Is.
+var ErrNoChunkCompiler = errors.New("this driver cannot render a chunk of a data operation")
+
 // ErrNothingCompiled marks an operation that compiled to nothing which would run, for errors.Is.
 var ErrNothingCompiled = errors.New("this operation compiled to nothing that would run")
 

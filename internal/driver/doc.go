@@ -187,6 +187,16 @@
 // wait reports rather than what decides. MySQL's user-level lock is the advisory shape again — it
 // dies with its session, so it owes no staleness rule either (ADR 0060).
 //
+// # Running a data operation a chunk at a time
+//
+// Chunker is optional on a session and ChunkCompiler on a driver, the shape Expander set (M12-T3,
+// ADR 0078). A chunk is two statements in a transaction the engine opened: the key of the rows-th
+// row after the cursor, and the operation's own write narrowed to the key range that leaves. The
+// key comes from Introspect, which is how the engine names it without composing SQL; what each
+// driver owes is a range the engine answers with an index -- MySQL's cursor is spelled out, since a
+// row value there scans and locks the whole table, and PostgreSQL's ORDER BY is qualified, since an
+// unqualified one sorted the key as the text it is read back as.
+//
 // # Refusing an operation
 //
 // UnsupportedError is the one way a driver says it cannot perform an operation. M2-T4 asserts

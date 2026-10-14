@@ -261,7 +261,7 @@ func halted(t *testing.T, m migration.Migration) *DirtyStateError {
 	}
 
 	var between *DirtyStateError
-	if err := dirtyError(st); !errors.As(err, &between) {
+	if err := dirtyError(st, nil); !errors.As(err, &between) {
 		t.Fatalf("dirtyError returned %T, want a *DirtyStateError", err)
 	}
 
@@ -310,7 +310,7 @@ func TestARefusedRunNamesTheDirectionTheStoppedRunWasPerforming(t *testing.T) {
 		},
 	}
 
-	if message := dirtyError(st).Error(); !strings.Contains(message, "of the down run") {
+	if message := dirtyError(st, nil).Error(); !strings.Contains(message, "of the down run") {
 		t.Errorf("the refusal does not say which run stopped:\n%s", message)
 		t.Log("A rollback leaves this state too, and an operator told a down was an up would")
 		t.Log("look for the wrong half of the migration.")
@@ -326,7 +326,7 @@ func TestARefusedRunCountsOneSurvivingStatementAsOne(t *testing.T) {
 		},
 	}
 
-	message := dirtyError(st).Error()
+	message := dirtyError(st, nil).Error()
 	if !strings.Contains(message, "statement 1 of the up run") {
 		t.Errorf("the refusal does not render a single statement as one:\n%s", message)
 	}
@@ -353,7 +353,7 @@ func TestARefusalThatReadARowWithNoCauseSaysSoRatherThanNothing(t *testing.T) {
 		Recorded:  history.Record{Direction: ir.Up, LastStatement: 2, AppliedAt: applied},
 	}
 
-	if message := dirtyError(st).Error(); !strings.Contains(message, "bug in whatever wrote it") {
+	if message := dirtyError(st, nil).Error(); !strings.Contains(message, "bug in whatever wrote it") {
 		t.Errorf("a row carrying no cause renders an empty line:\n%s", message)
 		t.Log("history.Record.Validate refuses a dirty row with no error, so reaching this means")
 		t.Log("a row written around the contract rather than a run that stopped silently.")

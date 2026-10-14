@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
 	conformance "github.com/emrebdr/migr/test/conformance/driver"
@@ -559,7 +560,8 @@ func TestTheSnapshotHoldsNeitherMigrsOwnHistoryNorSQLitesOwnTables(t *testing.T)
 
 	snapshot := introspect(t, c)
 
-	for _, name := range []string{c.table, c.seeds, "sqlite_sequence"} {
+	for _, name := range []string{c.table, c.seeds, history.ProgressTable(c.table),
+		history.ProgressTable(c.seeds), "sqlite_sequence"} {
 		if _, held := snapshot.Table(name); held {
 			t.Errorf("the snapshot holds %q, which a differ would propose dropping", name)
 		}

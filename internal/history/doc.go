@@ -280,4 +280,14 @@
 // internal/driver/ reaches the contract too, so every path from here into that subtree is the same
 // cycle — with depguard's prefix deny covering the subtree besides. The rule stopped being
 // review-enforced the moment the contract named Store.
+//
+// # The one table that is not a log
+//
+// A chunked data operation's cursor moves with every chunk, so it can be neither a row per chunk,
+// which would bury the log, nor an edited row, which would make it not one (M12-T3, ADR 0078).
+// Checkpointer is a store's second table, <history table>_progress, created from ProgressSchema by
+// Ensure: one row per migration and direction saying how far a run in progress got, written in the
+// transaction of the chunk it describes and deleted in the one that appends the applied row. It is
+// where a run is, never what happened, and Reconcile never reads it -- the dirty row is what the
+// fold sees, and a checkpoint is what carries that run on.
 package history

@@ -37,6 +37,15 @@ const ordinaryTable = "BASE TABLE"
 
 // Ensure creates the history table if this database does not have it yet, or finishes a partial one.
 func (h mysqlHistory) Ensure(ctx context.Context) error {
+	if err := h.ensureHistory(ctx); err != nil {
+		return err
+	}
+
+	return h.ensureProgress(ctx)
+}
+
+// ensureHistory creates the history table, or checks and finishes the one already there.
+func (h mysqlHistory) ensureHistory(ctx context.Context) error {
 	kind, found, err := h.kind(ctx)
 	if err != nil {
 		return err
@@ -142,14 +151,19 @@ func (h mysqlHistory) race(cause error) error {
 
 // kind reports what holds the history name, and whether anything holds it at all.
 func (h mysqlHistory) kind(ctx context.Context) (string, bool, error) {
-	rows, err := h.session.runner().QueryContext(ctx, kindQuery, h.stored)
+	return h.kindOf(ctx, h.stored)
+}
+
+// kindOf reports what holds a name as the catalog stores it, and whether anything holds it at all.
+func (h mysqlHistory) kindOf(ctx context.Context, stored string) (string, bool, error) {
+	rows, err := h.session.runner().QueryContext(ctx, kindQuery, stored)
 	if err != nil {
 		return "", false, h.wrap("looking for the table", err)
 	}
 
 	defer rows.Close()
 
-	kind, found, err := h.readKind(rows)
+	kind, found, err := h.readKind(rows, stored)
 	if err != nil {
 		return "", false, err
 	}
@@ -162,7 +176,7 @@ func (h mysqlHistory) kind(ctx context.Context) (string, bool, error) {
 }
 
 // readKind finds the row whose stored name is this table's, the comparison being Go's and not a collation's.
-func (h mysqlHistory) readKind(rows *sql.Rows) (string, bool, error) {
+func (h mysqlHistory) readKind(rows *sql.Rows, name string) (string, bool, error) {
 	for rows.Next() {
 		var stored, kind string
 
@@ -170,7 +184,7 @@ func (h mysqlHistory) readKind(rows *sql.Rows) (string, bool, error) {
 			return "", false, h.wrap("reading what holds the name", err)
 		}
 
-		if stored == h.stored {
+		if stored == name {
 			return kind, true, nil
 		}
 	}

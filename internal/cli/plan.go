@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -11,6 +12,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
 )
@@ -94,8 +96,26 @@ type operation struct {
 	Refused bool `json:"refused,omitempty"`
 	// Deferred reports an operation this engine compiles only as it runs, which has no statements here.
 	Deferred bool `json:"deferred,omitempty"`
+	// Chunks is how a data-only migration's operation runs a keyed chunk at a time, absent otherwise.
+	Chunks *chunks `json:"chunks,omitempty"`
+	// Whole says why a data operation runs as one statement where it could have run in chunks.
+	Whole string `json:"whole,omitempty"`
 	// Statements are what it compiled to, in the order they would run.
 	Statements []string `json:"statements"`
+}
+
+// chunks is how one operation runs a keyed chunk at a time, as a preview could render it.
+type chunks struct {
+	// Table is the table whose primary key the chunks page through.
+	Table string `json:"table"`
+	// Key names that key's columns, empty where the table has none.
+	Key []string `json:"key,omitempty"`
+	// Rows is how many rows each chunk covers, as migr.yaml paces it.
+	Rows int `json:"rows"`
+	// Pause is how long a run waits between two chunks, as migr.yaml paces it.
+	Pause string `json:"pause,omitempty"`
+	// Refusal is why migr up would refuse the operation, or why this preview could not render it.
+	Refusal string `json:"refusal,omitempty"`
 }
 
 // direct is one statement a migration sends itself, which this preview held rather than ran.
@@ -120,6 +140,34 @@ type compiledMigration struct {
 	Operations []operation `json:"operations"`
 	// Unrestorable is what its record and this database's own schema disagree about, where judged.
 	Unrestorable []disagreed `json:"unrestorable,omitempty"`
+	// Resume is where a stopped chunked run committed up to, which this one would carry on after.
+	Resume *checkpoint `json:"resume,omitempty"`
+}
+
+// checkpoint is how far a chunked operation got, as the run that stopped committed it.
+type checkpoint struct {
+	// Operation is the operation it stopped in, counting from one.
+	Operation int32 `json:"operation"`
+	// Chunks is how many of that operation's chunks committed.
+	Chunks int64 `json:"chunks"`
+	// Written is how many rows those chunks changed or inserted.
+	Written int64 `json:"written"`
+	// Cursor is the key of the last row the last of them covered.
+	Cursor []string `json:"cursor"`
+}
+
+// checkpointOf renders a checkpoint, and nothing where there is none.
+func checkpointOf(cp *history.Checkpoint) *checkpoint {
+	if cp == nil {
+		return nil
+	}
+
+	cursor := cp.Cursor
+	if cursor == nil {
+		cursor = []string{}
+	}
+
+	return &checkpoint{Operation: cp.Step + 1, Chunks: cp.Chunks, Written: cp.Written, Cursor: cursor}
 }
 
 // disagreed is one operation whose record of the schema this database contradicts, as fields.
@@ -171,6 +219,8 @@ type compiledPlan struct {
 	Statements int `json:"statements"`
 	// Direct is how many statements the migrations would run themselves, outside the plan.
 	Direct int `json:"direct_statements"`
+	// Chunked is how many operations run a keyed chunk at a time, whose statements are not counted.
+	Chunked int `json:"chunked_operations"`
 }
 
 // compiledOf renders what a direction would send, asking the session what it makes of each operation.
@@ -185,22 +235,33 @@ func compiledOf(s *session, previewed engine.Previewed) compiledPlan {
 	}
 
 	caps := s.conn.Capabilities()
+	pace := paceOf(s.options)
 
 	for _, step := range previewed.Steps {
-		rendered.Migrations = append(rendered.Migrations, migrationOf(caps, s.options.Allow, step))
-		rendered.Statements += int(step.Plan.Len())
+		rendered.Migrations = append(rendered.Migrations, migrationOf(caps, s.options.Allow, pace,
+			step))
 		rendered.Direct += len(step.Direct)
+
+		if chunked := step.Plan.Chunked(); chunked > 0 {
+			rendered.Chunked += int(chunked)
+
+			continue
+		}
+
+		rendered.Statements += int(step.Plan.Len())
 	}
 
 	return rendered
 }
 
 // migrationOf renders one migration's operations, each with the verdict this engine gives it.
-func migrationOf(caps capability.Set, allowed engine.Allowance,
+func migrationOf(caps capability.Set, allowed engine.Allowance, pace engine.Steady,
 	planned engine.Planned) compiledMigration {
 	ops := make([]operation, 0, len(planned.Plan.Steps))
-	for _, step := range planned.Plan.Steps {
-		ops = append(ops, operationOf(caps, allowed, step))
+	for i, step := range planned.Plan.Steps {
+		op := operationOf(caps, allowed, step)
+		chunked(&op, pace, planned, i)
+		ops = append(ops, op)
 	}
 
 	return compiledMigration{
@@ -210,7 +271,71 @@ func migrationOf(caps capability.Set, allowed engine.Allowance,
 		Direct:       directOf(planned.Direct),
 		Operations:   ops,
 		Unrestorable: disagreementsOf(planned.Unrestorable),
+		Resume:       checkpointOf(planned.Resume),
 	}
+}
+
+// paceOf reads how a session's runs size and space their chunks, which a Steady pacer states.
+func paceOf(options engine.Options) engine.Steady {
+	if steady, ok := options.Pacer.(engine.Steady); ok {
+		return steady
+	}
+
+	return engine.Steady{Rows: options.Planner.ChunkRows}
+}
+
+// chunked renders how a data operation runs: in chunks with one chunk's statements, or why as one.
+func chunked(op *operation, pace engine.Steady, planned engine.Planned, at int) {
+	step := planned.Plan.Steps[at]
+	if !slices.Contains(ir.DataKinds(), step.Op.Kind()) {
+		return
+	}
+
+	if !step.Chunked {
+		op.Whole = describeWhole(pace.Rows)
+
+		return
+	}
+
+	shape := shapeFor(planned.Chunks, step.Index)
+	op.Chunks = &chunks{Table: shape.Table, Key: shape.Key, Rows: pace.Rows}
+
+	if pace.Pause > 0 {
+		op.Chunks.Pause = pace.Pause.String()
+	}
+
+	op.Statements = []string{}
+
+	if shape.Err != nil {
+		op.Chunks.Refusal = shape.Err.Error()
+
+		return
+	}
+
+	for _, stmt := range shape.Statements {
+		op.Statements = append(op.Statements, stmt.SQL)
+	}
+}
+
+// shapeFor finds the rendered chunk of one operation, which a preview renders for every chunked one.
+func shapeFor(shapes []engine.Chunking, index int32) engine.Chunking {
+	for _, shape := range shapes {
+		if shape.Index == index {
+			return shape
+		}
+	}
+
+	return engine.Chunking{Index: index, Err: errors.New("the preview rendered no chunk of it")}
+}
+
+// describeWhole says why a data operation runs as one statement over the whole table.
+func describeWhole(rows int) string {
+	if rows < 1 {
+		return "runs as one statement over the whole table: safety.chunk_rows is 0"
+	}
+
+	return "runs as one statement in the migration's transaction, because the migration also " +
+		"changes the schema -- put it in a migration of its own to run it in chunks"
 }
 
 // directOf renders the statements a migration sends itself, which host.db.exec held under plan mode.
@@ -320,6 +445,7 @@ func (p compiledPlan) String() string {
 		p.describeCompiled(), describeSkipped(p.Skipped))
 
 	p.writeDirectNote(&b)
+	p.writeChunkedNote(&b)
 	p.writeDeferredNote(&b)
 	p.writeUnsupportedNote(&b)
 	p.writeUnrestorableNote(&b)
@@ -330,11 +456,32 @@ func (p compiledPlan) String() string {
 
 // describeCompiled counts the statements, saying so where that is not every statement a run sends.
 func (p compiledPlan) describeCompiled() string {
-	if p.countDeferred() == 0 {
-		return describeStatements(p.Statements)
+	if p.Statements == 0 && p.Chunked > 0 {
+		return describeOperations(p.Chunked) + " run in chunks"
 	}
 
-	return describeStatements(p.Statements) + " from the operations it could compile"
+	described := describeStatements(p.Statements)
+	if p.countDeferred() > 0 {
+		described += " from the operations it could compile"
+	}
+
+	if p.Chunked > 0 {
+		described += fmt.Sprintf(", and %s run in chunks", describeOperations(p.Chunked))
+	}
+
+	return described
+}
+
+// writeChunkedNote says what the statements of a chunked operation are, and what a stopped one does.
+func (p compiledPlan) writeChunkedNote(b *strings.Builder) {
+	if p.Chunked == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\nrun in chunks above: each chunk is its own transaction, committed with a checkpoint "+
+		"saying how far it got, and the statements shown are one chunk between two keys with "+
+		"every bound argument a placeholder. A run that stops partway leaves the migration dirty, "+
+		"and the next migr up carries on after the last committed chunk.\n")
 }
 
 // writeDeferredNote says which operations this plan could not compile, and why that is not a failure.
@@ -481,12 +628,42 @@ func (m compiledMigration) write(b *strings.Builder) {
 	fmt.Fprintf(b, "\n  %d  %s\n", m.Ordinal, m.File)
 
 	m.writeDirect(b)
+	m.writeResume(b)
 
 	for _, op := range m.Operations {
 		op.write(b)
 	}
 
 	m.writeUnrestorable(b)
+}
+
+// writeResume says where a stopped chunked run committed up to, which this one carries on after.
+func (m compiledMigration) writeResume(b *strings.Builder) {
+	if m.Resume == nil {
+		return
+	}
+
+	fmt.Fprintf(b, "       \u21bb  resumes operation %d after key (%s): the run that stopped "+
+		"committed %s and %s of it\n", m.Resume.Operation, strings.Join(m.Resume.Cursor, ", "),
+		describeChunks(m.Resume.Chunks), describeWritten(m.Resume.Written))
+}
+
+// describeChunks counts chunks with the right noun.
+func describeChunks(n int64) string {
+	if n == 1 {
+		return "1 chunk"
+	}
+
+	return fmt.Sprintf("%d chunks", n)
+}
+
+// describeWritten counts written rows with the right noun.
+func describeWritten(n int64) string {
+	if n == 1 {
+		return "1 row"
+	}
+
+	return fmt.Sprintf("%d rows", n)
 }
 
 // writeUnrestorable renders what this migration's record and the live schema disagree about.
@@ -535,6 +712,7 @@ func (o operation) write(b *strings.Builder) {
 
 	o.writeReason(b)
 	o.writeRows(b)
+	o.writeChunks(b)
 	o.writeDeferred(b)
 
 	for _, stmt := range o.Statements {
@@ -549,6 +727,47 @@ func (o operation) writeRows(b *strings.Builder) {
 	}
 
 	fmt.Fprintf(b, "%s\n", indented("rows: "+o.Rows))
+}
+
+// writeChunks says how a data operation runs: a chunk at a time and by which key, or as one statement.
+func (o operation) writeChunks(b *strings.Builder) {
+	if o.Whole != "" {
+		fmt.Fprintf(b, "%s\n", indented(o.Whole))
+	}
+
+	if o.Chunks == nil {
+		return
+	}
+
+	fmt.Fprintf(b, "%s\n", indented("chunks: "+o.Chunks.describe()))
+
+	if o.Chunks.Refusal != "" {
+		fmt.Fprintf(b, "%s\n", indented("× "+o.Chunks.Refusal))
+	}
+}
+
+// describe says how large each chunk is, what it pages by, and how long a run waits between two.
+func (c chunks) describe() string {
+	described := fmt.Sprintf("%s at a time", describeRows(c.Rows))
+
+	if len(c.Key) > 0 {
+		described += fmt.Sprintf(" by %q (%s)", c.Table, strings.Join(c.Key, ", "))
+	}
+
+	if c.Pause != "" {
+		described += ", pausing " + c.Pause + " between them"
+	}
+
+	return described + ", each committed on its own"
+}
+
+// describeRows counts rows with the right noun.
+func describeRows(n int) string {
+	if n == 1 {
+		return "1 row"
+	}
+
+	return fmt.Sprintf("%d rows", n)
 }
 
 // writeDeferred stands in for the statements of an operation nothing here can compile yet.

@@ -306,7 +306,10 @@
 // Three are refused per migration, before its first statement, each naming the task that lifts it:
 //
 //   - one that compiles to no statements at all, because reporting success for a schema change that
-//     never happened is the driver conformance suite's own failure, one layer up;
+//     never happened is the driver conformance suite's own failure, one layer up -- except a down
+//     that emitted no operations, which is its author saying there is nothing to undo and is
+//     recorded rolled back with none run (ADR 0079); a derived down never reaches that, being
+//     refused where the up it would invert now emits nothing;
 //   - one that groups into more than one run, because nothing here splits a migration around a
 //     statement that cannot share a transaction;
 //   - one whose single run is not transactional, because then there is no transaction for its

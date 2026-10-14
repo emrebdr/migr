@@ -629,12 +629,23 @@ func (m compiledMigration) write(b *strings.Builder) {
 
 	m.writeDirect(b)
 	m.writeResume(b)
+	m.writeNothing(b)
 
 	for _, op := range m.Operations {
 		op.write(b)
 	}
 
 	m.writeUnrestorable(b)
+}
+
+// writeNothing says that a down emitting no operations undoes nothing, which only its author can say.
+func (m compiledMigration) writeNothing(b *strings.Builder) {
+	if len(m.Operations) > 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "       \u00b7  nothing to undo -- its down emits no operations, and the "+
+		"rollback is still recorded\n")
 }
 
 // writeResume says where a stopped chunked run committed up to, which this one carries on after.

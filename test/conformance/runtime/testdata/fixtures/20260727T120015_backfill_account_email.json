@@ -1,0 +1,6 @@
+{
+  "up": [
+    {"op":"data_transform","table":"accounts","column":"email_next","type":"string(320)","from":"email","function":"copy"}
+  ],
+  "down": []
+}

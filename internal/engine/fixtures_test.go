@@ -430,6 +430,8 @@ func (compiler) Compile(op ir.Operation) ([]driver.Statement, error) {
 		return statement("rewrite " + typed.Table), nil
 	case ir.DataCopy:
 		return statement("copy " + typed.From), nil
+	case ir.RenameTable:
+		return nil, nil
 	}
 
 	return nil, fmt.Errorf("the staged compiler was given %s", op.Kind())

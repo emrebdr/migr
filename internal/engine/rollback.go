@@ -119,6 +119,12 @@ func (e *executor) derive(ctx context.Context, item queued) (Emitted, error) {
 		return Emitted{}, directIrreversibleError(forward.Direct)
 	}
 
+	if len(forward.Operations) == 0 {
+		return Emitted{}, fmt.Errorf("%w: its up emits no operations when asked now, so there is "+
+			"nothing to derive an undo from -- only an authored down may undo nothing",
+			ErrNothingToRun)
+	}
+
 	inverse, err := ir.ReverseAll(forward.Operations)
 	if err != nil {
 		return Emitted{}, irreversibleError(err)

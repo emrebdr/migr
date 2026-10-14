@@ -721,6 +721,12 @@ the wire.
 An SDK that reports a missing `Down` as `migration_failed` is not merely imprecise: it turns every
 derivable rollback into a failed one.
 
+**A `Down` that emits no operations is a third answer, and it is not a refusal.** The result is an
+ordinary one carrying no operations, and the engine records the rollback with nothing run: the
+author is saying there is nothing to undo, as the backfill phase of a column replacement does. An
+`up` that emits nothing is still refused, as is a `down` the engine would have had to derive. See
+[ADR 0079](adr/0079-expand-contract-helper.md).
+
 ---
 
 ## 8. Cancellation and timeouts

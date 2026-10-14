@@ -1,0 +1,9 @@
+{
+  "up": [
+    {"op":"drop_column","table":"accounts","column":"handle","from":{"name":"handle","type":"string(64)","nullable":true,"default":{"literal":"anon"}}}
+  ],
+  "downRefusal": {
+    "code": "declared_irreversible",
+    "reason": "\"accounts\".\"login\" was filled through lower, which loses what the old column held, so the values contract drops cannot be rebuilt from it"
+  }
+}

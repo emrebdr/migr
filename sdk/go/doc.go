@@ -71,6 +71,36 @@
 // Exec and authors no Down is refused outright rather than half-reverted; write a
 // Down, or declare the migration irreversible with a reason (ADR 0036).
 //
+// A Down that emits nothing is an answer of its own: the author says there is nothing
+// to undo, and the rollback is recorded with no statement run. An Up that emits
+// nothing is still refused (ADR 0079).
+//
+// # Replacing a column
+//
+// ReplaceColumn declares one column changed through four migrations, each registered
+// from a file of its own and each restating the whole declaration, so that an applied
+// file cannot change what it emits underneath its checksum:
+//
+//	func init() {
+//		migr.Register(migr.ReplaceColumn("users", "email", migr.String(255)).
+//			With(migr.String(320)).Expand())
+//	}
+//
+// Expand adds the replacing column, nullable whatever it ends as. Backfill fills it from
+// the old one through Through's function, copy by default; being data alone, it runs in
+// chunks. Swap relaxes the old column, tightens the new one, and -- unless RenameTo gave
+// the column a new name -- swaps their names. Contract drops the old column.
+//
+// Swap and Contract are unsafe while an app version that reads the old column is still
+// serving, and so is undoing Expand while one writes the new column; each sends a
+// warning saying so, in plan mode too, so migr plan shows it before migr up runs it.
+// Nothing yet stops the four running in one migr up -- ordering them across deploys is
+// the operator's until migr gates it (M13-T7). The backfill's data_transform and the
+// contract's drop_column are destructive by kind, so a project permits both in
+// validation.allow_destructive. A contract after a lossy function -- lower, upper or
+// trim -- is irreversible, since the values it drops cannot be rebuilt from the new
+// column; after a copy its Down copies them back.
+//
 // # Registration
 //
 // Register reads its caller's filename and parses it with the migration grammar, so

@@ -1,0 +1,8 @@
+{
+  "up": [
+    {"op":"add_column","table":"accounts","column":{"name":"login","type":"string(64)","nullable":true,"default":{"literal":"guest"}}}
+  ],
+  "down": [
+    {"op":"drop_column","table":"accounts","column":"login","from":{"name":"login","type":"string(64)","nullable":true,"default":{"literal":"guest"}}}
+  ]
+}

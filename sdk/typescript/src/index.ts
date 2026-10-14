@@ -23,6 +23,9 @@ export { main } from "./main.ts";
 
 export { fromDirectory } from "./directory.ts";
 
+export { replaceColumn, ReplacementError } from "./expand.ts";
+export type { Replacement } from "./expand.ts";
+
 export { columns } from "./builder.ts";
 export type {
   AlterChange,

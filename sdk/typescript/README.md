@@ -53,6 +53,10 @@ Every migration has both directions, and there are exactly three honest answers:
 Writing `down` _and_ `irreversible` does not compile, because both cannot be true. A migration that
 sends the database a statement itself has no inverse to derive, so it owes one of the first two.
 
+A `down` that emits nothing says there is nothing to undo, and the rollback is recorded with no
+statement run. An `up` that emits nothing is still refused
+([ADR 0079](../../docs/adr/0079-expand-contract-helper.md)).
+
 ### `dependencies` is data, not a method
 
 It is a `readonly string[]` rather than a function, and that is the type saying what the framework
@@ -117,6 +121,32 @@ escapes whatever it is told — so this SDK is the conforming one there and the 
 own encoder ([ADR 0047](../../docs/adr/0047-line-separator-escaping.md)). A test holds the line
 `host.schema.apply` writes to that, because the bytes on the wire come from the envelope's
 `stringify` rather than from the operation codec the spec test exercises.
+
+### Replacing a column
+
+`replaceColumn` declares one column changed through four migrations. Each file exports one phase as
+its default and restates the whole declaration, so an applied file cannot change what it emits
+underneath its checksum:
+
+```ts
+import { replaceColumn, t } from "@migr/sdk";
+
+export default replaceColumn("users", "email", t.string(255)).with(t.string(320)).expand();
+```
+
+| Phase      | Up                                                                                         | Unsafe?                         |
+| ---------- | ------------------------------------------------------------------------------------------ | ------------------------------- |
+| `expand`   | adds `email_next`, nullable whatever it ends as                                            | its down, once an app writes it |
+| `backfill` | fills it from `email` through `through(...)`, `copy` by default, in chunks                 | no                              |
+| `swap`     | relaxes `email`, tightens `email_next`, and renames them past each other                   | yes, both ways                  |
+| `contract` | drops `email_old`; irreversible after `lower`, `upper` or `trim`, a copy-back after `copy` | yes                             |
+
+`renameTo(name)` ends the column under a new name instead, so swap renames nothing and contract
+drops the original; `via` and `retire` override the two derived names. Each unsafe step sends a
+warning naming what it breaks for an app version still serving, in plan mode too. Nothing yet stops
+the four running in one `migr up` — ordering them across deploys is the operator's until M13-T7 —
+and the backfill's `data_transform` and the contract's `drop_column` are destructive by kind, so a
+project permits both in `validation.allow_destructive`.
 
 ### Logical types
 

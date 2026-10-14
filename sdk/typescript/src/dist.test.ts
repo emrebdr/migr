@@ -56,6 +56,7 @@ test("the contract a migration is written against is what both formats ship", as
     "encode",
     "literal",
     "call",
+    "replaceColumn",
   ]) {
     assert.equal(typeof esm[exported], "function", `dist/esm ships no ${exported}`);
     assert.equal(typeof cjs[exported], "function", `dist/cjs ships no ${exported}`);
@@ -65,6 +66,11 @@ test("the contract a migration is written against is what both formats ship", as
   const loaded = esm["fromModule"]("20260727T153000_add_users.ts", { default: written });
 
   assert.equal(loaded.version, "20260727T153000");
+
+  const phase = esm["replaceColumn"]("users", "email", "string(255)").with("text").expand();
+  const expanded = esm["fromModule"]("20260727T153000_expand_email.ts", { default: phase });
+
+  assert.equal(expanded.version, "20260727T153000");
 });
 
 test("the schema builder is what both formats ship, and it emits what the sources do", async () => {

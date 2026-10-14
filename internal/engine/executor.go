@@ -182,12 +182,21 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 func (e *executor) checkRunnable(ready prepared) error {
 	groups := Groups(ready.compiled.Statements()[e.from:])
 
+	if nothingToUndo(ready.compiled) {
+		return nil
+	}
+
 	if len(groups) == 0 && ready.compiled.Deferred() == 0 {
 		return fmt.Errorf("%w, so running it would report success for a schema change that never "+
 			"happened", ErrNothingToRun)
 	}
 
 	return checkAtomic(groups)
+}
+
+// nothingToUndo reports a down that emitted no operations, which only an author can say (ADR 0079).
+func nothingToUndo(compiled plan.Plan) bool {
+	return compiled.Direction == ir.Down && len(compiled.Steps) == 0
 }
 
 // checkAtomic refuses statements that cannot be the one transaction a migration runs inside.

@@ -1,0 +1,14 @@
+{
+  "up": [
+    {"op":"alter_column","table":"accounts","column":"email","nullable":true,"from":{"nullable":false}},
+    {"op":"alter_column","table":"accounts","column":"email_next","nullable":false,"from":{"nullable":true}},
+    {"op":"rename_column","table":"accounts","from":"email","to":"email_old"},
+    {"op":"rename_column","table":"accounts","from":"email_next","to":"email"}
+  ],
+  "down": [
+    {"op":"rename_column","table":"accounts","from":"email","to":"email_next"},
+    {"op":"rename_column","table":"accounts","from":"email_old","to":"email"},
+    {"op":"alter_column","table":"accounts","column":"email_next","nullable":true,"from":{"nullable":false}},
+    {"op":"alter_column","table":"accounts","column":"email","nullable":false,"from":{"nullable":true}}
+  ]
+}

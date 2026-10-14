@@ -1,0 +1,8 @@
+{
+  "up": [
+    {"op":"add_column","table":"accounts","column":{"name":"email_next","type":"string(320)","nullable":true}}
+  ],
+  "down": [
+    {"op":"drop_column","table":"accounts","column":"email_next","from":{"name":"email_next","type":"string(320)","nullable":true}}
+  ]
+}

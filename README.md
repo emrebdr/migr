@@ -435,6 +435,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0076](docs/adr/0076-seed-migrations.md) | Seeds: a second history on the same session, scoped by directory, run after every migration |
 | [0077](docs/adr/0077-data-operations.md) | Data operations, and irVersion 2 as a superset of 1 |
 | [0078](docs/adr/0078-chunked-data-operations.md) | Running a data-only migration in chunks, and carrying it on after an interruption |
+| [0079](docs/adr/0079-expand-contract-helper.md) | Replacing a column through four migrations, each a phase of one declared change |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

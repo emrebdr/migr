@@ -1,0 +1,9 @@
+{
+  "up": [
+    {"op":"drop_column","table":"accounts","column":"email_old","from":{"name":"email_old","type":"string(255)","nullable":true}}
+  ],
+  "down": [
+    {"op":"add_column","table":"accounts","column":{"name":"email_old","type":"string(255)","nullable":true}},
+    {"op":"data_transform","table":"accounts","column":"email_old","type":"string(255)","from":"email","function":"copy"}
+  ]
+}

@@ -70,7 +70,7 @@ type Fixture struct {
 	Name string
 	// Up is what the migration performs, decoded so the suite can say which kinds it covers.
 	Up ir.Operations
-	// Down is what undoes it, empty when the fixture states a refusal instead.
+	// Down is what undoes it: empty where the author undoes nothing or the fixture states a refusal.
 	Down ir.Operations
 	// Refusal is §7.4's answer this fixture must produce instead of a down, or nil.
 	Refusal *Refusal
@@ -239,12 +239,26 @@ func build(f Fixture, m manifest) (Fixture, error) {
 	}
 
 	if len(m.Down) > 0 {
-		if f.Down, f.down, err = canonical("down", m.Down); err != nil {
+		if f.Down, f.down, err = canonicalDown(m.Down); err != nil {
 			return Fixture{}, err
 		}
 	}
 
 	return f, checkStatements(f)
+}
+
+// canonicalDown decodes a down, where an empty list is an author saying there is nothing to undo.
+func canonicalDown(raw json.RawMessage) (ir.Operations, []byte, error) {
+	var compacted bytes.Buffer
+	if err := json.Compact(&compacted, raw); err != nil {
+		return nil, nil, fmt.Errorf("down: %w", err)
+	}
+
+	if compacted.String() == "[]" {
+		return ir.Operations{}, compacted.Bytes(), nil
+	}
+
+	return canonical("down", raw)
 }
 
 // checkDown reports a fixture that states both an undo and a refusal, or neither.

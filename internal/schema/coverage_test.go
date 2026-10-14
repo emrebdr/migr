@@ -51,7 +51,13 @@ var coverage = map[ir.Kind]covered{
 	ir.KindDropView: {schema.ElementView, "a View is gone", withView, plain},
 	ir.KindRaw: {"", "nothing: its effect is opaque to the framework, which is also why it has " +
 		"no inverse", nil, nil},
+	ir.KindDataCopy:      {schema.ElementColumn, rowsOnly, nil, nil},
+	ir.KindDataBackfill:  {schema.ElementColumn, rowsOnly, nil, nil},
+	ir.KindDataTransform: {schema.ElementColumn, rowsOnly, nil, nil},
 }
+
+// rowsOnly is what a data operation does to a snapshot: nothing, and knowably so, unlike raw.
+const rowsOnly = "nothing: it writes the rows of the columns it names, and a snapshot holds no row"
 
 // exactly returns the column type a driver would record for a distinct native spelling.
 func exactly(t *testing.T, spelling, native string) schema.ColumnType {
@@ -190,7 +196,7 @@ func TestEveryOperationHasADeclaredEffectOnASnapshot(t *testing.T) {
 
 	for kind := range coverage {
 		if !kind.Valid() {
-			t.Errorf("the coverage map names %q, which is no operation in the v1 set", kind)
+			t.Errorf("the coverage map names %q, which is no operation in the set", kind)
 		}
 	}
 
@@ -208,6 +214,21 @@ func TestOnlyRawChangesSomethingASnapshotCannotSee(t *testing.T) {
 		if opaque != (kind == ir.KindRaw) {
 			t.Errorf("%s declares an opaque effect: %v, want %v", kind, opaque,
 				kind == ir.KindRaw)
+		}
+	}
+}
+
+func TestADataOperationIsTheOneThatKnowablyChangesNoSchema(t *testing.T) {
+	for _, kind := range ir.Kinds() {
+		declared := coverage[kind]
+
+		schemaless := declared.element != "" && declared.before == nil && declared.after == nil
+		if schemaless != (kind.Since() == 2) {
+			t.Errorf("%s declares a schema-less effect: %v, want %v", kind, schemaless,
+				kind.Since() == 2)
+			t.Log("A data operation names the columns it writes and changes none of them; raw names")
+			t.Log("nothing and may change anything. The two are different claims, and a projection")
+			t.Log("is only allowed to carry on past the first.")
 		}
 	}
 }

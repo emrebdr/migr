@@ -22,6 +22,7 @@ import type { Builder, NewTable, Statements, TableChain, ViewChain } from "./bui
 import { newBuilder, newTableChain, statementsChain, tableChain, viewChain } from "./builder.ts";
 import { checkAll } from "./check.ts";
 import { OperationError } from "./error.ts";
+import { since } from "./kind.ts";
 import type { CreateTable, Operation } from "./operation.ts";
 import { documentOf } from "./operation.ts";
 import {
@@ -31,7 +32,9 @@ import {
   HOST_INFO,
   HOST_LOG,
   HOST_SCHEMA_APPLY,
+  IR_VERSION,
 } from "./wire/method.ts";
+import { ProtocolError, UNSUPPORTED_IR } from "./wire/code.ts";
 import type {
   CapabilityGetResult,
   DBExecResult,
@@ -109,12 +112,29 @@ export interface Call {
   readonly mode: Mode;
   /** Aborted when the engine abandons this request. */
   readonly signal: AbortSignal;
+  /** The newest irVersion the engine reads, which every apply is held to; absent means this SDK's. */
+  readonly irVersion?: number;
 }
 
 /** Window is a Schema the session can close, which a migration is never handed. */
 export interface Window extends Schema {
   /** Ends the call and reports what it emitted, or what it built and never applied. */
   seal(): Promise<number>;
+}
+
+/** carried refuses an operation newer than the engine stated it reads, before anything is sent. */
+function carried(ops: readonly Operation[], stated: number): void {
+  ops.forEach((op, at) => {
+    const needs = since(op.op);
+
+    if (needs > stated) {
+      throw new ProtocolError(
+        UNSUPPORTED_IR,
+        `operation ${at + 1} is ${op.op}, which needs irVersion ${needs}, and the engine ` +
+          `stated ${stated} -- upgrade migr to run it`,
+      );
+    }
+  });
 }
 
 /** newSchema opens the window one migration.execute acts through. */
@@ -149,6 +169,7 @@ export function newSchema(call: Call, host: Host): Window {
       return;
     }
 
+    carried(ops, call.irVersion ?? IR_VERSION);
     checkAll(ops);
 
     const recorded = await host.call<SchemaApplyResult>(

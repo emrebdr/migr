@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/driver/drivertest"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
 )
@@ -317,17 +318,17 @@ func checkCoverage(t *testing.T, ops ir.Operations) {
 		t.Errorf("nothing in the fixture is a %s, so nothing proves it rolls back", kind)
 	}
 
-	checkRawIsTheOnlyOmission(t, kindsOf(ops))
+	checkEveryOmissionHasNoInverse(t, kindsOf(ops))
 }
 
-// uncovered returns the operations the IR declares that a fixture leaves untested, raw excepted.
+// uncovered returns the operations the IR declares that a fixture leaves untested, the inverseless excepted.
 func uncovered(ops ir.Operations) []ir.Kind {
 	covered := kindsOf(ops)
 
 	var missing []ir.Kind
 
 	for _, kind := range ir.Kinds() {
-		if covered[kind] || kind == ir.KindRaw {
+		if covered[kind] || inverseless(kind) {
 			continue
 		}
 
@@ -350,7 +351,7 @@ func kindsOf(ops ir.Operations) map[ir.Kind]bool {
 func TestTheCoverageCheckWouldNoticeAMissingOperation(t *testing.T) {
 	missing := uncovered(ir.Operations{})
 
-	if want := len(ir.Kinds()) - 1; len(missing) != want {
+	if want := len(ir.Kinds()) - 1 - len(ir.DataKinds()); len(missing) != want {
 		t.Errorf("an empty fixture leaves %d operations untested, want %d", len(missing), want)
 		t.Log("The check reads ir.Kinds() rather than what the fixture offers, so a twenty-first")
 		t.Log("operation fails it on the day it is added. Read the other way round it can never")
@@ -362,18 +363,29 @@ func TestTheCoverageCheckWouldNoticeAMissingOperation(t *testing.T) {
 	}
 }
 
-// checkRawIsTheOnlyOmission ties the fixture's one gap to a fact rather than to a preference.
-func checkRawIsTheOnlyOmission(t *testing.T, covered map[ir.Kind]bool) {
+// inverseless names the operations no fixture here can walk: raw, and the data operations.
+func inverseless(kind ir.Kind) bool {
+	return kind == ir.KindRaw || slices.Contains(ir.DataKinds(), kind)
+}
+
+// checkEveryOmissionHasNoInverse ties the fixture's gaps to a fact rather than to a preference.
+func checkEveryOmissionHasNoInverse(t *testing.T, covered map[ir.Kind]bool) {
 	t.Helper()
 
-	if covered[ir.KindRaw] {
-		t.Error("the fixture holds a raw operation, which the framework cannot invert")
-	}
+	for _, op := range drivertest.Operations(Name) {
+		if !inverseless(op.Kind()) {
+			continue
+		}
 
-	if _, err := (ir.Raw{Driver: Name, SQL: "SELECT 1"}).Reverse(); !errors.Is(err, ir.ErrIrreversible) {
-		t.Errorf("ir.Raw.Reverse() returned %v, want ir.ErrIrreversible", err)
-		t.Log("raw is left out of this fixture only because it has no inverse to walk. If that")
-		t.Log("stops being true it belongs here, like every other operation in the set.")
+		if covered[op.Kind()] {
+			t.Errorf("the fixture holds a %s, which the framework cannot invert", op.Kind())
+		}
+
+		if _, err := op.Reverse(); !errors.Is(err, ir.ErrIrreversible) {
+			t.Errorf("%s.Reverse() returned %v, want ir.ErrIrreversible", op.Kind(), err)
+			t.Log("It is left out of this fixture only because it has no inverse to walk. If that")
+			t.Log("stops being true it belongs here, like every other operation in the set.")
+		}
 	}
 }
 

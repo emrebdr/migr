@@ -2,10 +2,10 @@ package migr
 
 import "slices"
 
-// Kind names one operation in the v1 IR vocabulary, spelled as docs/ir.md spells it.
+// Kind names one operation in the IR vocabulary, spelled as docs/ir.md spells it.
 type Kind string
 
-// The v1 operation set, in the order docs/ir.md §7.1 lists it.
+// The operation set, in the order docs/ir.md §7.1 lists it.
 const (
 	KindCreateTable    Kind = "create_table"
 	KindDropTable      Kind = "drop_table"
@@ -27,6 +27,9 @@ const (
 	KindCreateView     Kind = "create_view"
 	KindDropView       Kind = "drop_view"
 	KindRaw            Kind = "raw"
+	KindDataCopy       Kind = "data_copy"
+	KindDataBackfill   Kind = "data_backfill"
+	KindDataTransform  Kind = "data_transform"
 )
 
 // kinds lists every operation in the order docs/ir.md §7.1 declares them.
@@ -40,6 +43,19 @@ var kinds = []Kind{
 	KindAddPrimaryKey, KindDropPrimaryKey,
 	KindCreateView, KindDropView,
 	KindRaw,
+	KindDataCopy, KindDataBackfill, KindDataTransform,
+}
+
+// dataKinds are the operations irVersion 2 added, every one of which writes rows rather than schema.
+var dataKinds = []Kind{KindDataCopy, KindDataBackfill, KindDataTransform}
+
+// Since returns the irVersion that first carries this kind, which an engine must state to read it.
+func (k Kind) Since() int {
+	if slices.Contains(dataKinds, k) {
+		return 2
+	}
+
+	return 1
 }
 
 // Kinds returns every operation kind, in declaration order.
@@ -47,7 +63,7 @@ func Kinds() []Kind {
 	return slices.Clone(kinds)
 }
 
-// Valid reports whether a kind is part of the v1 operation set.
+// Valid reports whether a kind is part of the operation set.
 func (k Kind) Valid() bool {
 	return slices.Contains(kinds, k)
 }

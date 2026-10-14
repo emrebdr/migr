@@ -64,6 +64,8 @@ const (
 	actWords = "words"
 	// actStrays names a table nothing creates and a column nothing adds, which M10-T3 catches.
 	actStrays = "strays"
+	// actBackfills emits a data operation, which a seed may and a schema change may not.
+	actBackfills = "backfills"
 )
 
 // The declarations a scripted runtime reports, which compose with every act above.
@@ -367,6 +369,9 @@ func (r *scriptedRuntime) operations(direction ir.Direction) string {
 		return wordedOperationsFor(direction)
 	case actStrays:
 		return strayOperationsFor(direction)
+	case actBackfills:
+		return `{"operations":[{"op":"data_backfill","table":"users","column":"plan",` +
+			`"type":"string(16)","value":{"literal":"free"}}]}`
 	default:
 		return operationsFor(direction)
 	}

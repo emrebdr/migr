@@ -42,7 +42,7 @@ func TestSpecDocumentsEveryOperation(t *testing.T) {
 		documented[s.kind] = s.line
 
 		if !s.kind.Valid() {
-			t.Errorf("%s:%d: section %q names no operation in the v1 set", specPath, s.line, s.kind)
+			t.Errorf("%s:%d: section %q names no operation in the set", specPath, s.line, s.kind)
 		}
 	}
 

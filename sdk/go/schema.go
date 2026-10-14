@@ -3,6 +3,7 @@ package migr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -128,6 +129,10 @@ func (s *Schema) Apply(ctx context.Context, ops ...Operation) error {
 		return nil
 	}
 
+	if err := s.carried(ops); err != nil {
+		return err
+	}
+
 	documents, err := documentsOf(ops)
 	if err != nil {
 		return err
@@ -141,6 +146,32 @@ func (s *Schema) Apply(ctx context.Context, ops ...Operation) error {
 	}
 
 	return s.record(recorded.Recorded, len(ops))
+}
+
+// ErrNewerIR marks an operation newer than the Operation IR the engine on the other end reads.
+var ErrNewerIR = errors.New("the engine reads an older Operation IR than this operation needs")
+
+// irStater is a host that knows which irVersion its engine stated, which a session always is.
+type irStater interface {
+	statedIR() int
+}
+
+// carried refuses an operation the engine stated it cannot read, before anything is sent.
+func (s *Schema) carried(ops []Operation) error {
+	stated := wire.IRVersion
+	if host, knows := s.host.(irStater); knows {
+		stated = host.statedIR()
+	}
+
+	for i, op := range ops {
+		if op != nil && op.Kind().Since() > stated {
+			return fmt.Errorf("%w: operation %d is %s, which needs irVersion %d, and the engine "+
+				"stated %d -- upgrade migr to run it", ErrNewerIR, i+1, op.Kind(), op.Kind().Since(),
+				stated)
+		}
+	}
+
+	return nil
 }
 
 // documentsOf renders each operation as the IR document that crosses the wire verbatim.

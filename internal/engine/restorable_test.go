@@ -442,6 +442,38 @@ func representativeOperations(t *testing.T) ir.Operations {
 		ir.CreateView{View: "v", Query: "SELECT 1"},
 		ir.DropView{View: "v"},
 		ir.Raw{Driver: "postgres", SQL: "SELECT 1"},
+		ir.DataCopy{From: "t", To: "u", Columns: []ir.CopyColumn{{From: "c", To: "c"}}},
+		ir.DataBackfill{Table: "t", Column: "c", Type: mustType(t, "int64"), Value: ir.Literal("1")},
+		ir.DataTransform{Table: "t", Column: "c", Type: mustType(t, "int64"), From: "d",
+			Function: ir.TransformCopy},
+	}
+}
+
+func TestADataWriteIsJudgedAgainstTheColumnsItNames(t *testing.T) {
+	live := occupiedSchema(t)
+
+	stray := ir.Operations{ir.DataBackfill{Table: "t", Column: "absent",
+		Type: mustType(t, "int64"), Value: ir.Literal("1")}}
+	if found := Unrestorable(stray, live); len(found) == 0 {
+		t.Error("a backfill of a column the database does not hold was not reported")
+	}
+
+	mistyped := ir.Operations{ir.DataBackfill{Table: "t", Column: "c",
+		Type: mustType(t, "text"), Value: ir.Literal("1")}}
+	if found := Unrestorable(mistyped, live); len(found) == 0 {
+		t.Error("a backfill stating a type the live column contradicts was not reported")
+	}
+
+	added := ir.Operations{
+		ir.AddColumn{Table: "t", Column: ir.Column{Name: "fresh", Type: mustType(t, "int64"),
+			Nullable: true}},
+		ir.DataBackfill{Table: "t", Column: "fresh", Type: mustType(t, "int64"),
+			Value: ir.Literal("1")},
+	}
+	if found := Unrestorable(added, live); len(found) != 0 {
+		t.Errorf("a backfill of the column its own migration adds was reported: %v", details(found))
+		t.Log("The column does not exist until the operation before it runs, so a backfill that")
+		t.Log("follows its add_column is judged against nothing it could know the answer to.")
 	}
 }
 

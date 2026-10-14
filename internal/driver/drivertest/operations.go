@@ -9,7 +9,7 @@ import (
 // driver package (CLAUDE.md invariant #3) and no golden file can be mistaken for real DDL.
 const rawFixture = "-- a raw statement, passed through verbatim"
 
-// Operations returns one representative operation per v1 kind, in the order the IR declares them.
+// Operations returns one representative operation per kind, in the order the IR declares them.
 func Operations(driver string) ir.Operations {
 	ops := ir.Operations{
 		ir.CreateTable{
@@ -63,6 +63,13 @@ func Operations(driver string) ir.Operations {
 		ir.CreateView{View: "active_users", Query: "SELECT id FROM users WHERE active"},
 		ir.DropView{View: "active_users"},
 		ir.Raw{Driver: driver, SQL: rawFixture},
+		ir.DataCopy{From: "users", To: "users_archive", Columns: []ir.CopyColumn{
+			{From: "id", To: "id"}, {From: "email", To: "email_address"},
+		}},
+		ir.DataBackfill{Table: "users", Column: "nickname", Type: typeOf("string(64)"),
+			Value: ir.Literal("anonymous")},
+		ir.DataTransform{Table: "users", Column: "email_key", Type: typeOf("string(255)"),
+			From: "email", Function: ir.TransformLower},
 	}
 
 	return ops

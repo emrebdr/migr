@@ -14,6 +14,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/schema"
 )
 
 // decodePlan reads the document --json promised, failing the test rather than the command.
@@ -559,5 +560,58 @@ func TestALanguageIsRefusedWhenNoRegistryWasBuiltAtAll(t *testing.T) {
 
 	if !errors.Is(err, errNoRuntimes) {
 		t.Errorf("runnable returned %v, want %v", err, errNoRuntimes)
+	}
+}
+
+func TestPlanSaysWhichRowsADataOperationWrites(t *testing.T) {
+	dir, _, drivers := goProject(t, "plans")
+
+	stdout, _, err := runScripted(t, dir, actBackfills, drivers, "plan")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	if want := `rows: fills the NULLs of "users.plan" with "free", and no other row`; !strings.Contains(stdout, want) {
+		t.Errorf("the plan does not say which rows the backfill writes:\n%s", stdout)
+		t.Log("A data operation is one statement over a whole table, so its statement alone says")
+		t.Log("what it writes and not how much of the table that is.")
+	}
+}
+
+func TestEveryDataOperationSaysWhichRowsItWrites(t *testing.T) {
+	text, err := schema.Parse("text")
+	if err != nil {
+		t.Fatalf("parsing a type: %v", err)
+	}
+
+	cases := map[ir.Kind]struct {
+		op   ir.Operation
+		want string
+	}{
+		ir.KindDataCopy: {ir.DataCopy{From: "users", To: "archive", Columns: []ir.CopyColumn{
+			{From: "id", To: "id"}, {From: "email", To: "email"}}},
+			`copies every row of "users" into "archive", 2 columns`},
+		ir.KindDataBackfill: {ir.DataBackfill{Table: "users", Column: "id", Type: text,
+			Value: ir.Call(ir.FuncUUID)}, `fills the NULLs of "users.id" with uuid(), and no other row`},
+		ir.KindDataTransform: {ir.DataTransform{Table: "users", Column: "key", Type: text,
+			From: "email", Function: ir.TransformTrim},
+			`rewrites "users.key" in every row, from "email" through trim`},
+	}
+
+	for _, kind := range ir.DataKinds() {
+		c, held := cases[kind]
+		if !held {
+			t.Errorf("no case for %s, so nothing holds the plan to saying what it writes", kind)
+
+			continue
+		}
+
+		if got := rowsOf(c.op); got != c.want {
+			t.Errorf("%s reads %q, want %q", kind, got, c.want)
+		}
+	}
+
+	if got := rowsOf(ir.DropView{View: "v"}); got != "" {
+		t.Errorf("a schema operation says it writes rows: %q", got)
 	}
 }

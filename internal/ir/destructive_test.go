@@ -16,8 +16,8 @@ func TestTheDestructiveKindsAreTheOnesThatReportThemselves(t *testing.T) {
 		}
 	}
 
-	if len(DestructiveKinds()) != 5 {
-		t.Errorf("%d kinds can destroy, and docs/ir.md names 5", len(DestructiveKinds()))
+	if len(DestructiveKinds()) != 6 {
+		t.Errorf("%d kinds can destroy, and docs/ir.md names 6", len(DestructiveKinds()))
 	}
 }
 

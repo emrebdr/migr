@@ -1,4 +1,4 @@
-// The twenty operations, and the shape table that decides their bytes.
+// The twenty-three operations, and the shape table that decides their bytes.
 //
 // docs/ir.md §3.2 fixes member order and §3.6 omits an unset optional rather than writing null, and
 // §4.2 makes both a compatibility surface: the emitted bytes are hashed, so reordering a member
@@ -15,7 +15,7 @@
 // has no runtime type identity and drop_index, drop_unique, and drop_primary_key are otherwise the
 // same shape, so the discriminant is how a value names itself. The encoder still writes it first.
 
-import type { Action, Column } from "./column.ts";
+import type { Action, Column, Default } from "./column.ts";
 import type {
   CheckDef,
   ColumnState,
@@ -257,6 +257,64 @@ export interface Raw {
   sql: string;
 }
 
+/** Transform names what data_transform applies to its source, the text functions over its text. */
+export type Transform = "copy" | "lower" | "upper" | "trim";
+
+/** TRANSFORMS lists every transform function, in the order docs/ir.md states them. */
+export const TRANSFORMS = [
+  "copy",
+  "lower",
+  "upper",
+  "trim",
+] as const satisfies readonly Transform[];
+
+/** CopyColumn is one column data_copy reads from its source table and the column it writes it into. */
+export interface CopyColumn {
+  /** The column read. */
+  from: string;
+  /** The column written. */
+  to: string;
+}
+
+/** DataCopy inserts every row of one table into another, column by named column. */
+export interface DataCopy {
+  op: "data_copy";
+  /** The table read. */
+  from: string;
+  /** The table written, which must differ from from. */
+  to: string;
+  /** Each column read and the one it is written into. */
+  columns: CopyColumn[];
+}
+
+/** DataBackfill fills the NULLs of one column with a literal or a neutral function, and nothing else. */
+export interface DataBackfill {
+  op: "data_backfill";
+  /** The table written. */
+  table: string;
+  /** The column whose NULLs are filled. */
+  column: string;
+  /** That column's logical type, which the value is rendered in. */
+  type: Type;
+  /** What fills them: a literal or one of the neutral functions. */
+  value: Default;
+}
+
+/** DataTransform rewrites one column of every row from another column, through a neutral function. */
+export interface DataTransform {
+  op: "data_transform";
+  /** The table written. */
+  table: string;
+  /** The column written. */
+  column: string;
+  /** That column's logical type, which the result is converted to. */
+  type: Type;
+  /** The column read. */
+  from: string;
+  /** What is applied to it. */
+  function: Transform;
+}
+
 /** Operation is one schema change a migration emits, which the engine compiles for its driver. */
 export type Operation =
   | CreateTable
@@ -278,7 +336,10 @@ export type Operation =
   | DropPrimaryKey
   | CreateView
   | DropView
-  | Raw;
+  | Raw
+  | DataCopy
+  | DataBackfill
+  | DataTransform;
 
 /** Member is one member of an emitted object, and the shape of its value when it has one. */
 export interface Member {
@@ -355,6 +416,9 @@ const COLUMN_STATE: Shape = [
   opt("no_default", undefined, EMPTY),
 ];
 
+/** COPY_COLUMN is one pair data_copy reads and writes. */
+const COPY_COLUMN: Shape = [req("from"), req("to")];
+
 /** SHAPES holds every operation's members, in the order docs/ir.md §7.3 lists them. */
 export const SHAPES: Readonly<Record<Kind, Shape>> = {
   create_table: [
@@ -402,6 +466,9 @@ export const SHAPES: Readonly<Record<Kind, Shape>> = {
   ],
   drop_view: [req("view"), opt("from", VIEW_DEF)],
   raw: [req("driver"), req("sql")],
+  data_copy: [req("from"), req("to"), req("columns", COPY_COLUMN, { list: true })],
+  data_backfill: [req("table"), req("column"), req("type"), req("value", DEFAULT)],
+  data_transform: [req("table"), req("column"), req("type"), req("from"), req("function")],
 };
 
 /** STRUCTURES holds the shared structures docs/ir.md §6 defines, for a test that reads them back. */

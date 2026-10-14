@@ -3,6 +3,7 @@ package ir
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -42,12 +43,12 @@ func TestUnstampedDocumentRefusesToMarshal(t *testing.T) {
 }
 
 func TestUnknownVersionNamesBothSides(t *testing.T) {
-	_, err := UnmarshalDocument([]byte(`{"irVersion":2,"operations":[]}`))
+	_, err := UnmarshalDocument([]byte(`{"irVersion":3,"operations":[]}`))
 	if err == nil {
 		t.Fatal("an unreadable version must be rejected")
 	}
 
-	for _, want := range []string{"2", "1", "unsupported irVersion"} {
+	for _, want := range []string{"3", "1, 2", "unsupported irVersion"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q, got %q", want, err)
 		}
@@ -58,12 +59,12 @@ func TestUnknownVersionNamesBothSides(t *testing.T) {
 		t.Fatalf("error is %T, want *VersionError", err)
 	}
 
-	if verr.Received != 2 {
-		t.Errorf("VersionError.Received = %d, want 2", verr.Received)
+	if verr.Received != 3 {
+		t.Errorf("VersionError.Received = %d, want 3", verr.Received)
 	}
 
-	if !reflect.DeepEqual(verr.Supported, []int{Version}) {
-		t.Errorf("VersionError.Supported = %v, want %v", verr.Supported, []int{Version})
+	if !reflect.DeepEqual(verr.Supported, Supported()) {
+		t.Errorf("VersionError.Supported = %v, want %v", verr.Supported, Supported())
 	}
 }
 
@@ -186,7 +187,7 @@ func TestCheckVersion(t *testing.T) {
 		t.Errorf("the current version must be readable: %v", err)
 	}
 
-	for _, v := range []int{0, -1, 2, 99} {
+	for _, v := range []int{0, -1, 3, 99} {
 		if err := CheckVersion(v); err == nil {
 			t.Errorf("CheckVersion(%d) should fail", v)
 		}
@@ -201,8 +202,11 @@ func TestSupportedIsACopy(t *testing.T) {
 		t.Error("Supported() must hand out a copy, not the package's own slice")
 	}
 
-	if len(Supported()) != 1 || Supported()[0] != Version {
-		t.Errorf("Supported() = %v, want [%d]", Supported(), Version)
+	if !slices.Equal(Supported(), []int{1, Version}) {
+		t.Errorf("Supported() = %v, want [1 %d]", Supported(), Version)
+		t.Log("Each version is a superset of the one before it, so a build that reads 2 reads")
+		t.Log("every document 1 can hold -- and dropping 1 would refuse every migration recorded")
+		t.Log("before the data operations existed.")
 	}
 }
 
@@ -245,5 +249,60 @@ func TestDocumentsAreDeterministic(t *testing.T) {
 
 	if string(first) != string(second) {
 		t.Errorf("two identical documents produced different bytes:\n %s\n %s", first, second)
+	}
+}
+
+func TestADocumentStatesTheOldestVersionThatCarriesItsOperations(t *testing.T) {
+	schemaOnly := Operations{DropView{View: "v"}}
+	withData := Operations{DropView{View: "v"}, DataCopy{From: "a", To: "b",
+		Columns: []CopyColumn{{From: "id", To: "id"}}}}
+
+	if got := NewDocument(schemaOnly).IRVersion; got != 1 {
+		t.Errorf("a document of v1 operations is stamped irVersion %d, want 1", got)
+		t.Log("Stamping the newest version on every document would make an engine that reads 1")
+		t.Log("refuse migrations it can read perfectly well.")
+	}
+
+	if got := NewDocument(withData).IRVersion; got != 2 {
+		t.Errorf("a document carrying data_copy is stamped irVersion %d, want 2", got)
+	}
+
+	encoded, err := Marshal(NewDocument(schemaOnly))
+	if err != nil {
+		t.Fatalf("marshaling: %v", err)
+	}
+
+	if want := `{"irVersion":1,"operations":[{"op":"drop_view","view":"v"}]}`; string(encoded) != want {
+		t.Errorf("a v1 document moved its bytes:\n got %s\nwant %s", encoded, want)
+	}
+}
+
+func TestADocumentStatingAVersionThatCannotCarryItsOperationsIsRefused(t *testing.T) {
+	_, err := UnmarshalDocument([]byte(`{"irVersion":1,"operations":[{"op":"data_copy",` +
+		`"from":"a","to":"b","columns":[{"from":"id","to":"id"}]}]}`))
+
+	var newer *NewerError
+	if !errors.As(err, &newer) || newer.Kind != KindDataCopy || newer.Stated != 1 {
+		t.Fatalf("UnmarshalDocument returned %v, want a NewerError naming data_copy and 1", err)
+	}
+
+	for _, want := range []string{"data_copy", "irVersion 2", "irVersion 1"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
+	}
+}
+
+func TestEveryKindSaysWhichVersionFirstCarriesIt(t *testing.T) {
+	for _, k := range Kinds() {
+		want := 1
+		if slices.Contains(DataKinds(), k) {
+			want = 2
+		}
+
+		if got := k.Since(); got != want || got > Version {
+			t.Errorf("%s is carried since irVersion %d, want %d (this build reads up to %d)",
+				k, got, want, Version)
+		}
 	}
 }

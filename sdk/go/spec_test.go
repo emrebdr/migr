@@ -285,6 +285,12 @@ func decodeOperation(kind Kind, data []byte) (Operation, error) {
 		return decodeOp[DropView](data)
 	case KindRaw:
 		return decodeOp[Raw](data)
+	case KindDataCopy:
+		return decodeOp[DataCopy](data)
+	case KindDataBackfill:
+		return decodeOp[DataBackfill](data)
+	case KindDataTransform:
+		return decodeOp[DataTransform](data)
 	default:
 		return nil, fmt.Errorf("this SDK declares no struct for %q", kind)
 	}

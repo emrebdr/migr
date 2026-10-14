@@ -61,6 +61,12 @@ func everyOperation(t *testing.T) ir.Operations {
 		ir.CreateView{View: "active_users", Query: "SELECT id FROM users WHERE active"},
 		ir.DropView{View: "active_users"},
 		ir.Raw{Driver: "postgres", SQL: "CREATE EXTENSION IF NOT EXISTS pgcrypto"},
+		ir.DataCopy{From: "users", To: "users_new", Columns: []ir.CopyColumn{
+			{From: "id", To: "id"}}},
+		ir.DataBackfill{Table: "users", Column: "plan", Type: mustType(t, "string(16)"),
+			Value: ir.Literal("free")},
+		ir.DataTransform{Table: "users", Column: "email_key", Type: mustType(t, "string(255)"),
+			From: "email", Function: ir.TransformLower},
 	}
 }
 

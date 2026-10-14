@@ -20,9 +20,9 @@ func TestEveryOperationIsAChainOrSaysNoSourceExpressesIt(t *testing.T) {
 
 		chains, err := source.Chains(ir.Operations{op})
 
-		if kind == ir.KindRaw {
+		if kind == ir.KindRaw || kind.Since() == 2 {
 			if !errors.Is(err, source.ErrNotRenderable) {
-				t.Errorf("chaining engine SQL reported %v, want ErrNotRenderable", err)
+				t.Errorf("chaining a %s reported %v, want ErrNotRenderable", kind, err)
 			}
 
 			continue
@@ -41,8 +41,10 @@ func TestEveryOperationIsAChainOrSaysNoSourceExpressesIt(t *testing.T) {
 
 	t.Log("Coverage is derived from ir.Kinds(), so a twenty-first operation fails this until a")
 	t.Log("chain exists for it or representative says why one cannot.")
-	t.Log("raw is the one: a schema builder has no call for engine SQL, and a generated migration")
-	t.Log("that reached for one would abandon both claims it is supposed to keep.")
+	t.Log("raw is one: a schema builder has no call for engine SQL, and a generated migration")
+	t.Log("that reached for one would abandon both claims it is supposed to keep. The data")
+	t.Log("operations are the rest: a chain exists to write what migr diff proposes, and a")
+	t.Log("differ compares two schemas, which hold no rows to propose writing.")
 }
 
 // sample returns one logical type of each kind, parameterised ones included.
@@ -98,6 +100,12 @@ func representative(t *testing.T, kind ir.Kind) (ir.Operation, bool) {
 		ir.KindCreateView:     ir.CreateView{View: "v", Query: "SELECT 1"},
 		ir.KindDropView:       ir.DropView{View: "v"},
 		ir.KindRaw:            ir.Raw{Driver: "sqlite", SQL: "ANALYZE"},
+		ir.KindDataCopy: ir.DataCopy{From: "t", To: "u", Columns: []ir.CopyColumn{
+			{From: "id", To: "id"}}},
+		ir.KindDataBackfill: ir.DataBackfill{Table: "t", Column: "c",
+			Type: sample(t, schema.KindText), Value: ir.Literal("x")},
+		ir.KindDataTransform: ir.DataTransform{Table: "t", Column: "c",
+			Type: sample(t, schema.KindText), From: "d", Function: ir.TransformTrim},
 	}
 
 	op, ok := held[kind]

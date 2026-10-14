@@ -61,6 +61,12 @@ func compile(op ir.Operation) ([]driver.Statement, error) {
 		return compileDropView(o)
 	case ir.Raw:
 		return compileRaw(o)
+	case ir.DataCopy:
+		return compileDataCopy(o)
+	case ir.DataBackfill:
+		return compileDataBackfill(o)
+	case ir.DataTransform:
+		return compileDataTransform(o)
 	default:
 		return nil, fmt.Errorf("%s has no compiler for %s: adding an operation is the five-part "+
 			"change in CLAUDE.md invariant #4, and this driver is one of the five", Name, op.Kind())

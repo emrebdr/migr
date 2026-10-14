@@ -363,6 +363,12 @@ func representative(t *testing.T, kind ir.Kind) (ir.Operation, bool) {
 		ir.KindCreateView:     ir.CreateView{View: "fresh_view", Query: "SELECT 1"},
 		ir.KindDropView:       ir.DropView{View: "seen"},
 		ir.KindRaw:            ir.Raw{Driver: "sqlite", SQL: "ANALYZE"},
+		ir.KindDataCopy: ir.DataCopy{From: "things", To: "loose_things", Columns: []ir.CopyColumn{
+			{From: "id", To: "id"}, {From: "code", To: "tag"}}},
+		ir.KindDataBackfill: ir.DataBackfill{Table: "things", Column: "loose",
+			Type: logical(t, "string(16)"), Value: ir.Literal("none")},
+		ir.KindDataTransform: ir.DataTransform{Table: "things", Column: "loose",
+			Type: logical(t, "string(16)"), From: "code", Function: ir.TransformTrim},
 	}
 
 	op, ok := held[kind]

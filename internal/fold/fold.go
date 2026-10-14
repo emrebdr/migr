@@ -93,6 +93,12 @@ func (f *folder) fold(at int32, op ir.Operation) {
 		f.dropView(at, o)
 	case ir.Raw:
 		f.refuse(at, o.Kind(), o.Driver, unfoldable)
+	case ir.DataCopy:
+		f.dataCopy(at, o)
+	case ir.DataBackfill:
+		f.dataBackfill(at, o)
+	case ir.DataTransform:
+		f.dataTransform(at, o)
 	default:
 		f.refuse(at, op.Kind(), "", "nothing here knows how to fold it")
 	}

@@ -14,6 +14,7 @@ import { ACTIONS, FUNCTIONS } from "./column.ts";
 import type { ColumnState, TableDef } from "./define.ts";
 import { OperationError } from "./error.ts";
 import type { Operation } from "./operation.ts";
+import { TRANSFORMS } from "./operation.ts";
 
 /** check reports an operation the engine would refuse, before it is sent. */
 export function check(op: Operation): void {
@@ -82,6 +83,91 @@ export function check(op: Operation): void {
       requireName("driver", op.driver);
 
       return requireName("sql", op.sql);
+    case "data_copy":
+      return checkDataCopy(op);
+    case "data_backfill":
+      return checkDataBackfill(op);
+    case "data_transform":
+      return checkDataTransform(op);
+  }
+}
+
+/** checkDataCopy reports a copy naming no table, copying a table into itself, or writing a column twice. */
+function checkDataCopy(op: Extract<Operation, { op: "data_copy" }>): void {
+  requireName("from", op.from);
+  requireName("to", op.to);
+
+  if (op.from === op.to) {
+    throw new OperationError(
+      `from and to both name ${JSON.stringify(op.from)}, and a table copied into itself ` +
+        "duplicates every row",
+    );
+  }
+
+  if (op.columns.length === 0) {
+    throw new OperationError("columns must list at least one column to copy");
+  }
+
+  const written = new Set<string>();
+
+  op.columns.forEach((pair, at) => {
+    if (pair.from.trim() === "" || pair.to.trim() === "") {
+      throw new OperationError(
+        `columns[${at}] must name both the column it reads and the one it writes`,
+      );
+    }
+
+    if (written.has(pair.to)) {
+      throw new OperationError(
+        `columns[${at}] writes ${JSON.stringify(pair.to)}, which an earlier pair already writes`,
+      );
+    }
+
+    written.add(pair.to);
+  });
+}
+
+/** checkDataBackfill reports a backfill naming no column, no type, or no value. */
+function checkDataBackfill(op: Extract<Operation, { op: "data_backfill" }>): void {
+  checkTarget(op.table, op.column, op.type);
+
+  if (op.value === undefined) {
+    throw new OperationError(
+      "value is required: a backfill writes a literal or a neutral function",
+    );
+  }
+
+  within("value", () => checkDefault(op.value));
+}
+
+/** checkDataTransform reports a transform naming no columns, an unknown function, or a copy into itself. */
+function checkDataTransform(op: Extract<Operation, { op: "data_transform" }>): void {
+  checkTarget(op.table, op.column, op.type);
+  requireName("from", op.from);
+
+  if (!(TRANSFORMS as readonly string[]).includes(op.function)) {
+    throw new OperationError(
+      `unknown function ${JSON.stringify(op.function)} (expected one of: ${TRANSFORMS.join(", ")})`,
+    );
+  }
+
+  if (op.function === "copy" && op.from === op.column) {
+    throw new OperationError(
+      `copies ${JSON.stringify(op.column)} into itself, which changes nothing`,
+    );
+  }
+}
+
+/** checkTarget reports a write naming no table, no column, or no type for that column. */
+function checkTarget(table: string, column: string, type: string | undefined): void {
+  requireName("table", table);
+  requireName("column", column);
+
+  if (type === undefined || type.trim() === "") {
+    throw new OperationError(
+      `type is required: it is the type ${JSON.stringify(column)} holds, which every driver ` +
+        "renders the value in",
+    );
   }
 }
 

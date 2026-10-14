@@ -192,6 +192,9 @@ func TestDestructivenessIsTotal(t *testing.T) {
 		KindCreateView:     false,
 		KindDropView:       true,
 		KindRaw:            true,
+		KindDataCopy:       false,
+		KindDataBackfill:   false,
+		KindDataTransform:  true,
 	}
 
 	for _, k := range Kinds() {

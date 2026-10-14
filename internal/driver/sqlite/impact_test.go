@@ -29,6 +29,9 @@ var declared = map[ir.Kind]capability.LockImpact{
 	ir.KindAddPrimaryKey:  capability.TableRewrite,
 	ir.KindDropPrimaryKey: capability.TableRewrite,
 	ir.KindRaw:            capability.LockUnknown,
+	ir.KindDataCopy:       capability.LongExclusive,
+	ir.KindDataBackfill:   capability.TableRewrite,
+	ir.KindDataTransform:  capability.TableRewrite,
 }
 
 func TestEveryOperationCostsSomethingThisDriverCanName(t *testing.T) {

@@ -230,10 +230,10 @@ async function serve(
       );
     }
 
-    if (offered.irVersion !== IR_VERSION) {
+    if (!Number.isInteger(offered.irVersion) || offered.irVersion < 1) {
       throw new ProtocolError(
         UNSUPPORTED_IR,
-        `this SDK emits IR version ${IR_VERSION}; the engine stated ${offered.irVersion}`,
+        `the engine stated IR version ${offered.irVersion}, and no version below 1 exists`,
       );
     }
 
@@ -257,7 +257,13 @@ async function serve(
     const asked = readExecute(params);
     const entry = await found(asked.id);
     const window = newSchema(
-      { migration: asked.id, direction: asked.direction, mode: asked.mode, signal },
+      {
+        migration: asked.id,
+        direction: asked.direction,
+        mode: asked.mode,
+        signal,
+        irVersion: project?.irVersion ?? IR_VERSION,
+      },
       host,
     );
 

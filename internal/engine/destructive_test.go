@@ -26,6 +26,8 @@ func destroying(t *testing.T) ir.Operations {
 		ir.AlterColumn{Table: "users", Column: "note", Type: &narrowed},
 		ir.DropView{View: "listing"},
 		ir.Raw{Driver: "fake", SQL: "DELETE FROM users"},
+		ir.DataTransform{Table: "users", Column: "handle", Type: narrowed, From: "email",
+			Function: ir.TransformLower},
 	}
 }
 
@@ -37,7 +39,7 @@ func TestEveryDestructiveOperationIsFoundAndNamed(t *testing.T) {
 	}
 
 	subjects := []string{
-		"legacy", "users.email", "users.note", "listing", "DELETE FROM users",
+		"legacy", "users.email", "users.note", "listing", "DELETE FROM users", "users.handle",
 	}
 
 	for i, d := range found {
@@ -73,7 +75,7 @@ func TestAnAllowanceCoversTheKindsItNamesAndNothingElse(t *testing.T) {
 		left = append(left, d.Kind)
 	}
 
-	want := []ir.Kind{ir.KindDropColumn, ir.KindAlterColumn, ir.KindDropView}
+	want := []ir.Kind{ir.KindDropColumn, ir.KindAlterColumn, ir.KindDropView, ir.KindDataTransform}
 	if !slices.Equal(left, want) {
 		t.Errorf("permitting drop_table and raw left %v, want %v", left, want)
 	}

@@ -25,8 +25,8 @@ var errSchemaInSeed = errors.New("a seed changes data, and this one changes the 
 // errNoSeedsDir marks a seeds directory that is not there, which leaves nothing to seed.
 var errNoSeedsDir = errors.New("the seeds directory does not exist")
 
-// seedKinds are the operations a seed may emit, which until M12-T2's data operations is raw alone.
-var seedKinds = []ir.Kind{ir.KindRaw}
+// seedKinds are the operations a seed may emit: raw, and the data operations irVersion 2 added.
+var seedKinds = append([]ir.Kind{ir.KindRaw}, ir.DataKinds()...)
 
 // newSeedCmd builds the `migr seed` subcommand.
 func newSeedCmd(opts *options) *cobra.Command {

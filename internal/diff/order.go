@@ -76,7 +76,14 @@ var order = slices.Concat(
 var neverEmitted = map[ir.Kind]string{
 	ir.KindRaw: "engine SQL names a driver and has no inverse, so closing a gap with it would " +
 		"abandon both of the claims a generated migration is supposed to keep",
+	ir.KindDataCopy:      rowless,
+	ir.KindDataBackfill:  rowless,
+	ir.KindDataTransform: rowless,
 }
+
+// rowless is why a differ proposes no data operation: the two schemas it compares hold no rows.
+const rowless = "a differ compares two schemas, and a schema holds no rows for a data operation " +
+	"to write"
 
 // emit records one operation under its own kind, which is what puts it in the right place.
 func (d *differ) emit(op ir.Operation) {

@@ -182,6 +182,14 @@ func number(t *testing.T, c *sqliteConn, sql string) int64 {
 	return n
 }
 
+// nickname is a nullable column every row of the seeded table holds NULL in, for a write to fill.
+func nickname(t *testing.T) ir.Operation {
+	t.Helper()
+
+	return ir.AddColumn{Table: "users", Column: ir.Column{Name: "nickname",
+		Type: mustType(t, "string(64)"), Nullable: true}}
+}
+
 // measurable lists what can be run against the seeded table, with whatever each one needs first.
 func measurable(t *testing.T) map[ir.Kind]struct {
 	op    ir.Operation
@@ -213,6 +221,18 @@ func measurable(t *testing.T) map[ir.Kind]struct {
 		ir.KindDropUnique: {op: ir.DropUnique{Table: "users", Name: "uq_users_email"},
 			setup: []ir.Operation{unique}},
 		ir.KindDropColumn: {op: ir.DropColumn{Table: "users", Column: "payload"}},
+		ir.KindDataBackfill: {op: ir.DataBackfill{Table: "users", Column: "nickname",
+			Type: mustType(t, "string(64)"), Value: ir.Literal("anonymous")},
+			setup: []ir.Operation{nickname(t)}},
+		ir.KindDataTransform: {op: ir.DataTransform{Table: "users", Column: "nickname",
+			Type: mustType(t, "string(64)"), From: "email", Function: ir.TransformUpper},
+			setup: []ir.Operation{nickname(t)}},
+		ir.KindDataCopy: {op: ir.DataCopy{From: "users", To: "archive", Columns: []ir.CopyColumn{
+			{From: "id", To: "id"}, {From: "payload", To: "payload"},
+		}}, setup: []ir.Operation{ir.CreateTable{Table: "archive", Columns: []ir.Column{
+			{Name: "id", Type: mustType(t, "int64")},
+			{Name: "payload", Type: mustType(t, "text")},
+		}, PrimaryKey: []string{"id"}}}},
 	}
 }
 

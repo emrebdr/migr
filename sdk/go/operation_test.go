@@ -185,6 +185,26 @@ var refusals = map[Kind][]refused{
 		{why: "a required field is empty", op: Raw{SQL: "SELECT 1"}, says: "driver is required"},
 		{why: "a required field is empty", op: Raw{Driver: "postgres"}, says: "sql is required"},
 	},
+	KindDataCopy: {
+		{why: "a table is copied into itself", op: DataCopy{From: "a", To: "a",
+			Columns: []CopyColumn{{From: "id", To: "id"}}}, says: "into itself"},
+		{why: "a required list is empty", op: DataCopy{From: "a", To: "b"},
+			says: "at least one column"},
+		{why: "a target is written twice", op: DataCopy{From: "a", To: "b", Columns: []CopyColumn{
+			{From: "x", To: "id"}, {From: "y", To: "id"}}}, says: "already writes"},
+	},
+	KindDataBackfill: {
+		{why: "a required field is empty", op: DataBackfill{Table: "t", Column: "c",
+			Value: Literal("x")}, says: "type is required"},
+		{why: "a required field is empty", op: DataBackfill{Table: "t", Column: "c",
+			Type: Text()}, says: "value is required"},
+	},
+	KindDataTransform: {
+		{why: "a function is unknown", op: DataTransform{Table: "t", Column: "c", Type: Text(),
+			From: "d", Function: "reverse"}, says: "unknown function"},
+		{why: "a copy into itself changes nothing", op: DataTransform{Table: "t", Column: "c",
+			Type: Text(), From: "c", Function: TransformCopy}, says: "changes nothing"},
+	},
 }
 
 func TestEveryOperationRefusesWhatTheSpecificationSaysIsNotOne(t *testing.T) {

@@ -373,3 +373,24 @@ func (c *NewColumn) Default(d *Default) *NewColumn {
 func (c *NewColumn) declared() *Column {
 	return &c.op.Columns[c.at]
 }
+
+// Backfill fills the NULLs of a column with a literal or a neutral function, and touches nothing else.
+func (t *Table) Backfill(column string, typ Type, value *Default) *Table {
+	t.build.add(&DataBackfill{Table: t.name, Column: column, Type: typ, Value: value})
+
+	return t
+}
+
+// Transform rewrites a column of every row from another column, through a neutral function.
+func (t *Table) Transform(column string, typ Type, from string, f TransformFunction) *Table {
+	t.build.add(&DataTransform{Table: t.name, Column: column, Type: typ, From: from, Function: f})
+
+	return t
+}
+
+// CopyInto inserts every row of this table into another, column by named column.
+func (t *Table) CopyInto(to string, columns ...CopyColumn) *Table {
+	t.build.add(&DataCopy{From: t.name, To: to, Columns: columns})
+
+	return t
+}

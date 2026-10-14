@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { call } from "./column.ts";
+import { call, literal } from "./column.ts";
 import { columns } from "./builder.ts";
 import type { Kind } from "./kind.ts";
 import { kinds } from "./kind.ts";
@@ -248,6 +248,44 @@ const chains: Record<Kind, Built> = {
   raw: {
     chain: (s) => s.raw("postgres", "CREATE EXTENSION pgcrypto").apply(),
     want: { op: "raw", driver: "postgres", sql: "CREATE EXTENSION pgcrypto" },
+  },
+  data_copy: {
+    chain: (s) =>
+      s
+        .table("users")
+        .copyInto("users_new", { from: "id", to: "id" }, { from: "name", to: "full_name" })
+        .apply(),
+    want: {
+      op: "data_copy",
+      from: "users",
+      to: "users_new",
+      columns: [
+        { from: "id", to: "id" },
+        { from: "name", to: "full_name" },
+      ],
+    },
+  },
+  data_backfill: {
+    chain: (s) => s.table("users").backfill("plan", t.string(16), literal("free")).apply(),
+    want: {
+      op: "data_backfill",
+      table: "users",
+      column: "plan",
+      type: t.string(16),
+      value: { literal: "free" },
+    },
+  },
+  data_transform: {
+    chain: (s) =>
+      s.table("users").transform("email_key", t.string(255), "email", "lower").apply(),
+    want: {
+      op: "data_transform",
+      table: "users",
+      column: "email_key",
+      type: t.string(255),
+      from: "email",
+      function: "lower",
+    },
   },
 };
 

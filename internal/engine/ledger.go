@@ -84,9 +84,27 @@ func identities(op ir.Operation) []string {
 		return []string{o.View}
 	case ir.DropView:
 		return []string{o.View}
+	case ir.DataCopy:
+		return copyIdentities(o)
+	case ir.DataBackfill:
+		return tableIdentities(o.Table, o.Column)
+	case ir.DataTransform:
+		return tableIdentities(o.Table, o.Column, o.From)
 	default:
 		return nil
 	}
+}
+
+// copyIdentities names both tables a copy reaches and every column it reads or writes.
+func copyIdentities(op ir.DataCopy) []string {
+	read := make([]string, 0, len(op.Columns))
+	written := make([]string, 0, len(op.Columns))
+
+	for _, pair := range op.Columns {
+		read, written = append(read, pair.From), append(written, pair.To)
+	}
+
+	return append(tableIdentities(op.From, read...), tableIdentities(op.To, written...)...)
 }
 
 // A dropped foreign key names the side it referenced as well, where it recorded one. Adding a key

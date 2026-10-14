@@ -7,8 +7,11 @@
 // golden file per driver, a defined reverse operation, and a docs/ir.md entry. See
 // CLAUDE.md invariant #4.
 //
-// Status: complete for irVersion 1 — the operation set (M1-T2), the recorder (M1-T3), the
-// versioned envelope (M1-T4), reverse operations (M1-T5), and the specification (M1-T7).
+// Status: complete for irVersion 2 — the operation set (M1-T2), the recorder (M1-T3), the
+// versioned envelope (M1-T4), reverse operations (M1-T5), the specification (M1-T7), and the
+// three data operations version 2 added (M12-T2, ADR 0077). Each version is a superset of the
+// last, so this build reads both, and a document is stamped with the oldest one that carries every
+// operation it holds -- which is what keeps a version-1 document's bytes exactly as they were.
 //
 // # The wire format is specified in docs/ir.md
 //

@@ -1,0 +1,11 @@
+{
+  "up": [
+    {"op":"data_backfill","table":"people","column":"nickname","type":"string(64)","value":{"literal":"anonymous"}},
+    {"op":"data_transform","table":"people","column":"email_key","type":"string(255)","from":"email","function":"lower"},
+    {"op":"data_copy","from":"people","to":"people_archive","columns":[{"from":"id","to":"id"},{"from":"email","to":"email"}]}
+  ],
+  "downRefusal": {
+    "code": "declared_irreversible",
+    "reason": "every operation here writes rows, and what they replaced is recorded nowhere"
+  }
+}

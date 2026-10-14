@@ -1,4 +1,4 @@
-# migr Operation IR — `irVersion` 1
+# migr Operation IR — `irVersion` 2
 
 The neutral middle of `migr`. Language SDKs emit it; database drivers consume it. Nothing else
 crosses that boundary.
@@ -7,9 +7,10 @@ crosses that boundary.
 
 ### 1.1 What this document specifies
 
-The wire format: the document envelope, how an operation is encoded as JSON, the twenty
-operations of `irVersion` 1 with their fields and constraints, the logical type grammar, and how
-an operation is reversed.
+The wire format: the document envelope, how an operation is encoded as JSON, the twenty-three
+operations of `irVersion` 2 with their fields and constraints — the twenty `irVersion` 1 carries,
+and the three data operations version 2 added — the logical type grammar, and how an operation is
+reversed.
 
 It is written to be implementable without reading the Go. If something here is ambiguous enough
 that two implementations could disagree on the bytes, that is a defect in this document.
@@ -69,7 +70,15 @@ here would create fields that can disagree with their own container.
 
 ### 2.2 `irVersion`
 
-An integer. `1` is the only version this format defines.
+An integer: `1` or `2`. Version 2 is a **superset** of version 1 — every operation 1 carries, plus
+[`data_copy`](#data_copy), [`data_backfill`](#data_backfill) and
+[`data_transform`](#data_transform) — so a consumer that reads 2 reads every document 1 can hold.
+
+**A producer states the oldest version that carries every operation in the document**: `1` for a
+document of schema operations alone, `2` for one holding a data operation. A version-1 document
+therefore keeps its exact bytes, and an engine that reads only 1 keeps reading it. A document
+stating a version that does not carry one of its operations — `irVersion` 1 holding `data_copy` —
+is refused, naming the operation and the version it needs ([ADR 0077](adr/0077-data-operations.md)).
 
 It is the one `camelCase` key in an otherwise `snake_case` format. That is deliberate rather than
 an oversight: the decision records that established the envelope name it that way, and those
@@ -400,18 +409,23 @@ The two never appear on the same operation, so the type is always determined by 
 | [`create_view`](#create_view) | no | `drop_view`, or a restoring `create_view` | ViewDef |
 | [`drop_view`](#drop_view) | yes | `create_view` | ViewDef |
 | [`raw`](#raw) | yes | *none* | — |
+| [`data_copy`](#data_copy) | no | *none* | — |
+| [`data_backfill`](#data_backfill) | no | *none* | — |
+| [`data_transform`](#data_transform) | yes | *none* | — |
 
 Note that most drops are **not** destructive. Dropping an index, a unique constraint, a check, a
 foreign key, or a primary key removes a rule, not a row. Only `drop_table`, `drop_column`,
-`drop_view`, and `raw` can lose data — plus `alter_column` when it retypes, which makes five kinds
-an operator may permit by name. `ir.DestructiveKinds()` is that list, and a test holds it to
+`drop_view`, `raw` and `data_transform` can lose data — plus `alter_column` when it retypes, which
+makes six kinds an operator may permit by name. `data_copy` only inserts and `data_backfill` only
+fills NULLs, so neither overwrites a value. `ir.DestructiveKinds()` is that list, and a test holds it to
 `Destructive()` over the whole fixture set so the two cannot disagree.
 
 > [ADR 0006](adr/0006-ir-operation-shape.md) settled the *shape* of an operation and named
 > seventeen. [ADR 0008](adr/0008-reverse-operations.md) added `drop_unique`, `drop_check`, and
 > `drop_primary_key`, and records why the set was asymmetric without them. Decision records are
-> immutable snapshots of a decision at a point in time, so 0006 is earlier, not wrong. The current
-> set is twenty.
+> immutable snapshots of a decision at a point in time, so 0006 is earlier, not wrong. `irVersion`
+> 1's set is twenty; [ADR 0077](adr/0077-data-operations.md) added the three data operations in
+> version 2, making twenty-three.
 
 ### 7.2 Conventions the format does not enforce
 
@@ -1035,6 +1049,103 @@ into a validation failure. It does not make the statement portable; nothing can.
 
 ---
 
+The three operations below are **`irVersion` 2's**. Each writes rows rather than schema, names its
+tables and columns, and compiles to one statement. None of them has an inverse, because each
+overwrites or adds what nothing records; a migration that uses one authors its `Down`
+([ADR 0077](adr/0077-data-operations.md)).
+
+### `data_copy`
+
+Inserts every row of one table into another, column by named column.
+
+- **Destructive:** no — it inserts and overwrites nothing.
+- **Inverse:** none. The rows it inserted cannot be told from the rows the table already held.
+  Author a `Down`, which is usually the inverse of whatever created the target table.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `from` | string | yes | The table read. |
+| `to` | string | yes | The table written. Must differ from `from`. |
+| `columns` | array of `{from, to}` | yes | At least one pair; no target column written twice. |
+
+Every row is copied; the columns not listed take their defaults in `to`. It is one statement — a
+large table is M12-T3's chunked backfill, not this operation's.
+
+```json
+{
+  "op": "data_copy",
+  "from": "users",
+  "to": "users_new",
+  "columns": [
+    {"from": "id", "to": "id"},
+    {"from": "name", "to": "full_name"}
+  ]
+}
+```
+
+### `data_backfill`
+
+Fills the NULLs of one column with a literal or a neutral function, and touches nothing else.
+
+- **Destructive:** no — only a NULL is written over.
+- **Inverse:** none. Which rows were NULL before it ran is recorded nowhere. Author a `Down`, which
+  is usually the inverse of the `add_column` it filled.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `table` | string | yes | |
+| `column` | string | yes | |
+| `type` | string | yes | The column's [logical type](#5-logical-types), which the value is rendered in. |
+| `value` | [Default](#62-default) | yes | A literal or one of the [default functions](#63-default-functions). |
+
+`type` is carried because an engine cannot render a value without it: MySQL refuses `'true'` into
+the `tinyint(1)` a `bool` is, so the literal has to be rendered in the column's type, exactly as a
+default is. It is also what the reference check holds against the column the migrations declared.
+
+```json
+{
+  "op": "data_backfill",
+  "table": "users",
+  "column": "plan",
+  "type": "string(16)",
+  "value": {"literal": "free"}
+}
+```
+
+### `data_transform`
+
+Rewrites one column of every row from another column of the same row, through a neutral function,
+in the target column's type.
+
+- **Destructive:** yes — it overwrites every value of the column it writes.
+- **Inverse:** none. The values it overwrote are recorded nowhere. Author a `Down`, which is
+  usually the inverse of the `add_column` it wrote into.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `table` | string | yes | |
+| `column` | string | yes | The column written. |
+| `type` | string | yes | Its logical type, which the result is converted to. |
+| `from` | string | yes | The column read. |
+| `function` | string | yes | `copy` · `lower` · `upper` · `trim` |
+
+`lower`, `upper` and `trim` apply to the source's **text**, whatever its type; `copy` converts the
+source as it is. A closed set: a fifth function changes the format ([§10.2](#102-what-is-a-breaking-change)).
+`copy` from a column into itself changes nothing and is refused.
+
+```json
+{
+  "op": "data_transform",
+  "table": "users",
+  "column": "email_key",
+  "type": "string(255)",
+  "from": "email",
+  "function": "lower"
+}
+```
+
+---
+
 ## 8. Reversal
 
 ### 8.1 The contract
@@ -1126,10 +1237,12 @@ schema. A structurally valid document is not a runnable one.
 
 ## 10. Versioning and stability
 
-### 10.1 What `irVersion` 1 covers
+### 10.1 What each version covers
 
-The operation set, every field name and its position in the emitted object, the logical type
-grammar and its canonical spellings, the two closed enums, and the escaping rules.
+`irVersion` 1: the twenty schema operations, every field name and its position in the emitted
+object, the logical type grammar and its canonical spellings, the two closed enums, and the
+escaping rules. `irVersion` 2: all of that, plus the three data operations and the closed set of
+transform functions — and nothing of version 1 changed, which is what makes it a superset.
 
 ### 10.2 What is a breaking change
 
@@ -1142,7 +1255,10 @@ A breaking change bumps `irVersion`, updates this document, and updates the conf
 every SDK. It also moves every affected migration's checksum — see [§4](#4-the-checksum-boundary).
 
 Adding an operation, or adding an optional member that is omitted when unset, does not move the
-bytes of documents that do not use it.
+bytes of documents that do not use it. **It still bumps the version**, because a version is how a
+consumer that has never heard of the operation says *upgrade* rather than *unknown operation*
+([§2.3](#23-the-version-is-read-before-the-operations)) — and since a producer states the oldest
+version that carries a document, the bump reaches only the documents that use what it added.
 
 ### 10.3 Adding an operation
 

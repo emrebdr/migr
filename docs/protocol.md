@@ -221,7 +221,7 @@ Engine → runtime. The handshake.
 | Parameter | Meaning |
 |---|---|
 | `protocolVersions` | every version of this protocol the engine speaks, ascending. Never empty. |
-| `irVersion` | the Operation IR version the engine will accept. Stated, not negotiated. |
+| `irVersion` | the newest Operation IR version the engine reads. Stated, not negotiated; every older version is a subset of it ([`ir.md` §2.2](ir.md#22-irversion)). |
 | `client` | the engine's own name and version, for the runtime's diagnostics. |
 | `migrations.dir` | absolute path to the migrations directory. Not relative: a runtime's working directory is the project root and the two are not the same thing. |
 | `migrations.language` | the language **this runtime was started for**, spelled as `migr.yaml` spells it. One directory may hold several, so this is the one the engine will route to this process and not necessarily the one `migrations.language` holds. |
@@ -260,10 +260,17 @@ CLI installed from a release move on different clocks, and neither can make the 
 is the runtime that picks rather than the engine because the runtime is the side that knows what it
 implements — the engine's list is what it can *accept*.
 
-`irVersion` is **not** negotiated. The engine states one, and a runtime that cannot emit it fails
-the call with [`unsupported_ir`](#73-the-application-band). The two versions are independent lines
-([§10.3](#103-four-independent-version-lines)) and coupling them would make an IR addition a
-protocol break.
+`irVersion` is **not** negotiated. The engine states the newest version it reads, and because each
+version is a superset of the one before ([`ir.md` §2.2](ir.md#22-irversion)) that is a ceiling
+rather than a requirement: a runtime **accepts any stated version from 1 up**, emits what it likes
+beneath it, and refuses — with [`unsupported_ir`](#73-the-application-band), as the failure of the
+`migration.execute` that tried — only an operation newer than the stated version, naming the
+operation and both versions. A stated version below 1 fails `initialize` with the same code. So an
+SDK newer than the engine runs every migration that does not use what is newer, and an SDK older
+than the engine runs everything it can express ([ADR 0077](adr/0077-data-operations.md)). The two
+versions are independent lines ([§10.3](#103-four-independent-version-lines)), and before this rule
+an IR addition was a protocol break in all but name: an exact-match runtime refused every engine
+that had added an operation.
 
 ### `shutdown`
 
@@ -662,7 +669,7 @@ they are all assigned here.
 | Code | Slug | Meaning |
 |---|---|---|
 | `-32001` | `unsupported_protocol` | none of the offered protocol versions is supported |
-| `-32002` | `unsupported_ir` | the stated `irVersion` cannot be emitted |
+| `-32002` | `unsupported_ir` | a stated `irVersion` below 1, or an operation newer than the stated one |
 | `-32003` | `session_state` | the method arrived when the session could not answer it |
 | `-32010` | `unknown_migration` | the `id` names no migration this runtime loaded |
 | `-32011` | `migration_failed` | the migration's own code raised |
@@ -865,7 +872,9 @@ implementer has to re-read to know whether they are finished.
 
 - [ ] `initialize` is answered with exactly one version from `protocolVersions`, or with
       `unsupported_protocol` listing what is supported.
-- [ ] An `irVersion` this SDK cannot emit is `unsupported_ir`, not a silent downgrade.
+- [ ] Any stated `irVersion` of 1 or above is accepted; an operation newer than it is
+      `unsupported_ir` before it is sent, naming the operation and both versions — never sent and
+      left for the engine to call unknown.
 - [ ] Any request before `initialize`, a second `initialize`, or anything after `shutdown` is
       `session_state`.
 - [ ] `shutdown` is answered, then stdout is closed and the process exits 0.

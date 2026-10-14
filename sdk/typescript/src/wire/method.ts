@@ -7,8 +7,8 @@
 /** PROTOCOL_VERSION is the version of this protocol the SDK speaks, which §10.1 describes. */
 export const PROTOCOL_VERSION = 1;
 
-/** IR_VERSION is the Operation IR version this SDK emits, which initialize states rather than negotiates. */
-export const IR_VERSION = 1;
+/** IR_VERSION is the newest Operation IR version this SDK emits; an engine stating an older one still runs it. */
+export const IR_VERSION = 2;
 
 /** The methods the engine calls on a runtime, in the order §3 and §4 document them. */
 export const INITIALIZE = "initialize";

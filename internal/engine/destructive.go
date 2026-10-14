@@ -111,6 +111,12 @@ func Subject(op ir.Operation) string {
 		return o.View
 	case ir.Raw:
 		return firstLine(o.SQL)
+	case ir.DataCopy:
+		return o.To
+	case ir.DataBackfill:
+		return qualified(o.Table, o.Column)
+	case ir.DataTransform:
+		return qualified(o.Table, o.Column)
 	}
 
 	return ""
@@ -129,6 +135,9 @@ func detailOf(op ir.Operation) string {
 		return describeRetype(o)
 	case ir.Raw:
 		return fmt.Sprintf("is engine SQL, and migr cannot read what it does: %s", firstLine(o.SQL))
+	case ir.DataTransform:
+		return fmt.Sprintf("overwrites every value of the column %q from %q, and nothing records "+
+			"what it overwrote", qualified(o.Table, o.Column), o.From)
 	}
 
 	return fmt.Sprintf("destroys something, and nothing here can say what: %s", Subject(op))

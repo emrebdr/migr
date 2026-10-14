@@ -52,6 +52,10 @@ func (f serverFacts) lockImpact(op ir.Operation) capability.LockImpact {
 		return capability.BriefExclusive
 	case ir.Raw:
 		return rawImpact
+	case ir.DataCopy:
+		return capability.LongExclusive
+	case ir.DataBackfill, ir.DataTransform:
+		return capability.TableRewrite
 	default:
 		return capability.LockUnknown
 	}

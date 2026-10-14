@@ -56,6 +56,12 @@ func statedBy(op ir.Operation, live *schema.Snapshot) []string {
 		return statedCreateView(o, live)
 	case ir.DropView:
 		return presentView(live, o.View)
+	case ir.DataCopy:
+		return statedDataCopy(o, live)
+	case ir.DataBackfill:
+		return statedWrite(live, o.Table, o.Column, o.Type)
+	case ir.DataTransform:
+		return statedDataTransform(o, live)
 	default:
 		return nil
 	}
@@ -356,4 +362,35 @@ func sameColumns(left, right []string) bool {
 	}
 
 	return true
+}
+
+// statedDataCopy reports a column a copy reads or writes that the live schema does not hold.
+func statedDataCopy(op ir.DataCopy, live *schema.Snapshot) []string {
+	var found []string
+
+	for _, pair := range op.Columns {
+		_, read := liveColumn(live, op.From, pair.From)
+		_, written := liveColumn(live, op.To, pair.To)
+		found = append(append(found, read...), written...)
+	}
+
+	return found
+}
+
+// statedWrite reports a column a data write names that is not there, or is not the type it says.
+func statedWrite(live *schema.Snapshot, table, column string, stated schema.Type) []string {
+	held, missing := liveColumn(live, table, column)
+	if missing != nil {
+		return missing
+	}
+
+	return describeType(stated, held)
+}
+
+// statedDataTransform reports a transform's target as statedWrite does, and a source that is not there.
+func statedDataTransform(op ir.DataTransform, live *schema.Snapshot) []string {
+	found := statedWrite(live, op.Table, op.Column, op.Type)
+	_, read := liveColumn(live, op.Table, op.From)
+
+	return append(found, read...)
 }

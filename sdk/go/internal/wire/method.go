@@ -8,8 +8,8 @@ import (
 // Version is the protocol version this SDK speaks, which docs/protocol.md specifies.
 const Version = 1
 
-// IRVersion is the Operation IR version this SDK emits, which initialize states rather than negotiates.
-const IRVersion = 1
+// IRVersion is the newest Operation IR version this SDK emits; an engine stating an older one still runs it.
+const IRVersion = 2
 
 // The methods the engine calls on a runtime, spelled as docs/protocol.md spells them.
 const (

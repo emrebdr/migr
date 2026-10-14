@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// Kind names one operation in the v1 IR vocabulary.
+// Kind names one operation in the IR vocabulary.
 type Kind string
 
-// The v1 operation set. Adding one is the five-part change in CLAUDE.md invariant #4.
+// The operation set. Adding one is the five-part change in CLAUDE.md invariant #4.
 const (
 	KindCreateTable    Kind = "create_table"
 	KindDropTable      Kind = "drop_table"
@@ -30,6 +30,9 @@ const (
 	KindCreateView     Kind = "create_view"
 	KindDropView       Kind = "drop_view"
 	KindRaw            Kind = "raw"
+	KindDataCopy       Kind = "data_copy"
+	KindDataBackfill   Kind = "data_backfill"
+	KindDataTransform  Kind = "data_transform"
 )
 
 // kinds lists every operation in the order CLAUDE.md §4.1 declares them.
@@ -43,6 +46,24 @@ var kinds = []Kind{
 	KindAddPrimaryKey, KindDropPrimaryKey,
 	KindCreateView, KindDropView,
 	KindRaw,
+	KindDataCopy, KindDataBackfill, KindDataTransform,
+}
+
+// dataKinds are the operations irVersion 2 added, every one of which writes rows rather than schema.
+var dataKinds = []Kind{KindDataCopy, KindDataBackfill, KindDataTransform}
+
+// DataKinds returns every operation that writes rows rather than schema, as a copy.
+func DataKinds() []Kind {
+	return slices.Clone(dataKinds)
+}
+
+// Since returns the irVersion that first carries this kind, which a document must state to hold it.
+func (k Kind) Since() int {
+	if slices.Contains(dataKinds, k) {
+		return 2
+	}
+
+	return 1
 }
 
 // Kinds returns every operation kind, in declaration order.
@@ -57,7 +78,7 @@ func Kinds() []Kind {
 // one, and a test holds this list to that method over the whole fixture set -- so a twenty-first
 // destructive operation fails rather than being quietly unlistable.
 var destructiveKinds = []Kind{
-	KindDropTable, KindDropColumn, KindAlterColumn, KindDropView, KindRaw,
+	KindDropTable, KindDropColumn, KindAlterColumn, KindDropView, KindRaw, KindDataTransform,
 }
 
 // DestructiveKinds returns every operation kind that can lose data, in declaration order, as a copy.
@@ -70,7 +91,7 @@ func (k Kind) CanDestroy() bool {
 	return slices.Contains(destructiveKinds, k)
 }
 
-// Valid reports whether a kind is part of the v1 operation set.
+// Valid reports whether a kind is part of the operation set.
 func (k Kind) Valid() bool {
 	return slices.Contains(kinds, k)
 }

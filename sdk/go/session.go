@@ -73,6 +73,8 @@ type session struct {
 
 	// work counts the requests dispatched to a goroutine, so serve waits for them before exiting.
 	work sync.WaitGroup
+	// stated is the irVersion the engine stated at initialize, the newest it reads.
+	stated int
 }
 
 // newSession builds a session over one pair of streams, before a single message is read.
@@ -220,12 +222,12 @@ func (s *session) initialize(id int64, params json.RawMessage) *wire.Message {
 			wire.Version, p.ProtocolVersions))
 	}
 
-	if p.IRVersion != wire.IRVersion {
+	if p.IRVersion < 1 {
 		return wire.NewFailure(id, wire.NewErrorf(wire.CodeUnsupportedIR,
-			"this SDK emits IR version %d; the engine stated %d", wire.IRVersion, p.IRVersion))
+			"the engine stated IR version %d, and no version below 1 exists", p.IRVersion))
 	}
 
-	s.open()
+	s.open(p.IRVersion)
 
 	return s.result(id, wire.InitializeResult{
 		ProtocolVersion: wire.Version,
@@ -234,12 +236,21 @@ func (s *session) initialize(id int64, params json.RawMessage) *wire.Message {
 	})
 }
 
-// open marks the handshake done, after which the three methods are served.
-func (s *session) open() {
+// open marks the handshake done, after which the three methods are served, and keeps the stated IR.
+func (s *session) open(stated int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.state = stateReady
+	s.stated = stated
+}
+
+// statedIR returns the newest irVersion the engine reads, which every Apply is held to.
+func (s *session) statedIR() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.stated
 }
 
 // discover reports every migration this program registered, or everything wrong with the set.
@@ -395,8 +406,12 @@ func unknown(version string) *wire.Error {
 		"%v: %s", ErrUnknownMigration, version)
 }
 
-// failed reports a migration whose own code returned an error, which is the ordinary failure.
+// failed reports a migration whose own code returned an error, naming an IR the engine cannot read.
 func failed(entry *Registered, dir wire.Direction, err error) *wire.Error {
+	if errors.Is(err, ErrNewerIR) {
+		return wire.NewErrorf(wire.CodeUnsupportedIR, "%s %s: %v", entry.File, dir, err)
+	}
+
 	return wire.NewErrorf(wire.CodeMigrationFailed, "%s %s: %v", entry.File, dir, err)
 }
 

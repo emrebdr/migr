@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -60,7 +61,7 @@ func TestEveryLanguageThisCommandWritesCanRenderEveryOperationADifferEmits(t *te
 	for _, one := range writers() {
 		t.Run(one.name, func(t *testing.T) {
 			for _, kind := range ir.Kinds() {
-				if kind == ir.KindRaw {
+				if kind == ir.KindRaw || slices.Contains(ir.DataKinds(), kind) {
 					continue
 				}
 

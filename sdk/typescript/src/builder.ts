@@ -27,6 +27,7 @@ import type {
 import type {
   AddForeignKey,
   AlterColumn,
+  CopyColumn,
   CreateTable,
   CreateView,
   DropCheck,
@@ -38,6 +39,7 @@ import type {
   DropUnique,
   DropView,
   Operation,
+  Transform,
 } from "./operation.ts";
 import type { Type } from "./type.ts";
 
@@ -123,6 +125,12 @@ export interface TableChain {
   addPrimaryKey(name: string, ...columns: string[]): TableChain;
   /** Removes a table's primary key, which was makes reversible. */
   dropPrimaryKey(name: string): Recorded<ColumnsDef>;
+  /** Fills the NULLs of a column with a literal or a neutral function, and touches nothing else. */
+  backfill(column: string, type: Type, value: Default): TableChain;
+  /** Rewrites a column of every row from another column, through a neutral function. */
+  transform(column: string, type: Type, from: string, fn: Transform): TableChain;
+  /** Inserts every row of this table into another, column by named column. */
+  copyInto(to: string, ...columns: CopyColumn[]): TableChain;
 }
 
 /** Recorded is a change that may record what it replaced, so that a rollback can restore it. */
@@ -236,6 +244,21 @@ export function tableChain(build: Builder): TableChain {
       return build.name;
     },
     apply: () => build.apply(),
+    backfill: (column: string, type: Type, value: Default) => {
+      build.add({ op: "data_backfill", table: build.name, column, type, value });
+
+      return chain;
+    },
+    transform: (column: string, type: Type, from: string, fn: Transform) => {
+      build.add({ op: "data_transform", table: build.name, column, type, from, function: fn });
+
+      return chain;
+    },
+    copyInto: (to: string, ...columns: CopyColumn[]) => {
+      build.add({ op: "data_copy", from: build.name, to, columns });
+
+      return chain;
+    },
     drop: () => {
       const op: DropTable = { op: "drop_table", table: build.name };
       build.add(op);

@@ -230,6 +230,9 @@ func TestTheImpactTableIsWhatItSaysItIs(t *testing.T) {
 		ir.KindAddCheck:       capability.LongExclusive,
 		ir.KindAlterColumn:    capability.TableRewrite,
 		ir.KindRaw:            capability.LockUnknown,
+		ir.KindDataCopy:       capability.LongExclusive,
+		ir.KindDataBackfill:   capability.TableRewrite,
+		ir.KindDataTransform:  capability.TableRewrite,
 	}
 
 	for _, op := range drivertest.Operations(Name) {

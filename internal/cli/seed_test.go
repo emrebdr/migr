@@ -351,6 +351,22 @@ func TestARuntimeSeedRunsWhereItIsData(t *testing.T) {
 	}
 }
 
+func TestASeedMayWriteDataThroughATypedOperation(t *testing.T) {
+	dir, f, drivers := project(t, twoTables()...)
+	stageSeed(t, dir, "", seedAt(0)+"_plans"+golang.Ext, "package seeds\n")
+	migrated(t, dir, drivers)
+
+	if _, _, err := runScripted(t, dir, actBackfills, drivers, "seed"); err != nil {
+		t.Fatalf("a seed emitting data_backfill was refused: %v", err)
+	}
+
+	if got := seeded(f); !slices.Equal(got, []string{seedAt(0)}) {
+		t.Errorf("the seed history holds %q, want the one seed", got)
+		t.Log("M12-T1 permitted raw alone because nothing else wrote data; the data operations")
+		t.Log("are what a seed is for, and data_transform's destruction is the seed's own business.")
+	}
+}
+
 func TestASeedDeclaringAMigrationAsADependencyIsRefused(t *testing.T) {
 	dir, f, drivers := project(t, twoTables()...)
 	stageSeed(t, dir, "", seedAt(0)+"_rows"+golang.Ext, "package seeds\n")

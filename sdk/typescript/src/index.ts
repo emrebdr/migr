@@ -53,11 +53,16 @@ export type {
   ViewDef,
 } from "./define.ts";
 
-export { isKind, kinds } from "./kind.ts";
+export { isKind, kinds, since } from "./kind.ts";
 export type { Kind } from "./kind.ts";
 
-export { decode, documentOf, encode } from "./operation.ts";
+export { decode, documentOf, encode, TRANSFORMS } from "./operation.ts";
 export type {
+  CopyColumn,
+  DataBackfill,
+  DataCopy,
+  DataTransform,
+  Transform,
   AddCheck,
   AddColumn,
   AddForeignKey,

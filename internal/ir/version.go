@@ -9,11 +9,11 @@ import (
 	"strings"
 )
 
-// Version is the irVersion this build produces. A breaking wire change bumps it.
-const Version = 1
+// Version is the newest irVersion this build reads, which is what the engine states at initialize.
+const Version = 2
 
-// supported lists every irVersion this build can read, oldest first.
-var supported = []int{Version}
+// supported lists every irVersion this build can read, oldest first: each is a superset of the last.
+var supported = []int{1, Version}
 
 // ErrNoVersion reports an IR document that carries no irVersion at all.
 var ErrNoVersion = errors.New(`document has no "irVersion" field`)
@@ -64,13 +64,49 @@ type Document struct {
 	Operations Operations `json:"operations"`
 }
 
-// NewDocument wraps operations in an envelope stamped with this build's version.
+// NewDocument wraps operations in an envelope stamped with the oldest version that can hold them.
 func NewDocument(ops Operations) *Document {
 	if ops == nil {
 		ops = Operations{}
 	}
 
-	return &Document{IRVersion: Version, Operations: ops}
+	return &Document{IRVersion: VersionOf(ops), Operations: ops}
+}
+
+// VersionOf returns the oldest irVersion that carries every operation in a list.
+func VersionOf(ops Operations) int {
+	version := 1
+
+	for _, op := range ops {
+		version = max(version, op.Kind().Since())
+	}
+
+	return version
+}
+
+// NewerError reports an operation a document or a session's stated version does not yet carry.
+type NewerError struct {
+	// Kind is the operation that needs the newer version.
+	Kind Kind
+	// Stated is the version the document or the session stated.
+	Stated int
+}
+
+// Error names the operation, the version it needs, and the one that was stated.
+func (e *NewerError) Error() string {
+	return fmt.Sprintf("%s needs irVersion %d, and what carried it states irVersion %d: "+
+		"upgrade migr to read it", e.Kind, e.Kind.Since(), e.Stated)
+}
+
+// CheckCarried reports the first operation a stated irVersion does not carry, and nothing otherwise.
+func CheckCarried(ops Operations, stated int) error {
+	for _, op := range ops {
+		if op.Kind().Since() > stated {
+			return &NewerError{Kind: op.Kind(), Stated: stated}
+		}
+	}
+
+	return nil
 }
 
 // MarshalJSON renders the envelope, refusing a document that was never stamped.
@@ -107,6 +143,10 @@ func UnmarshalDocument(data []byte) (*Document, error) {
 
 	if doc.Operations == nil {
 		doc.Operations = Operations{}
+	}
+
+	if err := CheckCarried(doc.Operations, doc.IRVersion); err != nil {
+		return nil, err
 	}
 
 	return &doc, nil

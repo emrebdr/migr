@@ -1,6 +1,7 @@
 package migr
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -54,19 +55,32 @@ func TestAProtocolVersionThisSDKDoesNotSpeakIsRefusedAsItself(t *testing.T) {
 	}
 }
 
-func TestAnIRVersionThisSDKCannotEmitIsRefusedRatherThanDowngraded(t *testing.T) {
+func TestAnyIRVersionAnEngineStatesIsAcceptedAndOnlyNoneIsRefused(t *testing.T) {
 	staged(t, nil)
+
+	for _, stated := range []int{1, wire.IRVersion, wire.IRVersion + 1} {
+		e := dial(t)
+
+		id := e.send(wire.Initialize, wire.InitializeParams{
+			ProtocolVersions: []int{wire.Version}, IRVersion: stated,
+		})
+
+		if refused := e.answer(id, nil); refused.Error != nil {
+			t.Errorf("an engine stating irVersion %d was refused: %v", stated, refused.Error)
+			t.Log("Each version is a superset of the one before (ADR 0077), so an engine that reads")
+			t.Log("an older one still reads every operation this SDK emits but the newer ones, and a")
+			t.Log("newer engine reads all of them. What is refused is an operation, not a session.")
+		}
+	}
 
 	e := dial(t)
 
 	id := e.send(wire.Initialize, wire.InitializeParams{
-		ProtocolVersions: []int{wire.Version}, IRVersion: wire.IRVersion + 1,
+		ProtocolVersions: []int{wire.Version}, IRVersion: 0,
 	})
 
 	if slug := slugOf(t, e.answer(id, nil)); slug != "unsupported_ir" {
-		t.Errorf("the refusal is %q, want unsupported_ir", slug)
-		t.Log("§3.2: irVersion is stated rather than negotiated, so a runtime that cannot emit it")
-		t.Log("says so. Emitting an older one silently would put wrong IR in a history row.")
+		t.Errorf("the refusal is %q, want unsupported_ir for an engine stating no version", slug)
 	}
 }
 
@@ -99,7 +113,7 @@ func TestASecondInitializeIsRefusedAsSessionState(t *testing.T) {
 
 func TestARequestAfterShutdownIsRefusedAsSessionState(t *testing.T) {
 	s := newSession(strings.NewReader(""), io.Discard)
-	s.open()
+	s.open(wire.IRVersion)
 
 	if refused := s.admit(wire.Shutdown); refused != nil {
 		t.Fatalf("shutdown was refused: %v", refused)
@@ -661,5 +675,58 @@ func TestACallbackAfterItsWindowClosedIsRefused(t *testing.T) {
 		t.Errorf("a callback after the window closed returned %v, want %v", err, ErrClosed)
 		t.Log("§5.1: a callback is valid only while the engine request that opened it is in")
 		t.Log("flight. One made afterwards reaches a host that has already sealed the recording.")
+	}
+}
+
+// backfilling is a migration whose one operation is a data operation, which irVersion 2 added.
+type backfilling struct{}
+
+// Up fills a column's NULLs, which an engine stating irVersion 1 cannot read.
+func (backfilling) Up(ctx context.Context, s *Schema) error {
+	return s.Table("users").Backfill("plan", String(16), Literal("free")).Apply(ctx)
+}
+
+func TestADataOperationAgainstAnEngineThatReadsOnlyV1IsRefusedBeforeItIsSent(t *testing.T) {
+	staged(t, map[string]Migration{file: backfilling{}})
+
+	e := dial(t)
+
+	greeted := e.send(wire.Initialize, wire.InitializeParams{
+		ProtocolVersions: []int{wire.Version}, IRVersion: 1,
+		Client:     wire.Client{Name: "migr", Version: "0.0.9"},
+		Migrations: wire.MigrationsAt{Dir: "/srv/app/migrations", Language: "go"},
+		Database:   wire.DatabaseAt{Name: "default", Driver: "postgres"},
+	})
+	if answer := e.answer(greeted, nil); answer.Error != nil {
+		t.Fatalf("an engine stating irVersion 1 was refused: %v", answer.Error)
+	}
+
+	sent := 0
+	id := e.send(wire.MigrationExecute, wire.ExecuteParams{
+		ID: version, Direction: wire.Up, Mode: wire.ModeApply,
+	})
+
+	answer := e.answer(id, func(m *wire.Message) *wire.Message {
+		if m.Method == wire.HostSchemaApply {
+			sent++
+		}
+
+		return recorded(t, m)
+	})
+
+	if slug := slugOf(t, answer); slug != "unsupported_ir" {
+		t.Errorf("the failure is %q, want unsupported_ir", slug)
+	}
+
+	for _, want := range []string{"data_backfill", "irVersion 2", "stated 1"} {
+		if !strings.Contains(answer.Error.Message, want) {
+			t.Errorf("the failure does not name %q: %s", want, answer.Error.Message)
+		}
+	}
+
+	if sent != 0 {
+		t.Errorf("the operation reached the host %d times before it was refused", sent)
+		t.Log("An older engine decodes an operation it has never heard of as an unknown one, which")
+		t.Log("points at the migration rather than at the CLI that needs upgrading (docs/ir.md §2.3).")
 	}
 }

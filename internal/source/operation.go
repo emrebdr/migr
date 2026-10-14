@@ -47,6 +47,8 @@ func chainOf(op ir.Operation) (Chain, error) {
 		return dropView(o), nil
 	case ir.Raw:
 		return Chain{}, ErrNotRenderable
+	case ir.DataCopy, ir.DataBackfill, ir.DataTransform:
+		return Chain{}, ErrNotRenderable
 	default:
 		return Chain{}, ErrNotRenderable
 	}

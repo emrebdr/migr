@@ -171,15 +171,55 @@ test("a protocol version this SDK does not speak is refused, listing what it doe
   assert.equal(await session.done, EXIT_OK);
 });
 
-test("an IR version this SDK cannot emit is refused rather than silently downgraded", async () => {
+test("any IR version an engine states is accepted, and only none at all is refused", async () => {
+  for (const stated of [1, 2, 3]) {
+    const session = opened();
+
+    session.send(request(1, "initialize", { ...HANDSHAKE, irVersion: stated }));
+
+    const answer = await session.take();
+
+    assert.equal(answer.error, undefined, `an engine stating irVersion ${stated} was refused`);
+    assert.equal(await ended(session), EXIT_OK);
+  }
+
   const session = opened();
 
-  session.send(request(1, "initialize", { ...HANDSHAKE, irVersion: 2 }));
+  session.send(request(1, "initialize", { ...HANDSHAKE, irVersion: 0 }));
 
   assert.equal(failureOf(await session.take()).slug, "unsupported_ir");
 
   session.close();
   await session.done;
+});
+
+test("a data operation against an engine that reads only v1 is refused before it is sent", async () => {
+  const backfilling: Migration = {
+    async up(s) {
+      await s.table("users").backfill("plan", t.string(16), { literal: "free" }).apply();
+    },
+  };
+
+  const session = await handshaken([FILE, { default: backfilling }]);
+
+  session.send(request(2, "migration.execute", { id: VERSION, direction: "up", mode: "apply" }));
+
+  const answer = await session.take();
+
+  assert.equal(answer.method, undefined, "the operation reached the host before it was refused");
+
+  const refused = failureOf(answer);
+
+  assert.equal(refused.slug, "unsupported_ir");
+
+  for (const want of ["data_backfill", "irVersion 2", "stated 1"]) {
+    assert.ok(
+      refused.message.includes(want),
+      `the failure does not name ${want}: ${refused.message}`,
+    );
+  }
+
+  assert.equal(await ended(session), EXIT_OK);
 });
 
 test("a request before initialize, and a second initialize, are both refused", async () => {

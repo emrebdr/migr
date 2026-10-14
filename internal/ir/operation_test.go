@@ -16,7 +16,7 @@ type fixture struct {
 	json string
 }
 
-// fixtures returns one canonical example of every operation in the v1 set.
+// fixtures returns one canonical example of every operation in the set.
 func fixtures(t *testing.T) []fixture {
 	t.Helper()
 
@@ -168,6 +168,28 @@ func fixtures(t *testing.T) []fixture {
 			op:   Raw{Driver: "postgres", SQL: "CREATE EXTENSION IF NOT EXISTS pgcrypto"},
 			json: `{"op":"raw","driver":"postgres","sql":"CREATE EXTENSION IF NOT EXISTS pgcrypto"}`,
 		},
+		{
+			kind: KindDataCopy,
+			op: DataCopy{From: "users", To: "users_new", Columns: []CopyColumn{
+				{From: "id", To: "id"}, {From: "name", To: "full_name"},
+			}},
+			json: `{"op":"data_copy","from":"users","to":"users_new","columns":[{"from":"id","to":"id"},` +
+				`{"from":"name","to":"full_name"}]}`,
+		},
+		{
+			kind: KindDataBackfill,
+			op: DataBackfill{Table: "users", Column: "plan", Type: mustType(t, "string(16)"),
+				Value: Literal("free")},
+			json: `{"op":"data_backfill","table":"users","column":"plan","type":"string(16)",` +
+				`"value":{"literal":"free"}}`,
+		},
+		{
+			kind: KindDataTransform,
+			op: DataTransform{Table: "users", Column: "email_key", Type: mustType(t, "string(255)"),
+				From: "email", Function: TransformLower},
+			json: `{"op":"data_transform","table":"users","column":"email_key","type":"string(255)",` +
+				`"from":"email","function":"lower"}`,
+		},
 	}
 }
 
@@ -211,10 +233,10 @@ func TestEveryKindHasAFixture(t *testing.T) {
 		covered[f.kind] = true
 	}
 
-	const declared = 20
+	const declared = 23
 
 	if len(Kinds()) != declared {
-		t.Fatalf("the v1 operation set has %d operations, Kinds() has %d", declared, len(Kinds()))
+		t.Fatalf("the operation set has %d operations, Kinds() has %d", declared, len(Kinds()))
 	}
 
 	for _, k := range Kinds() {

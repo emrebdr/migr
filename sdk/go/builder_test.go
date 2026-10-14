@@ -203,13 +203,35 @@ var chains = map[Kind]built{
 		},
 		want: Raw{Driver: "postgres", SQL: "CREATE EXTENSION pgcrypto"},
 	},
+	KindDataCopy: {
+		chain: func(s *Schema) *builder {
+			return s.Table("users").CopyInto("users_new",
+				CopyColumn{From: "id", To: "id"}, CopyColumn{From: "name", To: "full_name"}).build
+		},
+		want: DataCopy{From: "users", To: "users_new", Columns: []CopyColumn{
+			{From: "id", To: "id"}, {From: "name", To: "full_name"},
+		}},
+	},
+	KindDataBackfill: {
+		chain: func(s *Schema) *builder {
+			return s.Table("users").Backfill("plan", String(16), Literal("free")).build
+		},
+		want: DataBackfill{Table: "users", Column: "plan", Type: String(16), Value: Literal("free")},
+	},
+	KindDataTransform: {
+		chain: func(s *Schema) *builder {
+			return s.Table("users").Transform("email_key", String(255), "email", TransformLower).build
+		},
+		want: DataTransform{Table: "users", Column: "email_key", Type: String(255), From: "email",
+			Function: TransformLower},
+	},
 }
 
 func TestTheBuilderEmitsWhatTheHandConstructedOperationDoes(t *testing.T) {
 	for _, kind := range Kinds() {
 		expressed, covered := chains[kind]
 		if !covered {
-			t.Errorf("%q has no builder chain, so the builder does not cover the v1 set", kind)
+			t.Errorf("%q has no builder chain, so the builder does not cover the operation set", kind)
 
 			continue
 		}

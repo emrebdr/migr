@@ -88,6 +88,8 @@ type operation struct {
 	Reason string `json:"reason,omitempty"`
 	// Destroys is what this operation would lose, and nothing for one that loses nothing.
 	Destroys string `json:"destroys,omitempty"`
+	// Rows says which rows a data operation writes, since its statements write them all at once.
+	Rows string `json:"rows,omitempty"`
 	// Refused reports an operation nothing permits, which migr up would stop at rather than run.
 	Refused bool `json:"refused,omitempty"`
 	// Deferred reports an operation this engine compiles only as it runs, which has no statements here.
@@ -241,10 +243,46 @@ func operationOf(caps capability.Set, allowed engine.Allowance, step plan.Step) 
 		Strategy:   verdict.Strategy(),
 		Reason:     verdict.Reason(),
 		Destroys:   destroyedSubject(step.Op),
+		Rows:       rowsOf(step.Op),
 		Refused:    !allowed.Permits(step.Op),
 		Deferred:   step.Deferred,
 		Statements: stmts,
 	}
+}
+
+// rowsOf says which rows a data operation writes, and nothing for one that writes schema.
+func rowsOf(op ir.Operation) string {
+	switch o := op.(type) {
+	case ir.DataCopy:
+		return fmt.Sprintf("copies every row of %q into %q, %s", o.From, o.To,
+			describeCopied(len(o.Columns)))
+	case ir.DataBackfill:
+		return fmt.Sprintf("fills the NULLs of %q with %s, and no other row",
+			o.Table+"."+o.Column, describeValue(o.Value))
+	case ir.DataTransform:
+		return fmt.Sprintf("rewrites %q in every row, from %q through %s", o.Table+"."+o.Column,
+			o.From, o.Function)
+	default:
+		return ""
+	}
+}
+
+// describeCopied counts the columns a copy writes, with the right noun.
+func describeCopied(n int) string {
+	if n == 1 {
+		return "1 column"
+	}
+
+	return fmt.Sprintf("%d columns", n)
+}
+
+// describeValue names what a backfill writes, a literal quoted and a function by name.
+func describeValue(value *ir.Default) string {
+	if value.Literal != nil {
+		return fmt.Sprintf("%q", *value.Literal)
+	}
+
+	return string(value.Function) + "()"
 }
 
 // destroyedSubject names what an operation would lose, and nothing for raw, whose subject is its SQL.
@@ -496,11 +534,21 @@ func (o operation) write(b *strings.Builder) {
 	fmt.Fprintf(b, "       %d  %s  %s%s\n", o.Index, o.Kind, describeVerdict(o), o.describeDestroys())
 
 	o.writeReason(b)
+	o.writeRows(b)
 	o.writeDeferred(b)
 
 	for _, stmt := range o.Statements {
 		fmt.Fprintf(b, "%s\n", indented(stmt))
 	}
+}
+
+// writeRows says which rows a data operation writes, above the one statement that writes them.
+func (o operation) writeRows(b *strings.Builder) {
+	if o.Rows == "" {
+		return
+	}
+
+	fmt.Fprintf(b, "%s\n", indented("rows: "+o.Rows))
 }
 
 // writeDeferred stands in for the statements of an operation nothing here can compile yet.

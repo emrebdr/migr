@@ -13,9 +13,10 @@
 // engine means this model is missing something and should be extended instead.
 //
 // Status: both axes complete (M2-T2), and all three drivers classify every operation on both --
-// PostgreSQL at M3-T3, SQLite at M8-T3, MySQL at M9-T3. M13-T1 is where the three are held to one
-// standard rather than each to its own measurement. See docs/adr/0012-capability-resolution.md and
-// 0016-lock-impact-is-a-duration.md, which fixed what the four verdicts mean.
+// PostgreSQL at M3-T3, SQLite at M8-T3, MySQL at M9-T3. M13-T1 held the three to one standard: no
+// verdict cheaper than a server measurably performs, and unknown for raw alone. See
+// docs/adr/0012-capability-resolution.md, 0016-lock-impact-is-a-duration.md, which fixed what the
+// four verdicts mean, and 0081-lock-verdicts-resolved-against-the-table.md.
 //
 // # Resolution answers about an operation, not about a kind
 //
@@ -58,12 +59,13 @@
 //
 // LockUnknown ranks equal to TableRewrite for every threshold comparison and renders as "unknown"
 // everywhere a verdict is shown. That is how invariant #13's "reports the pessimistic verdict" and
-// M2-T2's "drivers may return unknown" coexist: the driver's confidence is displayed honestly, its
-// severity is assumed to be the worst.
+// M2-T2's "drivers may return unknown" coexisted: the driver's confidence is displayed honestly, its
+// severity is assumed to be the worst. Since M13-T1 the driver conformance suite refuses it on every
+// operation but raw, since every other one says what it does.
 //
 // Ranking it above TableRewrite instead would leave no ceiling that accepts it, and a safety gate
 // with no opt-out is one people switch off. Ranking it below anything would fail open. Rendering it
-// as a table rewrite would claim a measurement nobody took, and would hide M13-T1's own worklist.
+// as a table rewrite would claim a measurement nobody took, and would have hidden M13-T1's worklist.
 //
 // An unrecognized impact — the zero value, or a word from a newer peer — is worse than unknown and
 // satisfies no ceiling at all. A declared unknown earns the table_rewrite opt-out because the driver
@@ -95,6 +97,20 @@
 // operation with a verdict. Those are two statements of one fact and they can disagree. The
 // capability declaration is the source of truth, and M2-T4 is what proves Compile agrees with it —
 // which means that suite needs a Conn, where M2-T3's golden harness needs only a Compiler.
+//
+// # A cost that holds only for some tables
+//
+// Resolve performs no I/O, and some costs depend on the table rather than on the operation: MySQL
+// adds a column instantly to a plain table and rebuilds a COMPRESSED one, a FULLTEXT-indexed one, or
+// one at its 64-row-version ceiling -- measured, and silently, since a bare ALTER TABLE warns of
+// nothing. So Unless records a cheaper cost and the condition it holds under, while Lock keeps
+// reporting the dearer one, which is what every ceiling compares. Only a session that has read the
+// table may lower it, through driver.Assessor, and Confirmed is how: the support axis and the
+// strategy are untouched, since only the cost was in doubt.
+//
+// Every malformed Unless returns the verdict as it was, which fails toward the pessimistic answer.
+// The wire carries Lock alone: a runtime has no table to read, so the condition would be a fact it
+// could do nothing with, and the protocol does not move for it.
 //
 // # An unknown that never resolves
 //

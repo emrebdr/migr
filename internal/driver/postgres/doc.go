@@ -247,12 +247,19 @@
 // lock" would sort a catalog update alongside an index build. See ADR 0016.
 //
 //	lock_free        create_table; create_view without or_replace -- nothing existing is touched
-//	brief_exclusive  drop_table, rename_table, drop_column, rename_column, drop_index,
-//	                 every drop_* constraint, drop_view, create_view with or_replace
+//	brief_exclusive  rename_table, drop_column, rename_column, drop_foreign_key, drop_check,
+//	                 drop_view, create_view with or_replace
 //	long_exclusive   add_index and add_unique and add_primary_key (an index build);
-//	                 add_foreign_key and add_check (a full scan to validate)
+//	                 add_foreign_key and add_check (a full scan to validate);
+//	                 drop_table, drop_index, drop_unique, drop_primary_key (files deleted)
 //	table_rewrite    see add_column and alter_column below
 //	unknown          raw, permanently
+//
+// The four drops that delete a table's or an index's files hold their lock while the files go:
+// PostgreSQL unlinks at commit and releases locks after it. Measured on 16 and 17 at M13-T1, DROP
+// TABLE took 2.5 ms at 224 kB and 22 ms at 471 MB, and DROP INDEX 1.6 ms at 136 kB and 30 ms at
+// 760 MB, so the hold scales with the relation (ADR 0081). drop_column only marks the column dropped,
+// and a constraint that is not an index deletes nothing, so those stay brief.
 //
 // raw is the case unknown exists for and the one that never resolves: the framework cannot know
 // what the statement does. A driver with nothing left to classify still reports this one.

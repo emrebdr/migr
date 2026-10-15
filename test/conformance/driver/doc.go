@@ -52,8 +52,12 @@
 //
 // An allowed verdict carrying an unrecognized lock impact — the zero value included — satisfies no
 // ceiling at all, so --require-safe and safety.max_lock_impact are both switched off for that one
-// operation while appearing to be on. LockUnknown is a verdict a driver may report and passes;
-// a value nobody recognizes is a bug and does not.
+// operation while appearing to be on. A value nobody recognizes is a bug and does not pass.
+//
+// LockUnknown passes for raw and for nothing else (M13-T1, ADR 0081). M2-T2 let a driver report it
+// until that task; every other operation says what it does, so a driver can say what it costs, and
+// pessimistically where it cannot tell. A verdict lowered under a condition must name the condition
+// and be cheaper under it, which capability.Verdict.Unless already makes unwritable otherwise.
 //
 // A capability set whose Facts.Driver is not the driver under test describes a different engine,
 // and every refusal it produces names that engine to the operator. The same check catches the zero

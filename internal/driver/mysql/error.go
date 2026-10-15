@@ -43,6 +43,9 @@ var ErrLockNotHeld = errors.New("the server reports this session did not hold th
 // ErrLockRelease marks a release that failed, leaving the lock held until the session ends.
 var ErrLockRelease = errors.New("releasing the migration lock failed")
 
+// ErrAssess marks a table this driver could not read, so its verdict stayed at the pessimistic cost.
+var ErrAssess = errors.New("cannot read the table a lock verdict depends on")
+
 // ErrWait marks a configured wait this engine cannot be asked to wait, for errors.Is.
 var ErrWait = errors.New("the configured wait is not one MySQL can be asked to wait")
 

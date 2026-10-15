@@ -81,7 +81,29 @@
 // drop_table is the one verdict reasoned rather than measured. InnoDB evicts the table's buffer-pool
 // pages and unlinks the tablespace under the metadata lock, and the attempt to measure the scaling
 // could not separate 13 MB from nothing against the harness baseline -- so the pessimistic verdict
-// stands and this driver says LongExclusive where PostgreSQL says BriefExclusive.
+// stands. PostgreSQL's drop_table, measured at M13-T1 to scale with the table, now says the same.
+//
+// # An instant change depends on the table, so the session confirms it
+//
+// Whether an instant add_column or drop_column is used is not only the release's call. Measured on
+// 8.0.46 and 11.4.13 with the table id read either side, both servers rebuild a COMPRESSED table and
+// one carrying a FULLTEXT index, MySQL rebuilds a table at 64 instant row versions and drops an
+// indexed column by rebuilding, and none of it warns: ALGORITHM=INSTANT is 1845, 1846 or 4092, and a
+// bare ALTER TABLE quietly takes the slower path. A default change and a rename stayed instant on
+// every one of those tables.
+//
+// Resolve cannot see a table, so those two operations are declared table_rewrite lowerable to
+// brief_exclusive under the condition the table must meet, and Assess -- this session's
+// driver.Assessor -- reads the table and confirms it (ADR 0081). The row format comes from
+// information_schema.TABLES and the indexes from STATISTICS, which any user may read; the row-version
+// count is in INNODB_TABLES, which refuses a session without PROCESS with 1227. So from 8.0.29 a
+// session without that grant never lowers the verdict: the fact it would need is unread, and
+// unread is pessimistic. migr never asks for the grant. A table not yet created is assessed at its
+// worst, there being nothing to read.
+//
+// An empty table is rebuilt by MySQL's ADD COLUMN instead of being changed instantly, and a rebuild
+// that copies no rows costs nothing. It surfaced as a false rewrite in a measurement whose insert had
+// failed, which is why every live probe here asserts its row count.
 //
 // # A uuid default is refused while this server writes a binary log
 //

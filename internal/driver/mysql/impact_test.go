@@ -335,3 +335,77 @@ func TestRawIsUnknownOnEveryServerAndAlwaysWillBe(t *testing.T) {
 		}
 	}
 }
+
+func TestAnInstantColumnChangeIsDeclaredARewriteUntilTheTableIsShownToAllowIt(t *testing.T) {
+	added := ir.AddColumn{Table: "users", Column: ir.Column{Name: "nickname",
+		Type: mustType(t, "string(64)"), Nullable: true}}
+	dropped := ir.DropColumn{Table: "users", Column: "nickname"}
+
+	mysql8028 := serverVersion{variant: MySQL, major: 8, minor: 0, patch: 28}
+	mysql8029 := serverVersion{variant: MySQL, major: 8, minor: 0, patch: 29}
+	maria := serverVersion{variant: MariaDB, major: 11, minor: 4}
+
+	for _, c := range []struct {
+		name    string
+		version serverVersion
+		op      ir.Operation
+		want    string
+	}{
+		{"an add before row versions", mysql8028, added, instantTableCondition},
+		{"an add counting row versions", mysql8029, added, instantTableCondition + rowVersionCondition},
+		{"a drop counting row versions", mysql8029, dropped,
+			instantTableCondition + rowVersionCondition + indexedColumnCondition},
+		{"an add on MariaDB", maria, added, instantTableCondition},
+		{"a drop on MariaDB", maria, dropped, instantTableCondition},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			v := serverFacts{version: c.version}.verdict(c.op)
+
+			if v.Lock() != capability.TableRewrite || v.Lowest() != capability.BriefExclusive {
+				t.Errorf("verdict = %s, want table_rewrite lowerable to brief_exclusive", v)
+			}
+
+			if v.Condition() != c.want {
+				t.Errorf("condition = %q, want %q", v.Condition(), c.want)
+			}
+		})
+	}
+
+	t.Log("Measured on 8.0.46 and 11.4.13 with the table id read either side: a COMPRESSED table and")
+	t.Log("one carrying a FULLTEXT index are rebuilt by both servers, a table at 64 row versions by")
+	t.Log("MySQL, and dropping an indexed column by MySQL alone -- MariaDB drops it in place. None of")
+	t.Log("that is in the operation, so Resolve reports the rebuild and Assess reads the table.")
+}
+
+func TestAColumnChangeThatAlwaysRewritesCarriesNoCondition(t *testing.T) {
+	added := ir.AddColumn{Table: "users", Column: ir.Column{Name: "nickname",
+		Type: mustType(t, "string(64)"), Nullable: true}}
+	dropped := ir.DropColumn{Table: "users", Column: "nickname"}
+
+	for name, c := range map[string]struct {
+		version serverVersion
+		op      ir.Operation
+	}{
+		"an add before instant adds":  {serverVersion{variant: MySQL, major: 8, minor: 0, patch: 11}, added},
+		"a drop before instant drops": {serverVersion{variant: MySQL, major: 8, minor: 0, patch: 28}, dropped},
+	} {
+		v := serverFacts{version: c.version}.verdict(c.op)
+		if v.Lock() != capability.TableRewrite || v.Condition() != "" {
+			t.Errorf("%s: verdict = %s, want a table_rewrite no table can lower", name, v)
+		}
+	}
+
+	for _, kind := range ir.Kinds() {
+		if kind == ir.KindAddColumn || kind == ir.KindDropColumn {
+			continue
+		}
+
+		if v := current.verdict(representative(t, kind)); v.Condition() != "" {
+			t.Errorf("%s carries the condition %q, and no other operation was measured to need one",
+				kind, v.Condition())
+		}
+	}
+
+	t.Log("A default change and a rename stayed instant on every table shape measured, COMPRESSED and")
+	t.Log("FULLTEXT included, so they carry no condition: one that cannot fail would only cost a read.")
+}

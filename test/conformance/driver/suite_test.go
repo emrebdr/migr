@@ -351,3 +351,40 @@ func TestAMalformedFixtureIsATestBugNotADriverBug(t *testing.T) {
 		t.Log("reported as every driver failing conformance at once.")
 	}
 }
+
+func TestAnUnknownLockImpactIsARawStatementsAlone(t *testing.T) {
+	rules := declaring("fake", native)
+	rules[ir.KindAddColumn] = capability.Fixed(capability.Native(capability.LockUnknown))
+
+	problems := suiteDeclaring(t, newFake("fake"), rules).check()
+	if len(problems) != 1 || !strings.Contains(problems[0], "add_column") {
+		t.Errorf("an add_column declared unknown reported %v, want one problem naming it", problems)
+	}
+
+	raw := declaring("fake", native)
+	unknown := capability.Native(capability.LockUnknown)
+	raw[ir.KindRaw] = func(op ir.Operation) capability.Verdict {
+		if r, isRaw := op.(ir.Raw); isRaw && r.Driver != "fake" {
+			return capability.Unsupported("a raw operation addressed to " + r.Driver)
+		}
+
+		return unknown
+	}
+
+	if problems := suiteDeclaring(t, newFake("fake"), raw).check(); problems != nil {
+		t.Errorf("a raw statement declared unknown reported %v", problems)
+	}
+
+	t.Log("M2-T2 let a driver report unknown until M13-T1. Every operation but raw says what it")
+	t.Log("does, so a driver can say what it costs -- pessimistically where it cannot tell.")
+}
+
+func TestALoweredVerdictPassesTheSuite(t *testing.T) {
+	lowered := native.Unless(capability.BriefExclusive, "the table allows an in-place change")
+
+	if problems := suiteOf(t, newFake("fake"), lowered).check(); problems != nil {
+		t.Errorf("a verdict lowered under a stated condition reported %v", problems)
+	}
+
+	t.Log("A malformed condition cannot be built at all, so this is the one shape the suite sees.")
+}

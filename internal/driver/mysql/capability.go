@@ -130,7 +130,7 @@ func (f serverFacts) verdict(op ir.Operation) capability.Verdict {
 		return capability.Emulated(redefineStrategy, f.lockImpact(op))
 	}
 
-	return capability.Native(f.lockImpact(op))
+	return f.dependOnTable(op, capability.Native(f.lockImpact(op)))
 }
 
 // checkServer reports what this server will not do, by its release and by how it is configured.

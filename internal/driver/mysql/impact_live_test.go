@@ -182,6 +182,24 @@ func rebuilt(t *testing.T, c *mysqlConn, p probe) bool {
 	return tableID(t, c, p.landed(t)) != was
 }
 
+// assessedLock is what the session says a probe costs once it has read the seeded table it runs on.
+func assessedLock(t *testing.T, c *mysqlConn, caps capability.Set, p probe) capability.LockImpact {
+	t.Helper()
+
+	seed(t, c)
+
+	for _, before := range p.setup {
+		apply(t, c, before)
+	}
+
+	v, err := c.Assess(t.Context(), p.op, caps.Resolve(p.op))
+	if err != nil {
+		t.Fatalf("Assess(%s): %v", p.op.Kind(), err)
+	}
+
+	return v.Lock()
+}
+
 // landed names the table a probe's operation left behind, which a rename moves.
 func (p probe) landed(t *testing.T) string {
 	t.Helper()
@@ -200,7 +218,7 @@ func TestNoTableRewriteHappensThatWasNotDeclared(t *testing.T) {
 		caps, rewrites := c.Capabilities(), 0
 
 		for name, p := range probes(t) {
-			declared := caps.Resolve(p.op).Lock()
+			declared := assessedLock(t, c, caps, p)
 
 			if !rebuilt(t, c, p) {
 				if declared == capability.TableRewrite {
@@ -246,7 +264,7 @@ func TestTheAlgorithmTheServerAcceptsIsTheOneTheVerdictAssumes(t *testing.T) {
 		caps, instant := c.Capabilities(), 0
 
 		for name, p := range probes(t) {
-			if !alterable(p.op) || caps.Resolve(p.op).Lock() != capability.BriefExclusive {
+			if !alterable(p.op) || assessedLock(t, c, caps, p) != capability.BriefExclusive {
 				continue
 			}
 
@@ -290,7 +308,7 @@ func checkDearProbesAreNotReportedInstant(t *testing.T, c *mysqlConn, caps capab
 	controls := 0
 
 	for name, p := range probes(t) {
-		if !alterable(p.op) || caps.Resolve(p.op).Lock() != capability.TableRewrite {
+		if !alterable(p.op) || assessedLock(t, c, caps, p) != capability.TableRewrite {
 			continue
 		}
 
@@ -369,7 +387,7 @@ func TestAnOperationDeclaredARewriteIsOneTheServerWillNotDoInPlace(t *testing.T)
 		caps := c.Capabilities()
 
 		for name, p := range probes(t) {
-			if !alterable(p.op) || caps.Resolve(p.op).Lock() != capability.TableRewrite {
+			if !alterable(p.op) || assessedLock(t, c, caps, p) != capability.TableRewrite {
 				continue
 			}
 
@@ -397,12 +415,12 @@ func TestTheTwoServersAgreeAboutDroppingAColumnOnlyFromTheReleaseTheyBothHave(t 
 
 		p := probe{op: ir.DropColumn{Table: probeTable(t), Column: "n"}}
 
-		if rebuilt(t, c, p) {
-			t.Error("dropping a column rewrote the table, and both servers do it instantly")
+		if got := assessedLock(t, c, c.Capabilities(), p); got != capability.BriefExclusive {
+			t.Errorf("drop_column is assessed %s on %s", got, c.version)
 		}
 
-		if got := c.Capabilities().Resolve(p.op).Lock(); got != capability.BriefExclusive {
-			t.Errorf("drop_column is declared %s on %s", got, c.version)
+		if rebuilt(t, c, p) {
+			t.Error("dropping a column rewrote the table, and both servers do it instantly")
 		}
 	})
 

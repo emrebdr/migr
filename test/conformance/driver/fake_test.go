@@ -14,7 +14,7 @@ import (
 )
 
 // native is the ordinary declaration: the engine performs the operation directly.
-var native = capability.Native(capability.LockUnknown)
+var native = capability.Native(capability.TableRewrite)
 
 // fakeDriver compiles every operation to a marker comment, so no test here authors engine SQL.
 type fakeDriver struct {

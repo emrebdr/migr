@@ -185,3 +185,88 @@ func TestVerdictsAreComparable(t *testing.T) {
 	t.Log("Every field is a string, so == works and a test can assert a resolved verdict")
 	t.Log("directly. schema.Type had to grow an Equal method because a slice field cost it this.")
 }
+
+func TestALowerableVerdictComparesAtItsPessimisticCost(t *testing.T) {
+	v := Native(TableRewrite).Unless(BriefExclusive, "the table is not ROW_FORMAT=COMPRESSED")
+
+	if v.Lock() != TableRewrite {
+		t.Errorf("Lock = %s, want table_rewrite: a ceiling compares what nobody has confirmed", v.Lock())
+	}
+
+	if v.Lowest() != BriefExclusive {
+		t.Errorf("Lowest = %s, want brief_exclusive", v.Lowest())
+	}
+
+	if v.Condition() != "the table is not ROW_FORMAT=COMPRESSED" {
+		t.Errorf("Condition = %q", v.Condition())
+	}
+
+	if v.Lock().AtMost(BriefExclusive) {
+		t.Error("a verdict whose condition nobody checked passed a brief_exclusive ceiling")
+	}
+
+	want := "native (table_rewrite; brief_exclusive where the table is not ROW_FORMAT=COMPRESSED)"
+	if v.String() != want {
+		t.Errorf("String = %q, want %q", v.String(), want)
+	}
+
+	t.Log("Resolve performs no I/O, so what depends on the table is reported at its worst and")
+	t.Log("says what would make it cheaper. Only a session that read the table may lower it.")
+}
+
+func TestALowerableVerdictThatCannotBeWrittenIsLeftAsItWas(t *testing.T) {
+	dear := Native(TableRewrite)
+
+	tests := map[string]Verdict{
+		"a blank condition":           dear.Unless(BriefExclusive, "  "),
+		"an impact that is not lower": dear.Unless(TableRewrite, "anything"),
+		"an impact that is higher":    Native(BriefExclusive).Unless(TableRewrite, "anything"),
+		"unknown as the lower":        dear.Unless(LockUnknown, "anything"),
+		"an unrecognized lower":       dear.Unless(LockImpact("instant"), "anything"),
+	}
+
+	for name, got := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got.Condition() != "" || got.Lowest() != got.Lock() {
+				t.Errorf("Unless kept %s where %q", got.Lowest(), got.Condition())
+			}
+		})
+	}
+
+	refused := Unsupported("no").Unless(LockFree, "anything")
+	if refused != Unsupported("no") {
+		t.Errorf("a refusal was given a cheaper cost: %s", refused)
+	}
+
+	t.Log("Every path fails toward the pessimistic verdict, so a mistaken Unless costs a flag")
+	t.Log("rather than an outage.")
+}
+
+func TestALowerableVerdictSendsOnlyItsPessimisticCost(t *testing.T) {
+	got, err := json.Marshal(Native(TableRewrite).Unless(BriefExclusive, "the table allows it"))
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	if want := `{"support":"native","lock_impact":"table_rewrite"}`; string(got) != want {
+		t.Errorf("Marshal = %s, want %s", got, want)
+	}
+
+	t.Log("A runtime has no table to read, so the wire carries the cost it can rely on and the")
+	t.Log("protocol does not change.")
+}
+
+func TestAConfirmedVerdictCostsWhatItsConditionAllowed(t *testing.T) {
+	emulated := Emulated("redefines the column", TableRewrite).Unless(BriefExclusive, "the table allows it")
+
+	got := emulated.Confirmed()
+	if got != Emulated("redefines the column", BriefExclusive) {
+		t.Errorf("Confirmed = %s, want the same emulation at brief_exclusive", got)
+	}
+
+	if plain := Native(LongExclusive); plain.Confirmed() != plain {
+		t.Errorf("a verdict carrying no condition was changed: %s", plain.Confirmed())
+	}
+
+	t.Log("Confirming keeps the support axis and the strategy: only the cost was ever in doubt.")
+}

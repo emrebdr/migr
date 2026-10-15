@@ -28,6 +28,66 @@ const (
 	instantDropPatch = 29
 )
 
+// The most instant row versions MySQL lets one table accumulate before it rebuilds it instead.
+//
+// Every instant ADD COLUMN and DROP COLUMN takes one, from the release where instant drops began, and
+// at this many a bare ADD COLUMN silently rebuilds the table -- measured on 8.0.46, the TABLE_ID moved
+// and the count went back to 0, where ALGORITHM=INSTANT is error 4092. MariaDB keeps no such count.
+const maxRowVersions = 64
+
+// The conditions an instant change holds on, each read from the table by Assess (ADR 0081).
+const (
+	instantTableCondition = "the table is not ROW_FORMAT=COMPRESSED and carries no FULLTEXT index"
+	rowVersionCondition   = ", and has fewer than 64 instant row versions -- which only a session " +
+		"holding PROCESS can read, so without it this stays a rewrite"
+	indexedColumnCondition = ", and the column is in no index"
+)
+
+// dependOnTable reports an instant change at its rebuild cost, unless a session shows the table permits it.
+func (f serverFacts) dependOnTable(op ir.Operation, v capability.Verdict) capability.Verdict {
+	condition := f.version.instantCondition(op)
+	if condition == "" || v.Lock() != capability.BriefExclusive {
+		return v
+	}
+
+	return capability.Native(capability.TableRewrite).Unless(capability.BriefExclusive, condition)
+}
+
+// instantCondition says what the table must be for this server to change it instantly, or nothing.
+func (v serverVersion) instantCondition(op ir.Operation) string {
+	switch op.(type) {
+	case ir.AddColumn:
+		return instantTableCondition + v.describeRowVersions()
+	case ir.DropColumn:
+		return instantTableCondition + v.describeRowVersions() + v.describeIndexedColumn()
+	default:
+		return ""
+	}
+}
+
+// describeRowVersions names the row-version ceiling on a server that keeps one, and nothing elsewhere.
+func (v serverVersion) describeRowVersions() string {
+	if !v.countsRowVersions() {
+		return ""
+	}
+
+	return rowVersionCondition
+}
+
+// describeIndexedColumn names the index rule on MySQL, which rebuilds where MariaDB drops in place.
+func (v serverVersion) describeIndexedColumn() string {
+	if v.variant == MariaDB {
+		return ""
+	}
+
+	return indexedColumnCondition
+}
+
+// countsRowVersions reports a server that numbers every instant change and rebuilds at the ceiling.
+func (v serverVersion) countsRowVersions() bool {
+	return v.AtLeastPatch(MySQL, instantDropMajor, instantDropMinor, instantDropPatch)
+}
+
 // lockImpact reports what an operation costs a live database on the server that was detected.
 func (f serverFacts) lockImpact(op ir.Operation) capability.LockImpact {
 	switch o := op.(type) {

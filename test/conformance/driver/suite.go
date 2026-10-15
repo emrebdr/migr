@@ -3,6 +3,7 @@ package driver
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -117,7 +118,7 @@ func (s Suite) checkOperation(caps capability.Set, op ir.Operation, label string
 	case err != nil:
 		return s.checkRefused(op, label, verdict, err)
 	default:
-		return checkCompiled(label, verdict, stmts)
+		return checkCompiled(op, label, verdict, stmts)
 	}
 }
 
@@ -148,11 +149,7 @@ func (s Suite) checkEmulated(op ir.Operation, label string, verdict capability.V
 			"declaration promises")
 	}
 
-	if !verdict.Lock().Valid() {
-		problems = append(problems, fmt.Sprintf("%s: the driver declares lock impact %q, which "+
-			"names no verdict this build recognizes, so it satisfies no safety ceiling at all",
-			label, verdict.Lock()))
-	}
+	problems = append(problems, checkLock(op, label, verdict)...)
 
 	return problems
 }
@@ -181,7 +178,9 @@ func (s Suite) checkNeedsSession(op ir.Operation, label string,
 }
 
 // checkCompiled reports an operation that compiled but disagrees with what the driver declared.
-func checkCompiled(label string, verdict capability.Verdict, stmts []driver.Statement) []string {
+func checkCompiled(op ir.Operation, label string, verdict capability.Verdict,
+	stmts []driver.Statement,
+) []string {
 	if !verdict.Allowed() {
 		return checkServerRefusal(label, verdict)
 	}
@@ -192,13 +191,42 @@ func checkCompiled(label string, verdict capability.Verdict, stmts []driver.Stat
 		problems = append(problems, problem)
 	}
 
-	if !verdict.Lock().Valid() {
-		problems = append(problems, fmt.Sprintf("%s: the driver declares lock impact %q, which "+
-			"names no verdict this build recognizes, so it satisfies no safety ceiling at all",
-			label, verdict.Lock()))
-	}
+	problems = append(problems, checkLock(op, label, verdict)...)
 
 	return problems
+}
+
+// checkLock reports a lock verdict no ceiling can read, an unknown left unclassified, or a bad condition.
+func checkLock(op ir.Operation, label string, verdict capability.Verdict) []string {
+	lock := verdict.Lock()
+
+	switch {
+	case !lock.Valid():
+		return []string{fmt.Sprintf("%s: the driver declares lock impact %q, which names no "+
+			"verdict this build recognizes, so it satisfies no safety ceiling at all", label, lock)}
+	case lock == capability.LockUnknown && op.Kind() != ir.KindRaw:
+		return []string{fmt.Sprintf("%s: the driver declares its lock impact unknown, which only a "+
+			"raw statement may be: every other operation says what it does, so the driver can say "+
+			"what it costs, and pessimistically where it cannot tell", label)}
+	default:
+		return checkCondition(label, verdict)
+	}
+}
+
+// checkCondition reports a lowered verdict that names no condition or is not cheaper than its cost.
+func checkCondition(label string, verdict capability.Verdict) []string {
+	if verdict.Condition() == "" {
+		return nil
+	}
+
+	if strings.TrimSpace(verdict.Condition()) == "" ||
+		!slices.Contains(capability.Ceilings(), verdict.Lowest()) ||
+		verdict.Lock().AtMost(verdict.Lowest()) {
+		return []string{fmt.Sprintf("%s: the driver lowers %s to %s where %q, which is no cheaper "+
+			"cost under a stated condition", label, verdict.Lock(), verdict.Lowest(), verdict.Condition())}
+	}
+
+	return nil
 }
 
 // checkServerRefusal holds a refusal the compiler could not have reached to stating what it is.

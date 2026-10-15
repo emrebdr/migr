@@ -64,6 +64,12 @@ type Expander interface {
 	Expand(ctx context.Context, op ir.Operation) ([]Statement, error)
 }
 
+// Assessor is a session that confirms, from the table itself, the condition a verdict was lowered on.
+type Assessor interface {
+	// Assess returns the verdict at its cheaper cost where the table meets its condition, else unchanged.
+	Assess(ctx context.Context, op ir.Operation, v capability.Verdict) (capability.Verdict, error)
+}
+
 // Driver is one database engine: what it is called, what it compiles to, how to reach it.
 type Driver interface {
 	Compiler

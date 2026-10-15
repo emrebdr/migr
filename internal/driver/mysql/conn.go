@@ -124,8 +124,10 @@ func (c *mysqlConn) Close(context.Context) error {
 }
 
 // compile-time proof that this session satisfies the contract every driver's session is held to,
-// and that it can produce the statements its declaration promises for what it emulates.
+// that it can produce the statements its declaration promises for what it emulates, and that it can
+// confirm from the table what a verdict it lowered depends on.
 var (
 	_ driver.Conn     = (*mysqlConn)(nil)
 	_ driver.Expander = (*mysqlConn)(nil)
+	_ driver.Assessor = (*mysqlConn)(nil)
 )

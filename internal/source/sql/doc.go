@@ -36,6 +36,20 @@
 // inverse instead (ADR 0022, C4). A marker carried twice, or a down above an up,
 // is refused naming the lines.
 //
+// # A statement that cannot run inside a transaction
+//
+// MarkerNoTransaction, alone on a line directly above a statement, declares that
+// statement cannot run inside a transaction, and it becomes an ir.Raw carrying
+// no_transaction (M13-T4, ADR 0084). It marks one statement rather than a file,
+// so one migration can create a table in a transaction and build its index
+// concurrently outside one. The scanner reads it, so a marker inside a quoted
+// body or a block comment is not one; and it is taken out of the statement it
+// declares, being migr's and not the server's. A marker that declares nothing is
+// refused naming its line: inside a statement no semicolon has ended, twice in a
+// row, with no statement after it in its section, above the up marker, and below
+// a declaration -- each a migration whose author believes a statement runs alone
+// when it would not.
+//
 // # One operation per statement
 //
 // Statements splits a section on the semicolons no quoting hides, and each one

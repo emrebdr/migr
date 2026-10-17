@@ -102,6 +102,8 @@ type operation struct {
 	Whole string `json:"whole,omitempty"`
 	// Statements are what it compiled to, in the order they would run.
 	Statements []string `json:"statements"`
+	// NoTransaction lists, counting from one, which of those run outside any transaction.
+	NoTransaction []int `json:"no_transaction,omitempty"`
 }
 
 // chunks is how one operation runs a keyed chunk at a time, as a preview could render it.
@@ -142,6 +144,8 @@ type compiledMigration struct {
 	Unrestorable []disagreed `json:"unrestorable,omitempty"`
 	// Resume is where a stopped chunked run committed up to, which this one would carry on after.
 	Resume *checkpoint `json:"resume,omitempty"`
+	// Parts is how many parts it runs as where a statement in it cannot run inside a transaction.
+	Parts int `json:"parts,omitempty"`
 }
 
 // checkpoint is how far a chunked operation got, as the run that stopped committed it.
@@ -272,7 +276,21 @@ func migrationOf(caps capability.Set, allowed engine.Allowance, pace engine.Stea
 		Operations:   ops,
 		Unrestorable: disagreementsOf(planned.Unrestorable),
 		Resume:       checkpointOf(planned.Resume),
+		Parts:        partsOf(planned.Plan),
 	}
+}
+
+// partsOf counts the parts a migration runs as, and nothing for one that is one transaction.
+func partsOf(compiled plan.Plan) int {
+	for _, step := range compiled.Steps {
+		for _, stmt := range step.Statements {
+			if stmt.NoTransaction {
+				return engine.Parts(compiled)
+			}
+		}
+	}
+
+	return 0
 }
 
 // paceOf reads how a session's runs size and space their chunks, which a Steady pacer states.
@@ -357,21 +375,29 @@ func operationOf(caps capability.Set, allowed engine.Allowance, step plan.Step) 
 	verdict := caps.Resolve(step.Op)
 
 	stmts := make([]string, 0, len(step.Statements))
-	for _, stmt := range step.Statements {
+
+	var standalone []int
+
+	for i, stmt := range step.Statements {
 		stmts = append(stmts, stmt.SQL)
+
+		if stmt.NoTransaction {
+			standalone = append(standalone, i+1)
+		}
 	}
 
 	return operation{
-		Index:      step.Index,
-		Kind:       step.Op.Kind(),
-		Support:    verdict.Support(),
-		Strategy:   verdict.Strategy(),
-		Reason:     verdict.Reason(),
-		Destroys:   destroyedSubject(step.Op),
-		Rows:       rowsOf(step.Op),
-		Refused:    !allowed.Permits(step.Op),
-		Deferred:   step.Deferred,
-		Statements: stmts,
+		Index:         step.Index,
+		Kind:          step.Op.Kind(),
+		Support:       verdict.Support(),
+		Strategy:      verdict.Strategy(),
+		Reason:        verdict.Reason(),
+		Destroys:      destroyedSubject(step.Op),
+		Rows:          rowsOf(step.Op),
+		Refused:       !allowed.Permits(step.Op),
+		Deferred:      step.Deferred,
+		Statements:    stmts,
+		NoTransaction: standalone,
 	}
 }
 
@@ -445,6 +471,7 @@ func (p compiledPlan) String() string {
 		p.describeCompiled(), describeSkipped(p.Skipped))
 
 	p.writeDirectNote(&b)
+	p.writeSplitNote(&b)
 	p.writeChunkedNote(&b)
 	p.writeDeferredNote(&b)
 	p.writeUnsupportedNote(&b)
@@ -470,6 +497,27 @@ func (p compiledPlan) describeCompiled() string {
 	}
 
 	return described
+}
+
+// writeSplitNote says what a statement outside any transaction does to the migration it is in.
+func (p compiledPlan) writeSplitNote(b *strings.Builder) {
+	split := 0
+
+	for _, m := range p.Migrations {
+		if m.Parts > 0 {
+			split++
+		}
+	}
+
+	if split == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\nmarked %s above: statements that cannot run inside a transaction, in %s. "+
+		"migr %s runs each on its own and the statements around it in transactions of their "+
+		"own, recording how far it got after each part commits -- a failure partway leaves the "+
+		"migration dirty, and a statement outside a transaction that gives up on a lock is not "+
+		"tried again.\n", noTransactionMarker, describeMigrations(split), p.Direction)
 }
 
 // writeChunkedNote says what the statements of a chunked operation are, and what a stopped one does.
@@ -629,6 +677,7 @@ func (m compiledMigration) write(b *strings.Builder) {
 
 	m.writeDirect(b)
 	m.writeResume(b)
+	m.writeParts(b)
 	m.writeNothing(b)
 
 	for _, op := range m.Operations {
@@ -637,6 +686,22 @@ func (m compiledMigration) write(b *strings.Builder) {
 
 	m.writeUnrestorable(b)
 }
+
+// writeParts says that a migration runs in parts, each committing on its own, where one does.
+func (m compiledMigration) writeParts(b *strings.Builder) {
+	switch m.Parts {
+	case 0:
+		return
+	case 1:
+		fmt.Fprintf(b, "       \u2016  runs outside any transaction: every statement commits on its own\n")
+	default:
+		fmt.Fprintf(b, "       \u2016  runs in %d parts, each committing on its own, split around the "+
+			"statements marked %s\n", m.Parts, noTransactionMarker)
+	}
+}
+
+// noTransactionMarker sits above a statement that runs outside any transaction.
+const noTransactionMarker = "[no transaction]"
 
 // writeNothing says that a down emitting no operations undoes nothing, which only its author can say.
 func (m compiledMigration) writeNothing(b *strings.Builder) {
@@ -726,7 +791,11 @@ func (o operation) write(b *strings.Builder) {
 	o.writeChunks(b)
 	o.writeDeferred(b)
 
-	for _, stmt := range o.Statements {
+	for i, stmt := range o.Statements {
+		if slices.Contains(o.NoTransaction, i+1) {
+			fmt.Fprintf(b, "%s\n", indented(noTransactionMarker))
+		}
+
 		fmt.Fprintf(b, "%s\n", indented(stmt))
 	}
 }

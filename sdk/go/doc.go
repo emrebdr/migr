@@ -51,6 +51,12 @@
 // directly, before that transaction opens, and is the one thing below that no Down can be
 // derived over.
 //
+// Statements.NoTransaction declares that the raw statement just added cannot run inside a
+// transaction, as CREATE INDEX CONCURRENTLY cannot. The engine then runs it on its own and
+// the statements around it in transactions of their own, recording how far the migration
+// got after each (ADR 0084). It needs an engine reading irVersion 3; against an older one
+// the migration is refused before anything is sent.
+//
 // # Import path and package name
 //
 // The import path ends in "go" and the package is named migr, because go is a

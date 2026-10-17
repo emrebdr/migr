@@ -48,11 +48,11 @@ func (s *Source) Emit(_ context.Context, m migration.Migration, dir ir.Direction
 }
 
 // operations turns each statement into a raw operation addressed to the engine it was written for.
-func (s *Source) operations(statements []string) ir.Operations {
+func (s *Source) operations(statements []statement) ir.Operations {
 	ops := make(ir.Operations, 0, len(statements))
 
-	for _, statement := range statements {
-		ops = append(ops, ir.Raw{Driver: s.driver, SQL: statement})
+	for _, stmt := range statements {
+		ops = append(ops, ir.Raw{Driver: s.driver, SQL: stmt.sql, NoTransaction: stmt.standalone})
 	}
 
 	return ops
@@ -61,9 +61,9 @@ func (s *Source) operations(statements []string) ir.Operations {
 // sections is one file's two halves, already split into the statements each one holds.
 type sections struct {
 	// up are the statements that run when the migration is applied.
-	up []string
+	up []statement
 	// down are the statements that run when it is rolled back, nil when the file marks no down.
-	down []string
+	down []statement
 	// authored reports whether the file carries a down marker at all.
 	authored bool
 	// declared is the reason the file gives for having no undo at all, empty when it gives none.
@@ -71,7 +71,7 @@ type sections struct {
 }
 
 // of returns one direction's statements, reporting a down the file authored none of.
-func (s sections) of(file string, dir ir.Direction) ([]string, error) {
+func (s sections) of(file string, dir ir.Direction) ([]statement, error) {
 	switch dir {
 	case ir.Up:
 		return s.up, nil
@@ -83,7 +83,7 @@ func (s sections) of(file string, dir ir.Direction) ([]string, error) {
 }
 
 // undo returns the down statements, the author's refusal, or the sentinel that has one derived.
-func (s sections) undo() ([]string, error) {
+func (s sections) undo() ([]statement, error) {
 	if s.declared != "" {
 		return nil, engine.DeclaredIrreversible(s.declared)
 	}
@@ -112,6 +112,10 @@ func split(file, src string) (sections, error) {
 		return sections{}, err
 	}
 
+	if err := checkNoStrayMarker(file, lines[:up], 1, "above the "+MarkerUp+" line"); err != nil {
+		return sections{}, err
+	}
+
 	down, err := markerAt(file, lines, MarkerDown)
 	if err != nil {
 		return sections{}, err
@@ -132,18 +136,48 @@ func split(file, src string) (sections, error) {
 // authoredSections divides a file that answers the down question by writing one, or by omitting it.
 func authoredSections(file string, lines []string, up, down int) (sections, error) {
 	if down < 0 {
-		return sections{up: Statements(join(lines[up+1:]))}, nil
+		upward, err := section(file, lines, up+1, len(lines))
+
+		return sections{up: upward}, err
 	}
 
 	if down < up {
 		return sections{}, markersReversed(file)
 	}
 
-	return sections{
-		up:       Statements(join(lines[up+1 : down])),
-		down:     Statements(join(lines[down+1:])),
-		authored: true,
-	}, nil
+	upward, err := section(file, lines, up+1, down)
+	if err != nil {
+		return sections{}, err
+	}
+
+	downward, err := section(file, lines, down+1, len(lines))
+	if err != nil {
+		return sections{}, err
+	}
+
+	return sections{up: upward, down: downward, authored: true}, nil
+}
+
+// section reads the statements on lines [from, to), refusing a no-transaction marker out of place.
+func section(file string, lines []string, from, to int) ([]statement, error) {
+	stmts, problem := scan(join(lines[from:to]))
+	if problem != nil {
+		return nil, misplacedMarker(file, from+problem.line, problem.why)
+	}
+
+	return stmts, nil
+}
+
+// checkNoStrayMarker refuses a no-transaction marker on lines no statement it could declare follows.
+func checkNoStrayMarker(file string, lines []string, offset int, where string) error {
+	for i, line := range lines {
+		if strings.TrimSpace(line) == MarkerNoTransaction {
+			return misplacedMarker(file, offset+i, "it sits "+where+", where no statement it "+
+				"could declare follows it")
+		}
+	}
+
+	return nil
 }
 
 // declaredSections divides a file that answers the down question by stating there is no answer.
@@ -165,7 +199,14 @@ func declaredSections(file string, lines []string, up, down, declared int,
 		return sections{}, statementBelowDeclaration(file, line)
 	}
 
-	return sections{up: Statements(join(lines[up+1 : declared])), declared: reason}, nil
+	if err := checkNoStrayMarker(file, lines[declared+1:], declared+2,
+		"below the "+MarkerIrreversible+" line"); err != nil {
+		return sections{}, err
+	}
+
+	upward, err := section(file, lines, up+1, declared)
+
+	return sections{up: upward, declared: reason}, err
 }
 
 // declarationAt returns the line declaring the migration has no undo, and the reason it gives.

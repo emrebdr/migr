@@ -801,66 +801,6 @@ func TestASessionWithoutTransactionalDDLRunsRatherThanBeingRefused(t *testing.T)
 	t.Log("on its engine. What changes is what a failure records, not how a success runs.")
 }
 
-func TestAMigrationThatCannotBeOneTransactionIsRefused(t *testing.T) {
-	conn := newRecorder(t, true)
-	opts, _ := staged(t, "aBc")
-
-	_, err := Apply(t.Context(), conn, opts)
-	if !errors.Is(err, ErrNotAtomic) {
-		t.Fatalf("Apply returned %v, want a refusal reporting ErrNotAtomic", err)
-	}
-
-	if !strings.Contains(err.Error(), "M13-T4") {
-		t.Errorf("the refusal does not name the task that lifts it: %v", err)
-	}
-
-	if slices.Contains(conn.calls, "begin") {
-		t.Errorf("the session was asked for %v before the refusal", conn.calls)
-	}
-
-	t.Log("Three runs means two commits, and M4-T9's dirty state does not exist to record that a")
-	t.Log("migration got halfway. M11-T7 made the transaction bracket the whole step loop, because")
-	t.Log("an emulated operation has to read what the steps before it did from inside one -- so")
-	t.Log("M13-T4 now writes the multi-run loop rather than deleting this precondition, and owes")
-	t.Log("an answer for where a deferred step's own split points come from.")
-}
-
-func TestAMigrationThatIsEntirelyStandaloneStatementsIsRefused(t *testing.T) {
-	conn := newRecorder(t, true)
-	opts, _ := staged(t, "AB")
-
-	_, err := Apply(t.Context(), conn, opts)
-	if !errors.Is(err, ErrNotAtomic) {
-		t.Fatalf("Apply returned %v, want a refusal reporting ErrNotAtomic", err)
-	}
-
-	if !strings.Contains(err.Error(), "M13-T4") {
-		t.Errorf("the refusal does not name the task that lifts it: %v", err)
-	}
-
-	if slices.Contains(conn.calls, "begin") {
-		t.Errorf("the session was asked for %v before the refusal", conn.calls)
-	}
-
-	t.Log("This is one group, so a refusal counting groups lets it through -- and the driver then")
-	t.Log("rejects the first statement for declaring it cannot run where the executor put it.")
-	t.Log("The precondition is one transactional run, which is also where the row is written.")
-}
-
-func TestTheRefusalCountsTheStatementsThatForcedTheSplit(t *testing.T) {
-	conn := newRecorder(t, true)
-	opts, _ := staged(t, "aBcDDe")
-
-	_, err := Apply(t.Context(), conn, opts)
-	if err == nil {
-		t.Fatal("Apply accepted a migration that cannot run as one transaction")
-	}
-
-	if !strings.Contains(err.Error(), "3 of its statements") {
-		t.Errorf("the refusal does not count the statements that cannot run in a transaction: %v", err)
-	}
-}
-
 func TestNothingIsAskedOfTheDatabaseWhenTheLockCannotBeTaken(t *testing.T) {
 	conn := newRecorder(t, true)
 	conn.lockErr = errors.New("somebody else holds it")
@@ -1026,32 +966,6 @@ func TestTheCleanupPathsDoNotInheritTheContextThatCanceledTheRun(t *testing.T) {
 	t.Log("Ctrl-C is the ordinary way a migration is interrupted. On the canceled context the")
 	t.Log("release fails and the lock stays held until the session ends, and the failure row is")
 	t.Log("never written -- both failing in exactly the case they exist for.")
-}
-
-func TestTheHistoryRowIsWrittenInsideTheLastRunThatCanHoldIt(t *testing.T) {
-	cases := []struct {
-		spec string
-		last int
-	}{
-		{"abc", 0},
-		{"ABC", -1},
-		{"aBc", 2},
-		{"abC", 0},
-		{"AbC", 1},
-		{"aBcDDe", 4},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.spec, func(t *testing.T) {
-			if got := lastTransactional(Groups(statements(tc.spec))); got != tc.last {
-				t.Fatalf("%q writes its row inside run %d, want %d", tc.spec, got, tc.last)
-			}
-		})
-	}
-
-	t.Log("The row goes in the last run that is a transaction, so nothing after it is uncommitted")
-	t.Log("when the row claims the migration applied. The first would claim it too early, and -1")
-	t.Log("is the migration that has nowhere to put it at all -- which is a refusal, not a run.")
 }
 
 func TestElapsedIsNeverNegative(t *testing.T) {

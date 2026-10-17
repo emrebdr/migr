@@ -21,7 +21,7 @@ export const PROTOCOL_VERSION = 1;
 export const PROTOCOL_VERSIONS: readonly number[] = [PROTOCOL_VERSION];
 
 /** The newest Operation IR version this SDK emits; an engine stating an older one still runs it. */
-export const IR_VERSION = 2;
+export const IR_VERSION = 3;
 
 /** What the engine calls this runtime, spelled as migr.yaml spells `migrations.language`. */
 export const LANGUAGE = "typescript";

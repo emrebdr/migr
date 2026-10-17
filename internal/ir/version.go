@@ -10,10 +10,10 @@ import (
 )
 
 // Version is the newest irVersion this build reads, which is what the engine states at initialize.
-const Version = 2
+const Version = 3
 
 // supported lists every irVersion this build can read, oldest first: each is a superset of the last.
-var supported = []int{1, Version}
+var supported = []int{1, 2, Version}
 
 // ErrNoVersion reports an IR document that carries no irVersion at all.
 var ErrNoVersion = errors.New(`document has no "irVersion" field`)
@@ -78,16 +78,41 @@ func VersionOf(ops Operations) int {
 	version := 1
 
 	for _, op := range ops {
-		version = max(version, op.Kind().Since())
+		version = max(version, Since(op))
 	}
 
 	return version
+}
+
+// noTransactionSince is the irVersion that first carries raw's no_transaction (ADR 0084).
+const noTransactionSince = 3
+
+// Since returns the oldest irVersion that carries one operation, which a field can raise above its kind's.
+func Since(op Operation) int {
+	if raw, ok := op.(Raw); ok && raw.NoTransaction {
+		return noTransactionSince
+	}
+
+	return op.Kind().Since()
+}
+
+// sinceWhat names what an operation needs a newer version for: its kind, or the field that raised it.
+func sinceWhat(op Operation) string {
+	if Since(op) > op.Kind().Since() {
+		return string(op.Kind()) + " carrying no_transaction"
+	}
+
+	return string(op.Kind())
 }
 
 // NewerError reports an operation a document or a session's stated version does not yet carry.
 type NewerError struct {
 	// Kind is the operation that needs the newer version.
 	Kind Kind
+	// What names the kind, or the kind and the field that needs the newer version.
+	What string
+	// Needs is the oldest version that carries it.
+	Needs int
 	// Stated is the version the document or the session stated.
 	Stated int
 }
@@ -95,14 +120,14 @@ type NewerError struct {
 // Error names the operation, the version it needs, and the one that was stated.
 func (e *NewerError) Error() string {
 	return fmt.Sprintf("%s needs irVersion %d, and what carried it states irVersion %d: "+
-		"upgrade migr to read it", e.Kind, e.Kind.Since(), e.Stated)
+		"upgrade migr to read it", e.What, e.Needs, e.Stated)
 }
 
 // CheckCarried reports the first operation a stated irVersion does not carry, and nothing otherwise.
 func CheckCarried(ops Operations, stated int) error {
 	for _, op := range ops {
-		if op.Kind().Since() > stated {
-			return &NewerError{Kind: op.Kind(), Stated: stated}
+		if Since(op) > stated {
+			return &NewerError{Kind: op.Kind(), What: sinceWhat(op), Needs: Since(op), Stated: stated}
 		}
 	}
 

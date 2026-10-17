@@ -1,6 +1,9 @@
 package sql
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // lineComment opens a comment that runs to the end of its line.
 const lineComment = "--"
@@ -19,6 +22,56 @@ func Statements(section string) []string {
 	return s.out
 }
 
+// statement is one statement a section holds, and whether a marker declared it runs outside a transaction.
+type statement struct {
+	// sql is the statement as written, comments above it included.
+	sql string
+	// standalone reports a statement the no-transaction marker sits directly above.
+	standalone bool
+}
+
+// misplaced is a no-transaction marker the scanner refused, at the line it is on within its section.
+type misplaced struct {
+	// line counts from one, within the section.
+	line int
+	// why says what about its place is wrong.
+	why string
+}
+
+// scan splits a section into statements, noting which a no-transaction marker declared, or refuses one.
+func scan(section string) ([]statement, *misplaced) {
+	s := &scanner{src: section, marking: true}
+	s.run()
+
+	if s.problem != nil {
+		return nil, s.problem
+	}
+
+	out := make([]statement, len(s.out))
+	for i, sql := range s.out {
+		if s.standalone[i] {
+			sql = unmarked(sql)
+		}
+
+		out[i] = statement{sql: sql, standalone: s.standalone[i]}
+	}
+
+	return out, nil
+}
+
+// unmarked removes the marker line from the statement it declared, since it is migr's and not the server's.
+func unmarked(sql string) string {
+	lines := strings.Split(sql, "\n")
+
+	for i, line := range lines {
+		if strings.TrimSpace(line) == MarkerNoTransaction {
+			return strings.TrimSpace(strings.Join(append(lines[:i:i], lines[i+1:]...), "\n"))
+		}
+	}
+
+	return sql
+}
+
 // scanner walks a section one byte at a time, tracking what quoting or comment it is inside.
 type scanner struct {
 	// src is the section being split.
@@ -31,6 +84,14 @@ type scanner struct {
 	code bool
 	// out is the statements found so far, in the order they appear.
 	out []string
+	// marking reports a scan that reads the no-transaction marker rather than passing it over.
+	marking bool
+	// pending is the line of a marker waiting for the statement below it, zero when none is.
+	pending int
+	// standalone holds, per statement in out, whether a marker declared it.
+	standalone []bool
+	// problem is the first marker refused, which ends what the scan reports.
+	problem *misplaced
 }
 
 // run reads to the end, ending a statement at every semicolon nothing is quoting.
@@ -51,6 +112,10 @@ func (s *scanner) run() {
 	}
 
 	s.emit()
+
+	if s.pending > 0 {
+		s.refuse(s.pending, "nothing follows it in its section, so it declares no statement")
+	}
 }
 
 // skipped consumes a comment or a quoted run whole, reporting whether it consumed anything.
@@ -74,6 +139,8 @@ func (s *scanner) emit() {
 
 	if s.code && statement != "" {
 		s.out = append(s.out, statement)
+		s.standalone = append(s.standalone, s.pending > 0)
+		s.pending = 0
 	}
 
 	s.start = s.pos
@@ -86,15 +153,53 @@ func (s *scanner) skipLineComment() bool {
 		return false
 	}
 
-	if end := strings.IndexByte(s.src[s.pos:], '\n'); end >= 0 {
-		s.pos += end
-
-		return true
+	end := len(s.src)
+	if newline := strings.IndexByte(s.src[s.pos:], '\n'); newline >= 0 {
+		end = s.pos + newline
 	}
 
-	s.pos = len(s.src)
+	if s.marking && s.aloneOnItsLine() && strings.TrimSpace(s.src[s.pos:end]) == MarkerNoTransaction {
+		s.mark()
+	}
+
+	s.pos = end
 
 	return true
+}
+
+// aloneOnItsLine reports a comment with nothing but whitespace before it on its line.
+func (s *scanner) aloneOnItsLine() bool {
+	lineStart := strings.LastIndexByte(s.src[:s.pos], '\n') + 1
+
+	return strings.TrimSpace(s.src[lineStart:s.pos]) == ""
+}
+
+// mark notes a no-transaction marker for the statement below it, refusing one with no place to be.
+func (s *scanner) mark() {
+	line := s.lineAt(s.pos)
+
+	switch {
+	case s.code:
+		s.refuse(line, "it sits inside a statement, which no semicolon has ended above it, "+
+			"and it declares the statement below it rather than one it is part of")
+	case s.pending > 0:
+		s.refuse(line, fmt.Sprintf("the marker on line %d is waiting for its statement too, and "+
+			"one marker declares one statement", s.pending))
+	default:
+		s.pending = line
+	}
+}
+
+// refuse records the first marker the scan cannot accept.
+func (s *scanner) refuse(line int, why string) {
+	if s.problem == nil {
+		s.problem = &misplaced{line: line, why: why}
+	}
+}
+
+// lineAt counts which line of the section a position is on, from one.
+func (s *scanner) lineAt(pos int) int {
+	return strings.Count(s.src[:pos], "\n") + 1
 }
 
 // skipBlockComment consumes a block comment whole, counting the nesting PostgreSQL allows.

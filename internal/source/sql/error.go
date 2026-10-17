@@ -87,6 +87,13 @@ func statementBelowDeclaration(file string, line int) error {
 		"has no undo to write", line, MarkerIrreversible))
 }
 
+// misplacedMarker refuses a no-transaction marker that declares no statement, or not the one it appears to.
+func misplacedMarker(file string, line int, why string) error {
+	return malformed(file, fmt.Sprintf("line %d carries %q, and %s. The marker goes on a line of "+
+		"its own directly above the one statement that cannot run inside a transaction",
+		line, MarkerNoTransaction, why))
+}
+
 // unreadable reports a migration whose file could not be read at all.
 func unreadable(file string, err error) error {
 	return fmt.Errorf("reading %s: %w", file, err)

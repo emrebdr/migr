@@ -412,9 +412,11 @@
 //
 // No USING clause on ALTER COLUMN ... TYPE: a cast that does not exist should fail loudly rather
 // than be coerced into one that silently loses data. No CONCURRENTLY on index creation, which is
-// M13-T11's, built on the split M13-T4 implements. So nothing here sets Statement.NoTransaction,
-// the golden format's no-transaction header stays unexercised until then, and a migration this
-// driver compiles is always exactly one transactional run.
+// M13-T11's, built on the split M13-T4 implemented. So nothing this driver composes sets
+// Statement.NoTransaction: only a raw operation declaring no_transaction does, which is how a .sql
+// migration builds an index concurrently today (ADR 0084). Measured on 16 and 17, the same CREATE
+// INDEX CONCURRENTLY undeclared is refused with 25001 inside the migration's transaction, and a
+// failed one -- a unique build over duplicates -- leaves the index behind INVALID.
 //
 // alter_column emits one statement per requested change, in a fixed order: type, then nullability,
 // then default. That is not cosmetic — SET NOT NULL against a column being retyped has to run after

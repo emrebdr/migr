@@ -164,14 +164,23 @@ func (s *Schema) carried(ops []Operation) error {
 	}
 
 	for i, op := range ops {
-		if op != nil && op.Kind().Since() > stated {
+		if op != nil && since(op) > stated {
 			return fmt.Errorf("%w: operation %d is %s, which needs irVersion %d, and the engine "+
-				"stated %d -- upgrade migr to run it", ErrNewerIR, i+1, op.Kind(), op.Kind().Since(),
+				"stated %d -- upgrade migr to run it", ErrNewerIR, i+1, describeSince(op), since(op),
 				stated)
 		}
 	}
 
 	return nil
+}
+
+// describeSince names what needs the newer version: the kind, or the kind and the field that raised it.
+func describeSince(op Operation) string {
+	if since(op) > op.Kind().Since() {
+		return string(op.Kind()) + " carrying no_transaction"
+	}
+
+	return string(op.Kind())
 }
 
 // documentsOf renders each operation as the IR document that crosses the wire verbatim.

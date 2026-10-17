@@ -99,6 +99,8 @@ func (o DropView) Validate() error {
 type Raw struct {
 	Driver string `json:"driver"`
 	SQL    string `json:"sql"`
+	// NoTransaction declares the statement cannot run inside a transaction, which irVersion 3 carries.
+	NoTransaction bool `json:"no_transaction,omitempty"`
 }
 
 // Kind returns the operation's discriminator.

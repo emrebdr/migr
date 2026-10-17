@@ -1,0 +1,9 @@
+{
+  "up": [
+    {"op":"raw","driver":"postgres","sql":"CREATE INDEX CONCURRENTLY idx_people_nickname ON people (nickname)","no_transaction":true},
+    {"op":"raw","driver":"postgres","sql":"ANALYZE people"}
+  ],
+  "down": [
+    {"op":"raw","driver":"postgres","sql":"DROP INDEX CONCURRENTLY idx_people_nickname","no_transaction":true}
+  ]
+}

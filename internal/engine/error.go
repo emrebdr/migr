@@ -584,6 +584,8 @@ type DirtyError struct {
 	Ordinal int32
 	// TransactionalDDL is what the session declared, since a false one is what most needs explaining.
 	TransactionalDDL bool
+	// Split reports a migration run in parts, a statement in it declaring it cannot run inside a transaction.
+	Split bool
 	// Checkpoint is how far a migration running in chunks got, and nil for one that ran statements.
 	Checkpoint *history.Checkpoint
 	// Err is what stopped it, a *StatementError where a statement did.
@@ -608,6 +610,11 @@ const expandedLate = "\nThis engine compiles %d of this migration's operations a
 // autoCommitting is why a session's own declaration explains the window, when it is the reason.
 const autoCommitting = "\nThis session reports no transactional DDL, so a migration is not one " +
 	"all-or-nothing unit here.\n"
+
+// splitCommitting is why a migration on transactional DDL still left statements behind it.
+const splitCommitting = "\nA statement in this migration declares it cannot run inside a transaction, so " +
+	"it ran on its own and each run of statements around it committed separately: the migration is " +
+	"not one all-or-nothing unit even on an engine whose DDL is transactional (ADR 0084).\n"
 
 // chunkedTemplate is what a migration running in chunks left, which the next migr up carries on from.
 const chunkedTemplate = `this migration stopped partway through running in chunks -- every chunk
@@ -635,7 +642,7 @@ func (e *DirtyError) Error() string {
 		e.Batch,
 		e.Ordinal,
 		e.LastStatement,
-		describeAtomicity(e.TransactionalDDL),
+		describeAtomicity(e.TransactionalDDL, e.Split),
 		describeUncompiled(e.Deferred),
 	)
 }
@@ -667,13 +674,16 @@ func (e *DirtyError) Unwrap() []error {
 	return []error{ErrDirty, e.Err}
 }
 
-// describeAtomicity explains the window with the session's own declaration, where that is the reason.
-func describeAtomicity(transactional bool) string {
-	if transactional {
+// describeAtomicity explains the window with the session's own declaration, or the split that opened it.
+func describeAtomicity(transactional, split bool) string {
+	switch {
+	case !transactional:
+		return autoCommitting
+	case split:
+		return splitCommitting
+	default:
 		return ""
 	}
-
-	return autoCommitting
 }
 
 // DirtyStateError refuses a run against a database whose last run left a migration between states.

@@ -31,6 +31,8 @@ type executor struct {
 	position int32
 	// from is how many of a migration's statements a resume skips, and zero for every other run.
 	from int32
+	// committed is how many of a migration's statements are durable, which every part it finishes moves on.
+	committed int32
 	// shift is how many ordinals the rows of chunked runs in progress took beyond their own.
 	shift int32
 }
@@ -190,14 +192,18 @@ func (e *executor) runRetrying(ctx context.Context, ready *prepared, rec *histor
 ) (int32, int, error) {
 	var tried attempts
 
-	start, original := e.from, slices.Clone(ready.compiled.Steps)
+	original := slices.Clone(ready.compiled.Steps)
 
 	for {
 		e.position = 0
 
-		survived, err := e.runMigration(ctx, ready, e.recorder(rec))
+		survived, err := e.runMigration(ctx, ready, rec)
 		if err == nil {
 			return 0, tried.retries, nil
+		}
+
+		if ranBare(err) {
+			return survived, tried.retries, notRetriedBare(err)
 		}
 
 		again, waitErr := e.backoff(ctx, &tried, Retry{Migration: ready.item.migration,
@@ -210,124 +216,55 @@ func (e *executor) runRetrying(ctx context.Context, ready *prepared, rec *histor
 			return survived, tried.retries, tried.exhausted(err)
 		}
 
-		e.rewind(ready, start, original, survived)
+		e.rewind(ready, original, survived)
 	}
 }
 
-// rewind sets up the next attempt: from the start where the rollback undid everything, else past what held.
-func (e *executor) rewind(ready *prepared, start int32, original []plan.Step, survived int32) {
-	if e.conn.Capabilities().TransactionalDDL() {
-		e.from = start
-		ready.compiled.Steps = slices.Clone(original)
-
-		return
-	}
-
+// rewind sets up the next attempt past what survived, compiling again every step the rollback undid.
+func (e *executor) rewind(ready *prepared, original []plan.Step, survived int32) {
 	e.from = survived
+
+	if e.conn.Capabilities().TransactionalDDL() {
+		ready.compiled.Steps = restoredAfter(ready.compiled.Steps, original, survived)
+	}
 }
 
-// checkRunnable refuses a migration this executor cannot run atomically, naming the task that will.
-func (e *executor) checkRunnable(ready prepared) error {
-	groups := Groups(ready.compiled.Statements()[e.from:])
+// restoredAfter keeps every step whose statements all survived and puts the rest back as they were compiled.
+func restoredAfter(current, original []plan.Step, survived int32) []plan.Step {
+	restored := slices.Clone(original)
 
+	var end int32
+
+	for i, step := range current {
+		for range step.Statements {
+			end++
+		}
+
+		if len(step.Statements) > 0 && end <= survived {
+			restored[i] = step
+		}
+	}
+
+	return restored
+}
+
+// checkRunnable refuses a migration that would report success for a change that never happened.
+func (e *executor) checkRunnable(ready prepared) error {
 	if nothingToUndo(ready.compiled) {
 		return nil
 	}
 
-	if len(groups) == 0 && ready.compiled.Deferred() == 0 {
+	if int(e.from) >= len(ready.compiled.Statements()) && ready.compiled.Deferred() == 0 {
 		return fmt.Errorf("%w, so running it would report success for a schema change that never "+
 			"happened", ErrNothingToRun)
 	}
 
-	return checkAtomic(groups)
+	return nil
 }
 
 // nothingToUndo reports a down that emitted no operations, which only an author can say (ADR 0079).
 func nothingToUndo(compiled plan.Plan) bool {
 	return compiled.Direction == ir.Down && len(compiled.Steps) == 0
-}
-
-// checkAtomic refuses statements that cannot be the one transaction a migration runs inside.
-func checkAtomic(groups []Group) error {
-	if len(groups) > 1 {
-		return fmt.Errorf("%w: it compiles to %d runs, because %d of its statements declare they "+
-			"cannot run inside a transaction, and nothing here splits a migration around one -- "+
-			"that is M13-T4's, which writes the loop that brackets each run: a failure partway "+
-			"through such a split already records how far it got, and an operation compiled "+
-			"against the database can no longer read the statements before it from inside one",
-			ErrNotAtomic, len(groups), countStandalone(groups))
-	}
-
-	if len(groups) == 1 && lastTransactional(groups) < 0 {
-		return fmt.Errorf("%w: every statement in it declares it cannot run inside a transaction, "+
-			"so there is no transaction for its history row to be written inside -- running a "+
-			"migration outside one is M13-T4's", ErrNotAtomic)
-	}
-
-	return nil
-}
-
-// countStandalone reports how many statements declared they cannot run inside a transaction.
-func countStandalone(groups []Group) int {
-	total := 0
-
-	for _, group := range groups {
-		if !group.Transactional {
-			total += len(group.Statements)
-		}
-	}
-
-	return total
-}
-
-// lastTransactional returns the run the history row is written inside, or -1 when no run is one.
-func lastTransactional(groups []Group) int {
-	last := -1
-
-	for i, group := range groups {
-		if group.Transactional {
-			last = i
-		}
-	}
-
-	return last
-}
-
-// The transaction brackets the whole step loop rather than one statement list, and that is what
-// this task bought: an emulated operation is compiled against the database, so the only schema it
-// can be rendered from correctly is the one the steps before it left -- which, inside a
-// transaction, means the statements those steps have already sent and not yet committed. Both
-// expanders read through the session's open transaction already, so this needed no driver change.
-//
-// It is also why M13-T4 writes a multi-run loop rather than deleting a precondition: a migration
-// split around a standalone statement has more than one transaction, and an expansion after the
-// split can no longer read what the statements before it did from inside one.
-
-// runMigration runs a migration's steps in order, reporting how many statements a failure left behind.
-func (e *executor) runMigration(ctx context.Context, ready *prepared, record driver.Work) (int32, error) {
-	err := e.conn.Transact(ctx, func(ctx context.Context) error {
-		if err := e.runSteps(ctx, ready); err != nil {
-			return err
-		}
-
-		return record(ctx)
-	})
-	if err != nil {
-		return e.durable(err), err
-	}
-
-	return 0, nil
-}
-
-// runSteps runs each operation's statements, compiling an emulated one against what the last left.
-func (e *executor) runSteps(ctx context.Context, ready *prepared) error {
-	for i := range ready.compiled.Steps {
-		if err := e.runStep(ctx, ready, i); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // runStep compiles one operation where it was deferred, and runs the statements it is.
@@ -354,7 +291,7 @@ func (e *executor) expand(ctx context.Context, m migration.Migration, step plan.
 		return plan.Step{}, err
 	}
 
-	if err := checkAtomic(Groups(expanded.Statements)); err != nil {
+	if err := checkExpansion(expanded.Statements); err != nil {
 		return plan.Step{}, &plan.CompileError{Migration: m, Index: step.Index,
 			Kind: step.Op.Kind(), Err: err}
 	}
@@ -362,13 +299,13 @@ func (e *executor) expand(ctx context.Context, m migration.Migration, step plan.
 	return expanded, nil
 }
 
-// durable reports how many of a migration's statements survive a failure in the transaction it ran in.
+// durable reports how many of a migration's statements survive a failure in the part it stopped in.
 func (e *executor) durable(err error) int32 {
 	if e.conn.Capabilities().TransactionalDDL() {
-		return e.from
+		return e.committed
 	}
 
-	return e.reached(err)
+	return max(e.committed, e.reached(err))
 }
 
 // reached reports the position the failing run got to, which is one before the statement that failed.
@@ -462,6 +399,7 @@ func (e *executor) leftDirty(ready prepared, survived int32, cause error) error 
 		Batch:            e.batch,
 		Ordinal:          e.ordinalOf(ready.item),
 		TransactionalDDL: e.conn.Capabilities().TransactionalDDL(),
+		Split:            splits(ready.compiled),
 		Err:              cause,
 	}
 }

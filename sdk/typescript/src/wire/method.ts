@@ -8,7 +8,7 @@
 export const PROTOCOL_VERSION = 1;
 
 /** IR_VERSION is the newest Operation IR version this SDK emits; an engine stating an older one still runs it. */
-export const IR_VERSION = 2;
+export const IR_VERSION = 3;
 
 /** The methods the engine calls on a runtime, in the order §3 and §4 document them. */
 export const INITIALIZE = "initialize";

@@ -57,6 +57,8 @@ func (r *ViewRecord) Was(query string) *View {
 // Statements are raw statements addressed to one engine by name, the escape hatch the IR cannot express.
 type Statements struct {
 	build *builder
+	// last is the statement most recently added, which NoTransaction marks.
+	last *Raw
 }
 
 // Apply emits every statement built here, and returns the first problem found.
@@ -66,7 +68,17 @@ func (s *Statements) Apply(ctx context.Context) error {
 
 // Raw adds one more statement, in the named engine's own dialect.
 func (s *Statements) Raw(driver, sql string) *Statements {
-	s.build.add(&Raw{Driver: driver, SQL: sql})
+	s.last = &Raw{Driver: driver, SQL: sql}
+	s.build.add(s.last)
+
+	return s
+}
+
+// NoTransaction declares that the statement just added cannot run inside a transaction.
+func (s *Statements) NoTransaction() *Statements {
+	if s.last != nil {
+		s.last.NoTransaction = true
+	}
 
 	return s
 }

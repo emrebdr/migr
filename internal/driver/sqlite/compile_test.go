@@ -238,9 +238,9 @@ func TestNothingThisDriverCompilesLeavesTheTransaction(t *testing.T) {
 		}
 	}
 
-	t.Log("SQLite's DDL is transactional and this driver emits nothing concurrent, so a migration")
-	t.Log("it compiles is always exactly one transactional run. The golden format's no-transaction")
-	t.Log("header stays unexercised here, as it does for PostgreSQL.")
+	t.Log("SQLite's DDL is transactional and this driver composes nothing that cannot run in a")
+	t.Log("transaction. Only a raw statement declaring no_transaction -- a VACUUM -- does, and")
+	t.Log("the representative raw here declares nothing (ADR 0084).")
 }
 
 func TestEveryComposedStatementIsTerminatedAndRawIsNot(t *testing.T) {

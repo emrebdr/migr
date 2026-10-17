@@ -291,8 +291,8 @@ func TestRecordingRoundTripsThroughTheWireForm(t *testing.T) {
 		t.Fatalf("decoding: %v", err)
 	}
 
-	if doc.IRVersion != Version {
-		t.Errorf("document carries irVersion %d, want %d", doc.IRVersion, Version)
+	if want := VersionOf(sealed.Operations()); doc.IRVersion != want {
+		t.Errorf("document carries irVersion %d, want %d", doc.IRVersion, want)
 	}
 
 	if !reflect.DeepEqual(doc.Operations, sealed.Operations()) {

@@ -39,6 +39,7 @@ import type {
   DropUnique,
   DropView,
   Operation,
+  Raw,
   Transform,
 } from "./operation.ts";
 import type { Type } from "./type.ts";
@@ -225,6 +226,8 @@ export interface Statements {
   apply(): Promise<void>;
   /** Adds one more statement, in the named engine's own dialect. */
   raw(driver: string, sql: string): Statements;
+  /** Declares that the statement just added cannot run inside a transaction. */
+  noTransaction(): Statements;
 }
 
 /** columns names the columns a dropped index, unique constraint, or primary key covered. */
@@ -586,10 +589,19 @@ function viewRecord(chain: ViewChain, record: (prior: ViewDef) => void): ViewRec
 
 /** statementsChain opens a chain of raw statements, each addressed to one engine by name. */
 export function statementsChain(build: Builder): Statements {
+  let last: Raw | undefined;
   const chain: Statements = {
     apply: () => build.apply(),
     raw: (driver: string, sql: string) => {
-      build.add({ op: "raw", driver, sql });
+      last = { op: "raw", driver, sql };
+      build.add(last);
+
+      return chain;
+    },
+    noTransaction: () => {
+      if (last !== undefined) {
+        last.no_transaction = true;
+      }
 
       return chain;
     },

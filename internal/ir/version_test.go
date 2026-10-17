@@ -43,12 +43,12 @@ func TestUnstampedDocumentRefusesToMarshal(t *testing.T) {
 }
 
 func TestUnknownVersionNamesBothSides(t *testing.T) {
-	_, err := UnmarshalDocument([]byte(`{"irVersion":3,"operations":[]}`))
+	_, err := UnmarshalDocument([]byte(`{"irVersion":4,"operations":[]}`))
 	if err == nil {
 		t.Fatal("an unreadable version must be rejected")
 	}
 
-	for _, want := range []string{"3", "1, 2", "unsupported irVersion"} {
+	for _, want := range []string{"4", "1, 2, 3", "unsupported irVersion"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q, got %q", want, err)
 		}
@@ -59,8 +59,8 @@ func TestUnknownVersionNamesBothSides(t *testing.T) {
 		t.Fatalf("error is %T, want *VersionError", err)
 	}
 
-	if verr.Received != 3 {
-		t.Errorf("VersionError.Received = %d, want 3", verr.Received)
+	if verr.Received != 4 {
+		t.Errorf("VersionError.Received = %d, want 4", verr.Received)
 	}
 
 	if !reflect.DeepEqual(verr.Supported, Supported()) {
@@ -187,7 +187,7 @@ func TestCheckVersion(t *testing.T) {
 		t.Errorf("the current version must be readable: %v", err)
 	}
 
-	for _, v := range []int{0, -1, 3, 99} {
+	for _, v := range []int{0, -1, 4, 99} {
 		if err := CheckVersion(v); err == nil {
 			t.Errorf("CheckVersion(%d) should fail", v)
 		}
@@ -202,8 +202,8 @@ func TestSupportedIsACopy(t *testing.T) {
 		t.Error("Supported() must hand out a copy, not the package's own slice")
 	}
 
-	if !slices.Equal(Supported(), []int{1, Version}) {
-		t.Errorf("Supported() = %v, want [1 %d]", Supported(), Version)
+	if !slices.Equal(Supported(), []int{1, 2, Version}) {
+		t.Errorf("Supported() = %v, want [1 2 %d]", Supported(), Version)
 		t.Log("Each version is a superset of the one before it, so a build that reads 2 reads")
 		t.Log("every document 1 can hold -- and dropping 1 would refuse every migration recorded")
 		t.Log("before the data operations existed.")

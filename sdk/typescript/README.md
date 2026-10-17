@@ -96,6 +96,10 @@ export default defineMigration({
 
 `s.table(name)` changes a table that already exists, `s.view(name)` a view, and `s.raw(driver, sql)`
 is the escape hatch for what the IR cannot express — it names one engine, so no other will run it.
+`.noTransaction()` after a statement declares that it cannot run inside a transaction, as
+`CREATE INDEX CONCURRENTLY` cannot: migr runs it on its own, the statements around it in
+transactions of their own, and records how far it got after each. It needs an engine reading
+`irVersion` 3, and against an older one the migration is refused before anything is sent.
 
 **Nothing is emitted until `apply`**, which sends the whole chain in one call and empties it, so
 applying twice does not emit twice. A chain built without it emits nothing at all, and a migration

@@ -325,7 +325,7 @@ func (d *fakeDriver) Compile(op ir.Operation) ([]driver.Statement, error) {
 		return nil, driver.NeedsSession(fakeName, op.Kind(), "it reads the schema first")
 	}
 
-	first := driver.Statement{SQL: raw.SQL, NoTransaction: raw.SQL == d.fake.outsideTx}
+	first := driver.Statement{SQL: raw.SQL, NoTransaction: raw.NoTransaction || raw.SQL == d.fake.outsideTx}
 	if d.fake.emulates == "" {
 		return []driver.Statement{first}, nil
 	}

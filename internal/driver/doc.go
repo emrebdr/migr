@@ -124,7 +124,9 @@
 //
 // Deciding which statements share a transaction is not a driver's. That is grouping, it reads
 // Statement.NoTransaction and nothing else, and it lives in internal/engine so three drivers
-// cannot reach three answers about one statement list.
+// cannot reach three answers about one statement list. Every driver sets the flag from a raw
+// operation's no_transaction and from nothing else, and refuses a statement carrying it inside a
+// transaction (ADR 0084).
 //
 // The migration lock is taken before the transaction begins, so deferring both in that order makes
 // the rollback run before the release. PostgreSQL refuses every command in an aborted transaction,

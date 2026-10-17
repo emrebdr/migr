@@ -68,6 +68,8 @@ type Raw struct {
 	Driver string `json:"driver"`
 	// SQL is the statement itself, in that engine's own dialect.
 	SQL string `json:"sql"`
+	// NoTransaction declares the statement cannot run inside a transaction, which irVersion 3 carries.
+	NoTransaction bool `json:"no_transaction,omitempty"`
 }
 
 // Kind names this operation, which is raw.

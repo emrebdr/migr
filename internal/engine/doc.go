@@ -226,20 +226,34 @@
 // zero rather than allowed to fail a migration that worked, since Validate refuses a negative
 // duration and it validates inside the transaction.
 //
-// # Grouping decides whether a migration can be one transaction
+// # A migration runs as parts, split around what cannot share a transaction
 //
 // A statement may declare that it cannot run inside a transaction; CREATE INDEX CONCURRENTLY is why
-// the flag exists. Groups splits a statement list into consecutive runs that agree on that flag, and
-// that split is what says whether a migration can be the single transaction this executor runs it
-// inside (ADR 0017). Today's accepted set is exactly "at least one statement, and every statement
-// transactional", which is one transactional group; checkRunnable refuses every other shape and
-// names M13-T4, which is where a migration becomes a sequence of runs.
+// the flag exists, and a raw operation's no_transaction is how a migration says so (M13-T4, ADR
+// 0084). The steps are divided into parts before anything runs: consecutive statements that may
+// share a transaction are one part and run inside one, and a statement that may not is a part of its
+// own and runs bare. A migration with no such statement is one part, which is exactly the one
+// transaction M11-T7 made bracket the whole step loop, so nothing about it changed.
 //
-// The known statements are grouped before the lock, as they always were. An expansion's statements
-// are grouped as they arrive, which is the one moment they exist — and a refusal there is inside the
-// transaction, so the transaction is discarded. ErrNothingToRun reads a statement list, so a plan
+// Every part but the last commits on its own, so each one writes a dirty row saying how far the
+// migration got -- inside its transaction where it has one, so the row commits with the statements,
+// and straight after the statement where it has none. The last part writes the applied row, bare
+// where it is a statement of that kind. Each row takes the next ordinal, as a chunked run's do. A
+// crash between a bare statement and the row after it undercounts by that one statement; nothing
+// records a statement that has no transaction atomically.
+//
+// An operation compiled as it runs belongs to a transactional part and is expanded inside that
+// part's transaction, so what it reads is the parts before it committed and its own part's
+// statements sent and not yet committed -- the schema the steps before it left. An expansion is
+// still held to statements a transaction takes, as it arrives, which is the one moment they exist;
+// a refusal there discards the part's transaction. ErrNothingToRun reads a statement list, so a plan
 // holding only deferred operations is refused only where nothing is deferred either; otherwise every
 // SQLite migration of one rebuild would be unrunnable (ADR 0071).
+//
+// What survives a failure is what the parts before it committed, and on an engine whose DDL commits
+// also what the failing part ran before the statement that failed. A lock wait spent in a
+// transactional part retries from where what survived ends, so a committed part never runs twice;
+// one spent by a bare statement is not retried at all, since nothing rolled back what it left.
 //
 // The statement counter continues across a migration's steps and restarts for the next migration,
 // because a position is a place in one migration and M9-T6 resumes from it.

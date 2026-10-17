@@ -9,7 +9,7 @@ import (
 const Version = 1
 
 // IRVersion is the newest Operation IR version this SDK emits; an engine stating an older one still runs it.
-const IRVersion = 2
+const IRVersion = 3
 
 // The methods the engine calls on a runtime, spelled as docs/protocol.md spells them.
 const (

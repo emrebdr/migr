@@ -304,11 +304,12 @@
 // what is there. PostgreSQL performs it, so passing this through would give one migration two
 // meanings on three engines.
 //
-// No statement sets NoTransaction. It means a statement cannot run inside a transaction, and MySQL's
-// DDL can be sent inside one -- it just commits it. Setting the flag would make internal/engine
-// split every migration into single-statement groups, which is the dirty-state model's to choose
-// rather than a flag the compiler sets. M9-T5 chose: the groups are left alone and a failure partway
-// records how far it got.
+// No statement this driver composes sets NoTransaction. It means a statement cannot run inside a
+// transaction, and MySQL's DDL can be sent inside one -- it just commits it. Setting the flag would
+// make internal/engine split every migration into single-statement parts, which is the dirty-state
+// model's to choose rather than a flag the compiler sets. M9-T5 chose: a failure partway records how
+// far it got. A raw operation declaring no_transaction is still carried as given, and changes where
+// the history rows are written rather than what survives (ADR 0084).
 //
 // # Character set and collation, which are declared rather than inherited
 //

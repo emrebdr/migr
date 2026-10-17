@@ -255,6 +255,8 @@ export interface Raw {
   driver: string;
   /** The statement itself, in that engine's own dialect. */
   sql: string;
+  /** Declares the statement cannot run inside a transaction, which irVersion 3 carries. */
+  no_transaction?: boolean;
 }
 
 /** Transform names what data_transform applies to its source, the text functions over its text. */
@@ -465,7 +467,7 @@ export const SHAPES: Readonly<Record<Kind, Shape>> = {
     opt("from", VIEW_DEF),
   ],
   drop_view: [req("view"), opt("from", VIEW_DEF)],
-  raw: [req("driver"), req("sql")],
+  raw: [req("driver"), req("sql"), opt("no_transaction", undefined, EMPTY)],
   data_copy: [req("from"), req("to"), req("columns", COPY_COLUMN, { list: true })],
   data_backfill: [req("table"), req("column"), req("type"), req("value", DEFAULT)],
   data_transform: [req("table"), req("column"), req("type"), req("from"), req("function")],

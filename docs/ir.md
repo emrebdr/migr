@@ -1,4 +1,4 @@
-# migr Operation IR — `irVersion` 2
+# migr Operation IR — `irVersion` 3
 
 The neutral middle of `migr`. Language SDKs emit it; database drivers consume it. Nothing else
 crosses that boundary.
@@ -8,9 +8,9 @@ crosses that boundary.
 ### 1.1 What this document specifies
 
 The wire format: the document envelope, how an operation is encoded as JSON, the twenty-three
-operations of `irVersion` 2 with their fields and constraints — the twenty `irVersion` 1 carries,
-and the three data operations version 2 added — the logical type grammar, and how an operation is
-reversed.
+operations of `irVersion` 3 with their fields and constraints — the twenty `irVersion` 1 carries,
+the three data operations version 2 added, and the one field version 3 added to `raw` — the logical
+type grammar, and how an operation is reversed.
 
 It is written to be implementable without reading the Go. If something here is ambiguous enough
 that two implementations could disagree on the bytes, that is a defect in this document.
@@ -70,15 +70,19 @@ here would create fields that can disagree with their own container.
 
 ### 2.2 `irVersion`
 
-An integer: `1` or `2`. Version 2 is a **superset** of version 1 — every operation 1 carries, plus
+An integer: `1`, `2` or `3`. Each is a **superset** of the one before it. Version 2 added
 [`data_copy`](#data_copy), [`data_backfill`](#data_backfill) and
-[`data_transform`](#data_transform) — so a consumer that reads 2 reads every document 1 can hold.
+[`data_transform`](#data_transform); version 3 added [`raw`](#raw)'s `no_transaction`. So a consumer
+that reads 3 reads every document 1 or 2 can hold.
 
 **A producer states the oldest version that carries every operation in the document**: `1` for a
-document of schema operations alone, `2` for one holding a data operation. A version-1 document
-therefore keeps its exact bytes, and an engine that reads only 1 keeps reading it. A document
-stating a version that does not carry one of its operations — `irVersion` 1 holding `data_copy` —
-is refused, naming the operation and the version it needs ([ADR 0077](adr/0077-data-operations.md)).
+document of schema operations alone, `2` for one holding a data operation, `3` for one holding a
+`raw` that sets `no_transaction`. A version is therefore a property of an operation's *fields* as
+well as of its kind. A version-1 document keeps its exact bytes, and an engine that reads only 1
+keeps reading it. A document stating a version that does not carry one of its operations —
+`irVersion` 1 holding `data_copy`, or `2` holding `"no_transaction": true` — is refused, naming the
+operation and the version it needs ([ADR 0077](adr/0077-data-operations.md),
+[ADR 0084](adr/0084-transaction-opt-out.md)).
 
 It is the one `camelCase` key in an otherwise `snake_case` format. That is deliberate rather than
 an oversight: the decision records that established the envelope name it that way, and those
@@ -425,7 +429,8 @@ fills NULLs, so neither overwrites a value. `ir.DestructiveKinds()` is that list
 > `drop_primary_key`, and records why the set was asymmetric without them. Decision records are
 > immutable snapshots of a decision at a point in time, so 0006 is earlier, not wrong. `irVersion`
 > 1's set is twenty; [ADR 0077](adr/0077-data-operations.md) added the three data operations in
-> version 2, making twenty-three.
+> version 2, making twenty-three. [ADR 0084](adr/0084-transaction-opt-out.md)'s version 3 added a
+> field to `raw` and no operation.
 
 ### 7.2 Conventions the format does not enforce
 
@@ -1035,6 +1040,7 @@ The driver-scoped escape hatch: SQL run verbatim against the engine it names.
 |---|---|---|---|
 | `driver` | string | yes | The engine this SQL targets. |
 | `sql` | string | yes | Run verbatim. |
+| `no_transaction` | bool | no | The statement cannot run inside a transaction. `irVersion` 3. Omitted when false. |
 
 Naming the driver is what turns "this migration does not work on MySQL" from a runtime failure
 into a validation failure. It does not make the statement portable; nothing can.
@@ -1044,6 +1050,23 @@ into a validation failure. It does not make the statement portable; nothing can.
   "op": "raw",
   "driver": "postgres",
   "sql": "CREATE EXTENSION IF NOT EXISTS pgcrypto"
+}
+```
+
+**`no_transaction` declares that the statement must run outside any transaction**, as PostgreSQL's
+`CREATE INDEX CONCURRENTLY` and SQLite's `VACUUM` must. It is a fact about the statement rather
+than an instruction about the migration: the engine runs the operations before it in one
+transaction, runs this one on its own, and runs the ones after it in another. Each of those
+commits separately, so a failure partway leaves the migration between states, and the history
+says how far it got ([ADR 0084](adr/0084-transaction-opt-out.md)). A document carrying it states
+`irVersion` 3.
+
+```json
+{
+  "op": "raw",
+  "driver": "postgres",
+  "sql": "CREATE INDEX CONCURRENTLY users_email ON users (email)",
+  "no_transaction": true
 }
 ```
 

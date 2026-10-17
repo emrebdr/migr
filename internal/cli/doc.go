@@ -282,11 +282,14 @@
 // It does not print lock impact, and that is not an omission. Every .sql
 // migration compiles to ir.Raw, which PostgreSQL declares LockUnknown, so every
 // line of every plan M5 can produce would read `unknown`. The lock axis and
-// --safety are M13-T6, by name. Nor does it mark a statement that cannot run
-// inside a transaction: no driver sets Statement.NoTransaction yet, and
-// engine.checkRunnable refuses such a migration before a plan could print one.
-// TestPlanRefusesAMigrationNothingCanRunInOneTransaction fails the day M13-T4
-// changes that, which is when the marker is worth adding.
+// --safety are M13-T6, by name.
+//
+// It marks a statement that cannot run inside a transaction with a [no transaction]
+// line directly above it, and a migration holding one with how many parts it runs
+// as, each committing on its own (M13-T4, ADR 0084); --json carries both, as
+// no_transaction positions beside an operation's statements and parts beside a
+// migration, and --dry-run's row says "in N parts". M5-T4 wrote that marker and
+// deleted it, because the executor refused every migration that could carry one.
 //
 // # What permits destruction, and what only reports it
 //

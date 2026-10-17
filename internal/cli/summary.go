@@ -113,6 +113,8 @@ type planned struct {
 	Deferred int `json:"deferred,omitempty"`
 	// Chunked is how many of its operations run in chunks, whose statements are not counted.
 	Chunked int `json:"chunked,omitempty"`
+	// Parts is how many parts it runs as where a statement in it cannot run inside a transaction.
+	Parts int `json:"parts,omitempty"`
 	// Refused is how many of its operations destroy what nothing permits, which migr up stops at.
 	Refused int `json:"refused,omitempty"`
 	// Unsupported is how many this server declares it cannot perform, which migr up also stops at.
@@ -207,6 +209,7 @@ func planOf(s *session, previewed engine.Previewed) planSummary {
 			Statements:  statementsOf(step.Plan),
 			Deferred:    int(step.Plan.Deferred()),
 			Chunked:     int(step.Plan.Chunked()),
+			Parts:       partsOf(step.Plan),
 			Refused:     refusedIn(allowed, step.Plan),
 			Unsupported: unsupportedIn(caps, step.Plan),
 		})
@@ -404,7 +407,19 @@ func describePlannedWork(step planned) string {
 		return describeOperations(step.Chunked) + " in chunks"
 	}
 
-	return describeStatements(step.Statements)
+	return describeStatements(step.Statements) + describeParts(step.Parts)
+}
+
+// describeParts says that a migration runs in parts, each committing on its own, where it does.
+func describeParts(n int) string {
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return " outside any transaction"
+	}
+
+	return fmt.Sprintf(" in %d parts", n)
 }
 
 // describeStatements counts statements with the right noun.

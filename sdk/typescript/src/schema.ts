@@ -125,16 +125,33 @@ export interface Window extends Schema {
 /** carried refuses an operation newer than the engine stated it reads, before anything is sent. */
 function carried(ops: readonly Operation[], stated: number): void {
   ops.forEach((op, at) => {
-    const needs = since(op.op);
+    const needs = operationSince(op);
 
     if (needs > stated) {
       throw new ProtocolError(
         UNSUPPORTED_IR,
-        `operation ${at + 1} is ${op.op}, which needs irVersion ${needs}, and the engine ` +
-          `stated ${stated} -- upgrade migr to run it`,
+        `operation ${at + 1} is ${describeSince(op)}, which needs irVersion ${needs}, and the ` +
+          `engine stated ${stated} -- upgrade migr to run it`,
       );
     }
   });
+}
+
+/** NO_TRANSACTION_SINCE is the irVersion that first carries raw's no_transaction. */
+const NO_TRANSACTION_SINCE = 3;
+
+/** operationSince returns the oldest irVersion carrying one operation, which a field can raise. */
+export function operationSince(op: Operation): number {
+  if (op.op === "raw" && op.no_transaction === true) {
+    return NO_TRANSACTION_SINCE;
+  }
+
+  return since(op.op);
+}
+
+/** describeSince names what needs the newer version: the kind, or the kind and the field raising it. */
+function describeSince(op: Operation): string {
+  return operationSince(op) > since(op.op) ? `${op.op} carrying no_transaction` : op.op;
 }
 
 /** newSchema opens the window one migration.execute acts through. */

@@ -62,7 +62,8 @@ func TestEveryOperationCompilesToStatementsThatCarrySQL(t *testing.T) {
 
 			if stmt.NoTransaction {
 				t.Errorf("%s: statement %d opts out of the transaction, which nothing this driver "+
-					"emits needs until CREATE INDEX CONCURRENTLY arrives (M13-T11)", op.Kind(), i+1)
+					"composes needs until it emits CREATE INDEX CONCURRENTLY itself (M13-T11) -- "+
+					"only a raw declaring no_transaction does today", op.Kind(), i+1)
 			}
 		}
 	}

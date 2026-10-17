@@ -268,7 +268,7 @@ func compileRaw(op ir.Raw) ([]driver.Statement, error) {
 		return nil, refuse(op, problem)
 	}
 
-	return []driver.Statement{{SQL: op.SQL}}, nil
+	return []driver.Statement{{SQL: op.SQL, NoTransaction: op.NoTransaction}}, nil
 }
 
 // checkRaw reports SQL addressed to another engine, or SQL that would run nothing.

@@ -58,6 +58,25 @@ func (k Kind) Since() int {
 	return 1
 }
 
+// noTransactionSince is the irVersion that first carries raw's no_transaction.
+const noTransactionSince = 3
+
+// since returns the oldest irVersion that carries one operation, which a field can raise above its kind's.
+func since(op Operation) int {
+	switch raw := op.(type) {
+	case Raw:
+		if raw.NoTransaction {
+			return noTransactionSince
+		}
+	case *Raw:
+		if raw != nil && raw.NoTransaction {
+			return noTransactionSince
+		}
+	}
+
+	return op.Kind().Since()
+}
+
 // Kinds returns every operation kind, in declaration order.
 func Kinds() []Kind {
 	return slices.Clone(kinds)

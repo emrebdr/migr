@@ -352,20 +352,73 @@ func TestPlanOfAnUnauthoredDownRefusesBeforeAnythingRuns(t *testing.T) {
 	}
 }
 
-func TestPlanRefusesAMigrationNothingCanRunInOneTransaction(t *testing.T) {
-	dir, f, drivers := project(t, twoTables()[:1]...)
-	f.outsideTx = "CREATE TABLE users (id bigint);"
+func TestPlanMarksAStatementThatRunsOutsideAnyTransaction(t *testing.T) {
+	dir, _, drivers := project(t, concurrentIndex())
 
-	_, _, err := runWith(t, dir, noon, drivers, "plan")
+	stdout, _, err := runWith(t, dir, noon, drivers, "plan")
+	if err != nil {
+		t.Fatalf("plan returned %v, want the split migration printed", err)
+	}
 
-	if !errors.Is(err, engine.ErrNotAtomic) {
-		t.Errorf("plan returned %v, want the refusal an apply would give", err)
-		t.Log("A statement declaring it cannot run inside a transaction makes a migration the")
-		t.Log("executor refuses to prepare, so no plan can print one today. When M13-T4 deletes")
-		t.Log("that refusal, this test fails and the plan renderer wants a marker for it.")
+	for _, want := range []string{
+		"[no transaction]",
+		"runs in 2 parts, each committing on its own",
+		"marked [no transaction] above",
+		"not tried again",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("the plan does not say %q:\n%s", want, stdout)
+		}
+	}
+
+	lines := strings.Split(stdout, "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "CREATE INDEX CONCURRENTLY") &&
+			(i == 0 || strings.TrimSpace(lines[i-1]) != "[no transaction]") {
+			t.Errorf("the line above the statement it marks is not the marker:\n%s", stdout)
+		}
+	}
+
+	t.Log("M5-T4 wrote this marker and deleted it, because the executor refused every migration")
+	t.Log("that could carry one. M13-T4 runs them, so the plan says which statement commits alone.")
+}
+
+func TestPlanJSONListsTheStatementsThatRunOutsideAnyTransaction(t *testing.T) {
+	dir, _, drivers := project(t, concurrentIndex())
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "plan", "--json")
+	if err != nil {
+		t.Fatalf("plan --json: %v", err)
+	}
+
+	var doc struct {
+		Migrations []struct {
+			Parts      int `json:"parts"`
+			Operations []struct {
+				NoTransaction []int `json:"no_transaction"`
+			} `json:"operations"`
+		} `json:"migrations"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("decoding the plan: %v\n%s", err, stdout)
+	}
+
+	m := doc.Migrations[0]
+	if m.Parts != 2 || len(m.Operations) != 2 || m.Operations[0].NoTransaction != nil ||
+		!slices.Equal(m.Operations[1].NoTransaction, []int{1}) {
+		t.Errorf("the plan document reads %+v, want 2 parts and the second operation's one statement", m)
 	}
 }
 
+// concurrentIndex is a migration whose second statement declares it cannot run inside a transaction.
+func concurrentIndex() stagedMigration {
+	return stagedMigration{
+		name: "add_users",
+		up: "CREATE TABLE users (id bigint);\n-- migr:no-transaction\n" +
+			"CREATE INDEX CONCURRENTLY idx_users ON users (id);",
+		down: "DROP TABLE users;",
+	}
+}
 func TestPlanOverADatabaseWithNoHistoryTableSaysSo(t *testing.T) {
 	dir, _, drivers := project(t, twoTables()...)
 
@@ -613,5 +666,37 @@ func TestEveryDataOperationSaysWhichRowsItWrites(t *testing.T) {
 
 	if got := rowsOf(ir.DropView{View: "v"}); got != "" {
 		t.Errorf("a schema operation says it writes rows: %q", got)
+	}
+}
+
+func TestUpRunsAMigrationSplitAroundAStatementOutsideAnyTransaction(t *testing.T) {
+	dir, _, drivers := project(t, concurrentIndex())
+
+	if _, _, err := runWith(t, dir, noon, drivers, "up"); err != nil {
+		t.Fatalf("up returned %v, want the split migration applied", err)
+	}
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "status")
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+
+	if !strings.Contains(stdout, "1 applied") {
+		t.Errorf("status after the split migration ran:\n%s", stdout)
+		t.Log("The parts before the last each wrote a dirty row, and the last wrote applied, so")
+		t.Log("the fold must read the migration as applied rather than as stopped partway.")
+	}
+}
+
+func TestADryRunSaysAMigrationRunsInParts(t *testing.T) {
+	dir, _, drivers := project(t, concurrentIndex())
+
+	stdout, _, err := runWith(t, dir, noon, drivers, "up", "--dry-run")
+	if err != nil {
+		t.Fatalf("up --dry-run: %v", err)
+	}
+
+	if !strings.Contains(stdout, "2 statements in 2 parts") {
+		t.Errorf("the dry run does not say the migration runs in parts:\n%s", stdout)
 	}
 }

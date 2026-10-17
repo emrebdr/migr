@@ -270,9 +270,9 @@
 // # What this driver does not emit
 //
 // No CREATE INDEX CONCURRENTLY, because SQLite has none: one writer means an index build holds the
-// write lock for its duration, and saying so is the lock axis M8-T3 owes. So nothing here sets
-// Statement.NoTransaction, and a migration this driver compiles is always exactly one transactional
-// run. Every composed statement ends in a semicolon; a raw operation does not, because run verbatim
+// write lock for its duration, and saying so is the lock axis M8-T3 owes. So nothing this driver
+// composes sets Statement.NoTransaction. A raw operation declaring no_transaction does -- VACUUM is
+// the one statement SQLite refuses inside a transaction -- and the engine runs it bare (ADR 0084). Every composed statement ends in a semicolon; a raw operation does not, because run verbatim
 // is the whole contract and its author may already have written one.
 //
 // # What an operation costs a live database

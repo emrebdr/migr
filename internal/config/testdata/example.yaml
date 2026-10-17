@@ -22,7 +22,11 @@ safety:
   lock_retries: 5           # bounded retries with exponential backoff + jitter
   statement_timeout: 30s
   max_lock_impact: brief_exclusive   # lock_free | brief_exclusive | long_exclusive | table_rewrite
-  auto_rewrite: true        # decompose unsafe ops into safe sequences where possible
+  auto_rewrite: true        # the master switch for the rewrites below; unset is true
+  rewrites:                 # each on | off, defaulting to on
+    not_valid: on
+    not_null_check: on
+    concurrent_index: on
   replica_lag_threshold: 5s # pause backfills above this lag
 validation:
   allow_destructive: [raw]  # drop_table | drop_column | drop_view | alter_column | raw

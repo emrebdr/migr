@@ -411,12 +411,29 @@
 // # What this driver does not emit
 //
 // No USING clause on ALTER COLUMN ... TYPE: a cast that does not exist should fail loudly rather
-// than be coerced into one that silently loses data. No CONCURRENTLY on index creation, which is
-// M13-T11's, built on the split M13-T4 implemented. So nothing this driver composes sets
-// Statement.NoTransaction: only a raw operation declaring no_transaction does, which is how a .sql
-// migration builds an index concurrently today (ADR 0084). Measured on 16 and 17, the same CREATE
-// INDEX CONCURRENTLY undeclared is refused with 25001 inside the migration's transaction, and a
-// failed one -- a unique build over duplicates -- leaves the index behind INVALID.
+// than be coerced into one that silently loses data. Compile emits no CONCURRENTLY and no NOT VALID:
+// it is pure and version-blind, and both are the session's to choose (M13-T5, ADR 0085).
+//
+// # What a session rewrites
+//
+// pgConn is a driver.Rewriter. Against the version Open detected, it answers three operations with
+// a safer sequence than the plain compile:
+//   - add_check and add_foreign_key become ADD ... NOT VALID and then VALIDATE CONSTRAINT, the
+//     VALIDATE bare;
+//   - alter_column narrowing to NOT NULL with no retype becomes, on 12 and later, a NOT VALID
+//     IS NOT NULL check, its VALIDATE bare, SET NOT NULL, and the check dropped;
+//   - add_index becomes CREATE INDEX CONCURRENTLY, bare.
+//
+// Measured on 16 and 17 over 15 million rows: the plain ADD CHECK blocked 34 of 35 writes for its
+// 9.5s scan, and the pair blocked none. The pair inside one transaction blocked 34 again, because
+// the ADD's lock is held to commit, which is why VALIDATE runs outside one. SET NOT NULL took 0.7ms
+// behind a validated check against 367ms without one.
+//
+// A concurrent build that fails leaves its index INVALID. Exec reads pg_index afterwards on the
+// session that is still alive (ADR 0083) and returns InvalidIndexError, naming the index and the
+// DROP INDEX CONCURRENTLY to run before migr resolve. Dropping it automatically, the unique, key and
+// drop forms, and REINDEX are M13-T11's. Only a raw operation declaring no_transaction (ADR 0084)
+// and these rewrites set Statement.NoTransaction.
 //
 // alter_column emits one statement per requested change, in a fixed order: type, then nullability,
 // then default. That is not cosmetic — SET NOT NULL against a column being retyped has to run after

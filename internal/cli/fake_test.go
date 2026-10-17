@@ -59,6 +59,8 @@ type fake struct {
 	expands bool
 	// outsideTx is the SQL that compiles to a statement which cannot share a transaction.
 	outsideTx string
+	// rewrites is the SQL this session performs as a safer two-statement sequence, empty for none.
+	rewrites string
 	// lockErr is what acquiring the migration lock reports, nil when it succeeds.
 	lockErr error
 	// inTx reports whether a transaction is open, which is what a history write must be inside.
@@ -353,6 +355,24 @@ func (d *fakeDriver) Open(context.Context, string) (driver.Conn, error) {
 type fakeConn struct {
 	fake *fake
 	caps capability.Set
+}
+
+// Rewrite performs the one raw statement a test named as itself NOT VALID and then a bare check.
+func (c *fakeConn) Rewrite(op ir.Operation) (driver.Rewrite, bool) {
+	raw, ok := op.(ir.Raw)
+	if !ok || c.fake.rewrites == "" || raw.SQL != c.fake.rewrites {
+		return driver.Rewrite{}, false
+	}
+
+	return driver.Rewrite{
+		Name: driver.RewriteNotValid,
+		Statements: []driver.Statement{
+			{SQL: raw.SQL + " -- not valid"},
+			{SQL: "-- validated", NoTransaction: true},
+		},
+		Reason: "the rows are checked without blocking writes",
+		Lock:   capability.BriefExclusive,
+	}, true
 }
 
 // Exec records the statement and refuses the one a test asked it to refuse.

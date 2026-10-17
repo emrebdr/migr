@@ -141,6 +141,26 @@ func applyDefaults(cfg *Config) {
 	}
 
 	setRuleDefaults(cfg)
+	setRewriteDefaults(cfg)
+}
+
+// setRewriteDefaults turns every rewrite this build ships on, keeping whatever the document said about it.
+func setRewriteDefaults(cfg *Config) {
+	if cfg.Safety.AutoRewrite == nil {
+		on := true
+		cfg.Safety.AutoRewrite = &on
+	}
+
+	configured := cfg.Safety.Rewrites
+	cfg.Safety.Rewrites = make(map[driver.RewriteName]Switch, len(driver.RewriteNames()))
+
+	for _, name := range driver.RewriteNames() {
+		cfg.Safety.Rewrites[name] = SwitchOn
+	}
+
+	for name, value := range configured {
+		cfg.Safety.Rewrites[name] = value
+	}
 }
 
 // setEnvironments names each database's environment after its own key, where the document named none.

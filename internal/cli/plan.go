@@ -104,6 +104,18 @@ type operation struct {
 	Statements []string `json:"statements"`
 	// NoTransaction lists, counting from one, which of those run outside any transaction.
 	NoTransaction []int `json:"no_transaction,omitempty"`
+	// Rewrite is how the operation was rewritten into a safer sequence, absent where it runs as declared.
+	Rewrite *rewriteDoc `json:"rewrite,omitempty"`
+}
+
+// rewriteDoc is one operation a run performs as a safer sequence, as a plan renders it.
+type rewriteDoc struct {
+	// Name is the rewrite, the key under safety.rewrites that switches it off.
+	Name driver.RewriteName `json:"name"`
+	// Reason says in one sentence what the sequence avoids.
+	Reason string `json:"reason"`
+	// Plain is how many statements the operation compiles to as declared.
+	Plain int `json:"declared_statements"`
 }
 
 // chunks is how one operation runs a keyed chunk at a time, as a preview could render it.
@@ -398,7 +410,17 @@ func operationOf(caps capability.Set, allowed engine.Allowance, step plan.Step) 
 		Deferred:      step.Deferred,
 		Statements:    stmts,
 		NoTransaction: standalone,
+		Rewrite:       rewriteOf(step.Rewrite),
 	}
+}
+
+// rewriteOf renders how a step was rewritten, and nothing for one that runs as declared.
+func rewriteOf(r *plan.Rewritten) *rewriteDoc {
+	if r == nil {
+		return nil
+	}
+
+	return &rewriteDoc{Name: r.Name, Reason: r.Reason, Plain: r.Plain}
 }
 
 // rowsOf says which rows a data operation writes, and nothing for one that writes schema.
@@ -472,6 +494,7 @@ func (p compiledPlan) String() string {
 
 	p.writeDirectNote(&b)
 	p.writeSplitNote(&b)
+	p.writeRewriteNote(&b)
 	p.writeChunkedNote(&b)
 	p.writeDeferredNote(&b)
 	p.writeUnsupportedNote(&b)
@@ -497,6 +520,38 @@ func (p compiledPlan) describeCompiled() string {
 	}
 
 	return described
+}
+
+// writeRewriteNote names every rewrite this plan applies and the key that switches each one off.
+func (p compiledPlan) writeRewriteNote(b *strings.Builder) {
+	used := map[driver.RewriteName]int{}
+
+	for _, m := range p.Migrations {
+		for _, op := range m.Operations {
+			if op.Rewrite != nil {
+				used[op.Rewrite.Name]++
+			}
+		}
+	}
+
+	if len(used) == 0 {
+		return
+	}
+
+	keys := make([]string, 0, len(used))
+	total := 0
+
+	for _, name := range driver.RewriteNames() {
+		if used[name] > 0 {
+			keys = append(keys, fmt.Sprintf("%s: off", rewriteKey(name)))
+			total += used[name]
+		}
+	}
+
+	fmt.Fprintf(b, "\nmarked \u21b3 above: %s this engine performs as a safer sequence than was declared, "+
+		"so the statements shown are what migr %s sends. Each runs as declared instead with %s, "+
+		"or every one with safety.auto_rewrite: false.\n", describeUnpermitted(total), p.Direction,
+		strings.Join(keys, ", "))
 }
 
 // writeSplitNote says what a statement outside any transaction does to the migration it is in.
@@ -787,6 +842,7 @@ func (o operation) write(b *strings.Builder) {
 	fmt.Fprintf(b, "       %d  %s  %s%s\n", o.Index, o.Kind, describeVerdict(o), o.describeDestroys())
 
 	o.writeReason(b)
+	o.writeRewrite(b)
 	o.writeRows(b)
 	o.writeChunks(b)
 	o.writeDeferred(b)
@@ -798,6 +854,31 @@ func (o operation) write(b *strings.Builder) {
 
 		fmt.Fprintf(b, "%s\n", indented(stmt))
 	}
+}
+
+// writeRewrite says that one declared operation runs as a safer sequence, and which key switches it off.
+func (o operation) writeRewrite(b *strings.Builder) {
+	if o.Rewrite == nil {
+		return
+	}
+
+	fmt.Fprintf(b, "%s\n", indented(fmt.Sprintf("\u21b3 rewritten (%s): 1 operation, %s -- %s",
+		rewriteKey(o.Rewrite.Name), describeReshaped(len(o.Statements), o.Rewrite.Plain),
+		o.Rewrite.Reason)))
+}
+
+// describeReshaped says how many statements a rewritten operation became, against how many it was declared as.
+func describeReshaped(now, declared int) string {
+	if now == declared {
+		return describeStatements(now) + ", each sent differently than declared"
+	}
+
+	return fmt.Sprintf("%s instead of %d", describeStatements(now), declared)
+}
+
+// rewriteKey is the migr.yaml key that switches a rewrite off.
+func rewriteKey(name driver.RewriteName) string {
+	return "safety.rewrites." + string(name)
 }
 
 // writeRows says which rows a data operation writes, above the one statement that writes them.

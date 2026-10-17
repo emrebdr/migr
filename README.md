@@ -441,6 +441,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0082](docs/adr/0082-statement-lock-retry.md) | A statement that gave up on a lock is tried again, after a jittered backoff, a bounded number of times |
 | [0083](docs/adr/0083-server-side-cancellation.md) | A statement whose context ends is stopped on the server, and two bounds end it |
 | [0084](docs/adr/0084-transaction-opt-out.md) | A statement may declare it runs outside a transaction, and the migration runs in parts around it |
+| [0085](docs/adr/0085-rewriting-unsafe-operations.md) | A session performs an operation more safely than its plain compile, and the plan says so |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

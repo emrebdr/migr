@@ -79,6 +79,8 @@ type Options struct {
 	Backoff Backoff
 	// Retried is told about every retry before its wait, and an unset one tells nobody.
 	Retried func(Retry)
+	// Rewrote is told about every operation run as a safer sequence before it runs, and an unset one tells nobody.
+	Rewrote func(Rewrote)
 	// StatementTimeout bounds each statement and each chunk, and zero bounds none.
 	StatementTimeout time.Duration
 	// MigrationTimeout bounds each migration, its retries and their backoff included, and zero none.

@@ -3,7 +3,9 @@ package engine
 import (
 	"time"
 
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
+	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 )
 
@@ -37,6 +39,24 @@ type Run struct {
 	Resumed bool
 	// Retries is how many times a statement or a chunk was tried again after giving up on a lock.
 	Retries int
+	// Rewritten is how many of its operations ran as a safer sequence (ADR 0085).
+	Rewritten int
+}
+
+// Rewrote is one operation a run is about to perform as a safer sequence than it was declared as.
+type Rewrote struct {
+	// Migration is the migration the operation is in.
+	Migration migration.Migration
+	// Direction is the direction that migration is running in.
+	Direction ir.Direction
+	// Index is the operation's place in the migration, counting from one.
+	Index int32
+	// Kind is the operation the migration declared.
+	Kind ir.Kind
+	// Name is the rewrite, the key under safety.rewrites that switches it off.
+	Name driver.RewriteName
+	// Statements is how many statements it runs as instead.
+	Statements int
 }
 
 // Skipped is one migration this invocation did not run, and the state it was left in.

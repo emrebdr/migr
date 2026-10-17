@@ -74,16 +74,50 @@ type Runtime struct {
 
 // Safety holds the thresholds that gate zero-downtime checks.
 type Safety struct {
-	LockTimeout         Duration              `yaml:"lock_timeout"          json:"lock_timeout"`
-	LockRetries         *int                  `yaml:"lock_retries"          json:"lock_retries"`
-	LockBackoff         Duration              `yaml:"lock_backoff"          json:"lock_backoff"`
-	StatementTimeout    Duration              `yaml:"statement_timeout"     json:"statement_timeout"`
-	MigrationTimeout    *Duration             `yaml:"migration_timeout"     json:"migration_timeout,omitempty"`
-	MaxLockImpact       capability.LockImpact `yaml:"max_lock_impact"       json:"max_lock_impact"`
-	AutoRewrite         bool                  `yaml:"auto_rewrite"          json:"auto_rewrite"`
-	ReplicaLagThreshold Duration              `yaml:"replica_lag_threshold" json:"replica_lag_threshold"`
-	ChunkRows           *int                  `yaml:"chunk_rows"            json:"chunk_rows"`
-	ChunkPause          Duration              `yaml:"chunk_pause"           json:"chunk_pause"`
+	LockTimeout         Duration                      `yaml:"lock_timeout"          json:"lock_timeout"`
+	LockRetries         *int                          `yaml:"lock_retries"          json:"lock_retries"`
+	LockBackoff         Duration                      `yaml:"lock_backoff"          json:"lock_backoff"`
+	StatementTimeout    Duration                      `yaml:"statement_timeout"     json:"statement_timeout"`
+	MigrationTimeout    *Duration                     `yaml:"migration_timeout"     json:"migration_timeout,omitempty"`
+	MaxLockImpact       capability.LockImpact         `yaml:"max_lock_impact"       json:"max_lock_impact"`
+	AutoRewrite         *bool                         `yaml:"auto_rewrite"          json:"auto_rewrite"`
+	Rewrites            map[driver.RewriteName]Switch `yaml:"rewrites" json:"rewrites"`
+	ReplicaLagThreshold Duration                      `yaml:"replica_lag_threshold" json:"replica_lag_threshold"`
+	ChunkRows           *int                          `yaml:"chunk_rows"            json:"chunk_rows"`
+	ChunkPause          Duration                      `yaml:"chunk_pause"           json:"chunk_pause"`
+}
+
+// Switch turns one rewrite on or off under safety.rewrites.
+type Switch string
+
+// The two values a rewrite may be set to.
+const (
+	// SwitchOn lets a driver perform the operation as the safer sequence.
+	SwitchOn Switch = "on"
+	// SwitchOff runs the operation as declared.
+	SwitchOff Switch = "off"
+)
+
+// Valid reports whether a switch is one of the two values.
+func (s Switch) Valid() bool {
+	return s == SwitchOn || s == SwitchOff
+}
+
+// Enabled returns the rewrites a run may apply, in the order this build lists them, and none when auto_rewrite is off.
+func (s Safety) Enabled() []driver.RewriteName {
+	if s.AutoRewrite != nil && !*s.AutoRewrite {
+		return nil
+	}
+
+	var on []driver.RewriteName
+
+	for _, name := range driver.RewriteNames() {
+		if s.Rewrites[name] != SwitchOff {
+			on = append(on, name)
+		}
+	}
+
+	return on
 }
 
 // Migration returns how long one migration may run, its retries included, and zero for no bound.

@@ -215,6 +215,14 @@
 // row value there scans and locks the whole table, and PostgreSQL's ORDER BY is qualified, since an
 // unqualified one sorted the key as the text it is read back as.
 //
+// # Performing an operation more safely
+//
+// Rewriter is optional on a session (M13-T5, ADR 0085). It answers an operation with a safer
+// sequence than Compile's, named by a RewriteName that safety.rewrites switches off. It reads no
+// database, since the version it depends on was detected at Open, so a plan stays deterministic.
+// The planner applies a rewrite, keeping the operation in its step beside the new statements. A
+// driver performs the operation it was given, and never a different one.
+//
 // # Refusing an operation
 //
 // UnsupportedError is the one way a driver says it cannot perform an operation. M2-T4 asserts

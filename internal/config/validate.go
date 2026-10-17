@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/rule"
@@ -313,6 +314,7 @@ func validateSafety(v *validator, s Safety) {
 	}
 
 	validateMigrationTimeout(v, s)
+	validateRewrites(v, s.Rewrites)
 
 	if s.ReplicaLagThreshold <= 0 {
 		v.add("safety.replica_lag_threshold", "must be positive, got %s", s.ReplicaLagThreshold)
@@ -380,6 +382,24 @@ func validateRules(v *validator, rules map[rule.ID]rule.Severity) {
 
 		if severity := rules[id]; !severity.Valid() {
 			v.add(path, "%s", rule.DescribeSeverity(string(severity)))
+		}
+	}
+}
+
+// validateRewrites checks each rewrite is one this build ships and is set to on or off.
+func validateRewrites(v *validator, rewrites map[driver.RewriteName]Switch) {
+	for _, name := range slices.Sorted(maps.Keys(rewrites)) {
+		path := "safety.rewrites." + string(name)
+
+		if !name.Valid() {
+			v.add(path, "no rewrite is called %q (expected one of: %s)", string(name),
+				join(driver.RewriteNames()))
+
+			continue
+		}
+
+		if value := rewrites[name]; !value.Valid() {
+			v.add(path, "%q is not valid (expected: %s or %s)", string(value), SwitchOn, SwitchOff)
 		}
 	}
 }

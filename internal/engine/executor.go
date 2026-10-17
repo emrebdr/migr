@@ -169,6 +169,8 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 	bound, cancel := e.migrationBound(ctx)
 	defer cancel()
 
+	e.announceRewrites(ready.compiled)
+
 	survived, retried, err := e.runRetrying(bound, &ready, &rec)
 	err = e.timedOut(bound, err)
 
@@ -184,7 +186,23 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 		Started:    rec.AppliedAt,
 		Duration:   rec.Duration,
 		Retries:    retried,
+		Rewritten:  ready.compiled.Rewritten(),
 	}, nil
+}
+
+// announceRewrites tells whoever is listening about every operation about to run as a safer sequence.
+func (e *executor) announceRewrites(compiled plan.Plan) {
+	if e.opts.Rewrote == nil {
+		return
+	}
+
+	for _, step := range compiled.Steps {
+		if step.Rewrite != nil {
+			e.opts.Rewrote(Rewrote{Migration: compiled.Migration, Direction: compiled.Direction,
+				Index: step.Index, Kind: step.Op.Kind(), Name: step.Rewrite.Name,
+				Statements: len(step.Statements)})
+		}
+	}
 }
 
 // runRetrying runs a migration, trying it again after a lock wait spent for as long as the backoff allows.

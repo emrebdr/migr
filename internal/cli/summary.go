@@ -48,6 +48,8 @@ type ran struct {
 	Resumed bool `json:"resumed,omitempty"`
 	// Retries is how many times a statement or chunk was tried again after giving up on a lock.
 	Retries int `json:"lock_retries,omitempty"`
+	// Rewritten is how many of its operations ran as a safer sequence than they were declared as.
+	Rewritten int `json:"rewritten,omitempty"`
 	// Duration is how long the run took.
 	Duration elapsed `json:"duration_ms"`
 }
@@ -63,13 +65,26 @@ func ranOf(run engine.Run) ran {
 		Written:    run.Written,
 		Resumed:    run.Resumed,
 		Retries:    run.Retries,
+		Rewritten:  run.Rewritten,
 		Duration:   elapsed(run.Duration),
 	}
 }
 
 // describeWork says what a run executed: its statements, or the chunks a data-only one ran in.
 func describeWork(run ran) string {
-	return describeExecuted(run) + describeRetries(run.Retries)
+	return describeExecuted(run) + describeRewritten(run.Rewritten) + describeRetries(run.Retries)
+}
+
+// describeRewritten says how many operations ran as a safer sequence, and nothing where none did.
+func describeRewritten(n int) string {
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return ", 1 operation rewritten"
+	default:
+		return fmt.Sprintf(", %d operations rewritten", n)
+	}
 }
 
 // describeExecuted says what a run executed: its statements, or the chunks a data-only one ran in.
@@ -115,6 +130,8 @@ type planned struct {
 	Chunked int `json:"chunked,omitempty"`
 	// Parts is how many parts it runs as where a statement in it cannot run inside a transaction.
 	Parts int `json:"parts,omitempty"`
+	// Rewritten is how many of its operations would run as a safer sequence than they were declared as.
+	Rewritten int `json:"rewritten,omitempty"`
 	// Refused is how many of its operations destroy what nothing permits, which migr up stops at.
 	Refused int `json:"refused,omitempty"`
 	// Unsupported is how many this server declares it cannot perform, which migr up also stops at.
@@ -210,6 +227,7 @@ func planOf(s *session, previewed engine.Previewed) planSummary {
 			Deferred:    int(step.Plan.Deferred()),
 			Chunked:     int(step.Plan.Chunked()),
 			Parts:       partsOf(step.Plan),
+			Rewritten:   step.Plan.Rewritten(),
 			Refused:     refusedIn(allowed, step.Plan),
 			Unsupported: unsupportedIn(caps, step.Plan),
 		})
@@ -407,7 +425,8 @@ func describePlannedWork(step planned) string {
 		return describeOperations(step.Chunked) + " in chunks"
 	}
 
-	return describeStatements(step.Statements) + describeParts(step.Parts)
+	return describeStatements(step.Statements) + describeParts(step.Parts) +
+		describeRewritten(step.Rewritten)
 }
 
 // describeParts says that a migration runs in parts, each committing on its own, where it does.

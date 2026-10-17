@@ -19,6 +19,7 @@ func (t *target) retrying(options engine.Options, log *slog.Logger) engine.Optio
 		Jitter:  jitter,
 	}
 	options.Retried = logRetry(log, t.cfg.Safety.Retries())
+	options.Rewrote = logRewrite(log)
 	options.StatementTimeout = t.cfg.Safety.StatementTimeout.Duration()
 	options.MigrationTimeout = t.cfg.Safety.Migration()
 
@@ -37,6 +38,15 @@ func jitter(span time.Duration) time.Duration {
 	}
 
 	return time.Duration(drawn.Int64())
+}
+
+// logRewrite reports every operation run as a safer sequence at -v, since migr plan is where it is shown first.
+func logRewrite(log *slog.Logger) func(engine.Rewrote) {
+	return func(r engine.Rewrote) {
+		log.Info("running an operation as a safer sequence", "migration", r.Migration.Filename(),
+			"direction", r.Direction, "operation", r.Index, "kind", r.Kind,
+			"rewrite", "safety.rewrites."+string(r.Name), "statements", r.Statements)
+	}
 }
 
 // logRetry warns of every lock wait spent, since contention is what an operator has to see unasked.

@@ -491,7 +491,8 @@ func (t *target) connect(ctx context.Context, opts *options) (*session, error) {
 		"server", conn.ServerVersion())
 
 	options := t.paced(engine.Options{
-		Planner: plan.Planner{Compiler: d, Expander: expanderOf(conn)},
+		Planner: plan.Planner{Compiler: d, Expander: expanderOf(conn), Rewriter: rewriterOf(conn),
+			Rewrites: t.cfg.Safety.Enabled()},
 	}, conn, opts.log)
 
 	return &session{conn: conn, database: t.name, options: t.retrying(options, opts.log)}, nil
@@ -726,7 +727,17 @@ func dial(ctx context.Context, opts *options, t *target) (driver.Driver, driver.
 	return d, conn, nil
 }
 
-// expanderOf returns the session an emulated operation compiles against, where the engine has one.
+// rewriterOf returns the session as the rewriter a planner makes operations safer through, where it is one.
+func rewriterOf(conn driver.Conn) driver.Rewriter {
+	rewriter, rewrites := conn.(driver.Rewriter)
+	if !rewrites {
+		return nil
+	}
+
+	return rewriter
+}
+
+// expanderOf returns the session as the expander a planner compiles an emulation against, where it is one.
 func expanderOf(conn driver.Conn) driver.Expander {
 	expander, emulates := conn.(driver.Expander)
 	if !emulates {

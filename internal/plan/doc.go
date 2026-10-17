@@ -8,8 +8,20 @@
 //
 // Status: compilation complete (M4-T5), and compiling a rollback's inverses in M4-T6 — a Plan
 // carries the direction it was compiled in, which is what a history row records rather than a
-// parameter traveling beside it. Decomposing unsafe operations into safe sequences is
-// M13-T5, and annotating a plan with lock verdicts is M13-T6.
+// parameter traveling beside it. Decomposing unsafe operations into safe sequences landed in
+// M13-T5 (ADR 0085), and annotating a plan with lock verdicts is M13-T6.
+//
+// # A rewrite replaces a step's statements and keeps its operation
+//
+// Planner.Rewriter is the session and Planner.Rewrites the names safety.rewrites leaves on. Compile
+// asks the session about each operation it compiled. Where one answers and its name is on, the
+// step's statements become the safer sequence and Step.Rewrite records which rewrite it was, why,
+// and how many statements the operation was declared as. So "one declared operation became three
+// statements" is printable.
+//
+// An operation on a table this migration created is never rewritten, and a rename of such a table
+// is followed. Nothing can be waiting on a table that did not exist when the migration began, and a
+// rewrite's bare statements would split the migration for nothing but lost atomicity.
 //
 // # A deferred step, and what Compile stopped doing
 //

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
@@ -20,6 +21,10 @@ type Planner struct {
 	Expander driver.Expander
 	// ChunkRows is how many rows a chunk of a data-only migration covers, and zero runs none in chunks.
 	ChunkRows int
+	// Rewriter is the session that performs an operation more safely, and is nil where none is.
+	Rewriter driver.Rewriter
+	// Rewrites are the rewrites safety.rewrites leaves on, which is none where auto_rewrite is off.
+	Rewrites []driver.RewriteName
 }
 
 // Plan is one migration compiled to statements, in the order they must run.
@@ -44,6 +49,20 @@ type Step struct {
 	Deferred bool
 	// Chunked reports a data operation run a keyed chunk at a time, each chunk committed on its own.
 	Chunked bool
+	// Rewrite is how this operation was rewritten into a safer sequence, and nil where it was not.
+	Rewrite *Rewritten
+}
+
+// Rewritten is what a rewrite did to one operation, so a plan can say so beside the statements.
+type Rewritten struct {
+	// Name is the rewrite, the key under safety.rewrites that switches it off.
+	Name driver.RewriteName
+	// Reason says in one sentence what the sequence avoids.
+	Reason string
+	// Lock is what the sequence costs a live database.
+	Lock capability.LockImpact
+	// Plain is how many statements the operation compiles to without it.
+	Plain int
 }
 
 // An operation the compiler answers with driver.ErrNeedsSession becomes a deferred step rather than
@@ -60,6 +79,7 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction,
 	}
 
 	steps := make([]Step, 0, len(ops))
+	created := map[string]bool{}
 
 	var index int32
 
@@ -71,7 +91,8 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction,
 			return Plan{}, err
 		}
 
-		steps = append(steps, step)
+		steps = append(steps, p.rewrite(step, created))
+		noteCreated(created, op)
 	}
 
 	return Plan{Migration: m, Direction: dir, Steps: p.chunk(steps)}, nil
@@ -108,6 +129,70 @@ func DataOnly(steps []Step) bool {
 	}
 
 	return true
+}
+
+// A rewrite replaces what one operation compiles to with a safer sequence the session answers with
+// (ADR 0085). It is skipped on a table this migration created: nothing can be waiting on a table that
+// did not exist when the migration began, and the bare statements a rewrite adds would split the
+// migration for nothing but lost atomicity.
+
+// rewrite gives a step the safer sequence its session performs it as, where one is on and worth taking.
+func (p Planner) rewrite(step Step, created map[string]bool) Step {
+	if p.Rewriter == nil || step.Deferred || created[tableOf(step.Op)] {
+		return step
+	}
+
+	safer, ok := p.Rewriter.Rewrite(step.Op)
+	if !ok || !slices.Contains(p.Rewrites, safer.Name) || checkCompiled(safer.Statements) != nil {
+		return step
+	}
+
+	step.Rewrite = &Rewritten{Name: safer.Name, Reason: safer.Reason, Lock: safer.Lock,
+		Plain: len(step.Statements)}
+	step.Statements = safer.Statements
+
+	return step
+}
+
+// tableOf names the existing table an operation a driver may rewrite changes, and nothing for any other.
+func tableOf(op ir.Operation) string {
+	switch o := op.(type) {
+	case ir.AddCheck:
+		return o.Table
+	case ir.AddForeignKey:
+		return o.Table
+	case ir.AlterColumn:
+		return o.Table
+	case ir.AddIndex:
+		return o.Table
+	default:
+		return ""
+	}
+}
+
+// noteCreated records a table this migration made, following it through a rename.
+func noteCreated(created map[string]bool, op ir.Operation) {
+	switch o := op.(type) {
+	case ir.CreateTable:
+		created[o.Table] = true
+	case ir.RenameTable:
+		if created[o.From] {
+			created[o.To] = true
+		}
+	}
+}
+
+// Rewritten returns how many of the plan's operations were rewritten into a safer sequence.
+func (p Plan) Rewritten() int {
+	n := 0
+
+	for _, step := range p.Steps {
+		if step.Rewrite != nil {
+			n++
+		}
+	}
+
+	return n
 }
 
 // Step compiles one operation, holding the driver to statements that would actually run.

@@ -284,6 +284,12 @@
 // line of every plan M5 can produce would read `unknown`. The lock axis and
 // --safety are M13-T6, by name.
 //
+// It marks an operation the session performs as a safer sequence with a ↳ rewritten
+// line naming its safety.rewrites key, how many statements it became and why, and
+// closes with a note naming the key that switches each one off (M13-T5, ADR 0085).
+// --json carries it as rewrite. --dry-run and migr up count the operations rewritten,
+// and -v logs each one as it runs, so a rewrite is never silent.
+//
 // It marks a statement that cannot run inside a transaction with a [no transaction]
 // line directly above it, and a migration holding one with how many parts it runs
 // as, each committing on its own (M13-T4, ADR 0084); --json carries both, as

@@ -16,6 +16,8 @@ var textResults = pgx.QueryResultFormats{}
 
 // Query runs a migration's own read inside a read-only transaction, so the server refuses a write.
 func (c *pgConn) Query(ctx context.Context, q driver.Query) (out driver.Rows, err error) {
+	defer func() { err = stoppedBy(ctx, err) }()
+
 	if err := c.outsideTransaction(ErrQuery); err != nil {
 		return driver.Rows{}, err
 	}
@@ -38,7 +40,7 @@ func (c *pgConn) Perform(ctx context.Context, q driver.Query) (int64, error) {
 
 	tag, err := c.conn.Exec(ctx, q.SQL, bindings(q.Args)...)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %w", ErrPerform, err)
+		return 0, stoppedBy(ctx, fmt.Errorf("%w: %w", ErrPerform, err))
 	}
 
 	return tag.RowsAffected(), nil

@@ -16,7 +16,8 @@
 // docs/adr/0022-rollback-executor.md, docs/adr/0023-batch-narrowing.md,
 // docs/adr/0024-dirty-runs.md and docs/adr/0026-dry-run-and-sql-sources.md. A data-only migration
 // runs in chunks and carries on after an interruption as of M12-T3 (docs/adr/0078), and a statement
-// that gave up on a lock is tried again after a backoff as of M13-T2 (docs/adr/0082).
+// that gave up on a lock is tried again after a backoff as of M13-T2 (docs/adr/0082), under two
+// bounds stopped on the server as of M13-T3 (docs/adr/0083).
 //
 // # A preview reads what an apply ensures
 //
@@ -537,4 +538,15 @@
 // the next attempt begins at that one and keeps the expansions it already ran. A chunk is its own
 // transaction and is rerun alone. Nothing is written to the history between attempts; the last
 // failure is recorded as any failure is, wrapped in a LockRetryError saying how often it was tried.
+//
+// # Two bounds, each a deadline with a cause of its own
+//
+// timeout.go holds safety.statement_timeout, around each statement and each chunk, and
+// safety.migration_timeout, around a migration with its retries and their backoff (M13-T3, ADR
+// 0083). Each is context.WithTimeoutCause, so context.Cause tells either from an operator's
+// interrupt: a bound reached is a TimeoutError naming the key to raise, and Ctrl-C stays Canceled.
+// The driver stops the statement on the server before returning, so a stopped statement is a failure
+// like any other -- rolled back where the engine allows, recorded on the session that ran it, never
+// retried, the lock released by the ordinary path. A migration bound that cuts a backoff short
+// reports the lock wait it was backing off from, and not retries spent.
 package engine

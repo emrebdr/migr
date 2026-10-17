@@ -122,6 +122,11 @@
 // reruns the transaction after a backoff (ADR 0082): in the default rollback journal, another
 // writer makes the statement busy and a reader makes the COMMIT busy.
 //
+// A canceled context needs nothing of this driver: the engine is in this process, so database/sql's
+// cancel reaches sqlite3_interrupt and the statement stops inside it -- measured at M13-T3, a write
+// that would run for minutes stopped about 100ms after its deadline, rolled back, and left the
+// session usable (ADR 0083).
+//
 // # Identifiers are always quoted, and there is no length to check
 //
 // Double quotes, with an embedded quote doubled, unconditionally -- PostgreSQL's rule unchanged,

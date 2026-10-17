@@ -43,6 +43,8 @@ type fake struct {
 	contended string
 	// contentions is how many more times that statement gives up before it succeeds.
 	contentions int
+	// slow is the statement that runs until whatever it runs under is stopped.
+	slow string
 	// autoCommits makes this database declare no transactional DDL, as MySQL's driver does.
 	autoCommits bool
 	// unsupported is the SQL whose operation this driver will not compile at all.
@@ -354,10 +356,16 @@ type fakeConn struct {
 }
 
 // Exec records the statement and refuses the one a test asked it to refuse.
-func (c *fakeConn) Exec(_ context.Context, stmt driver.Statement) error {
+func (c *fakeConn) Exec(ctx context.Context, stmt driver.Statement) error {
 	defer c.fake.enter()()
 
 	c.fake.statements = append(c.fake.statements, stmt.SQL)
+
+	if stmt.SQL == c.fake.slow {
+		<-ctx.Done()
+
+		return fmt.Errorf("the fake server stopped the statement: %w", ctx.Err())
+	}
 
 	if stmt.SQL == c.fake.refuse {
 		return errRefused

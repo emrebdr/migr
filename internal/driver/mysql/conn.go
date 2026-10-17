@@ -56,6 +56,10 @@ type mysqlConn struct {
 	lock lockName
 	// locked is whether this session holds that lock, since MySQL counts a second acquire as a second.
 	locked bool
+	// id is the pinned connection's thread, which KILL QUERY names.
+	id int64
+	// killer is the pool a kill is sent from, so stopping a statement never closes this session.
+	killer killer
 }
 
 // Exec runs one compiled statement, inside this session's transaction when it has one open.
@@ -64,11 +68,13 @@ func (c *mysqlConn) Exec(ctx context.Context, stmt driver.Statement) error {
 		return err
 	}
 
-	if _, err := c.runner().ExecContext(ctx, stmt.SQL); err != nil {
-		return fmt.Errorf("executing a statement on %s: %w", Name, explainExec(err))
-	}
+	return c.interruptible(ctx, func(ctx context.Context) error {
+		if _, err := c.runner().ExecContext(ctx, stmt.SQL); err != nil {
+			return fmt.Errorf("executing a statement on %s: %w", Name, explainExec(err))
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // explainExec marks a lock wait spent and states the rule behind two refusals Compile could not prevent.
@@ -125,7 +131,7 @@ func (c *mysqlConn) ServerVersion() string {
 
 // Close gives the connection and the pool behind it back, and closing twice is not a failure.
 func (c *mysqlConn) Close(context.Context) error {
-	return errors.Join(closeConn(c.conn), closeDB(c.db))
+	return errors.Join(closeConn(c.conn), closeDB(c.db), c.killer.close())
 }
 
 // compile-time proof that this session satisfies the contract every driver's session is held to,

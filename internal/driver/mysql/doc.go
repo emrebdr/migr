@@ -114,6 +114,17 @@
 // from the start is error 1060, a duplicate column, measured. While it backs off the migration is
 // between states with no row saying so, which is the window a crash between two statements has.
 //
+// # A canceled statement is killed on the server, from a second connection
+//
+// go-sql-driver answers a canceled context by closing its connection and telling the server nothing:
+// measured at M13-T3, MySQL 8.0 left the ALTER waiting for its whole lock_wait_timeout and MariaDB
+// 11.4, which polls a waiting client, stopped it about 650ms later -- and on both the session holding
+// GET_LOCK was gone. So every round trip a migration drives runs on context.WithoutCancel, BeginTx
+// included, and interruptible sends KILL QUERY with this session's CONNECTION_ID() from a second pool
+// when the real context ends, returning once the statement's 1317 and the kill are both back. A late
+// kill on an idle connection was measured harmless on both servers, a user needs no privilege to kill
+// a thread of its own, and an ALTER ... FORCE killed partway left the table whole (ADR 0083).
+//
 // # A uuid default is refused while this server writes a binary log
 //
 // ALTER TABLE ... ADD COLUMN ... DEFAULT (UUID()) is error 1674 on MySQL whenever log_bin is on,

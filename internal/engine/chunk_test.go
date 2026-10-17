@@ -29,6 +29,8 @@ type keyed struct {
 	failAt int
 	// busyAt is the chunk, counting from one across every run, that gives up on a lock; zero none.
 	busyAt int
+	// slowAt is the chunk, counting from one across every run, that runs until it is stopped.
+	slowAt int
 	// served counts the chunks asked for, across every run that shares this table.
 	served int
 	// slices is every slice a chunk was asked for, in order.
@@ -67,9 +69,15 @@ func keyedSnapshot(withKey bool) *schema.Snapshot {
 }
 
 // Chunk covers the rows after the cursor as a driver does: done only where fewer than asked remain.
-func (k *keyed) Chunk(_ context.Context, s driver.Slice) (driver.Sliced, error) {
+func (k *keyed) Chunk(ctx context.Context, s driver.Slice) (driver.Sliced, error) {
 	k.session.note(k.describeChunk())
 	k.served++
+
+	if k.served == k.slowAt {
+		<-ctx.Done()
+
+		return driver.Sliced{}, fmt.Errorf("the fake server stopped the chunk: %w", ctx.Err())
+	}
 
 	if k.served == k.failAt {
 		return driver.Sliced{}, errRefused

@@ -79,6 +79,10 @@ type Options struct {
 	Backoff Backoff
 	// Retried is told about every retry before its wait, and an unset one tells nobody.
 	Retried func(Retry)
+	// StatementTimeout bounds each statement and each chunk, and zero bounds none.
+	StatementTimeout time.Duration
+	// MigrationTimeout bounds each migration, its retries and their backoff included, and zero none.
+	MigrationTimeout time.Duration
 }
 
 // check reports what an apply run was not given, before it takes a lock it could not use.

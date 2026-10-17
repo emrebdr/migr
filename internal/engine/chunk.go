@@ -62,7 +62,10 @@ func (e *executor) performChunked(ctx context.Context, ready prepared, from *his
 		run.index = from.Step + 1
 	}
 
-	if err := e.runChunked(ctx, run); err != nil {
+	bound, cancel := e.migrationBound(ctx)
+	defer cancel()
+
+	if err := e.timedOut(bound, e.runChunked(bound, run)); err != nil {
 		return Run{}, e.fail(ready.item, ready.compiled, e.chunkFailure(ctx, run, err))
 	}
 
@@ -258,8 +261,8 @@ func (e *executor) chunkOnce(ctx context.Context, run *chunkRun, chunker driver.
 	next := history.Checkpoint{}
 
 	err := e.retryChunk(ctx, run, done, func(ctx context.Context) error {
-		out, err := chunker.Chunk(ctx, driver.Slice{Op: done.Op, Key: done.Key, After: done.Cursor,
-			Rows: rows})
+		out, err := e.chunkBounded(ctx, chunker, driver.Slice{Op: done.Op, Key: done.Key,
+			After: done.Cursor, Rows: rows})
 		if err != nil {
 			return &ChunkError{Index: done.Index, Op: done.Op, Chunk: done.Chunks + 1, Err: err}
 		}
@@ -291,6 +294,17 @@ func (e *executor) chunkOnce(ctx context.Context, run *chunkRun, chunker driver.
 	return sliced, nil
 }
 
+// chunkBounded runs one chunk's statements under safety.statement_timeout, naming the bound where reached.
+func (e *executor) chunkBounded(ctx context.Context, chunker driver.Chunker, s driver.Slice,
+) (driver.Sliced, error) {
+	bound, cancel := e.statementBound(ctx)
+	defer cancel()
+
+	out, err := chunker.Chunk(bound, s)
+
+	return out, e.timedOut(bound, err)
+}
+
 // retryChunk runs one chunk's transaction, running it again after a lock wait spent while retries remain.
 func (e *executor) retryChunk(ctx context.Context, run *chunkRun, done Progress, work driver.Work) error {
 	for {
@@ -301,8 +315,12 @@ func (e *executor) retryChunk(ctx context.Context, run *chunkRun, done Progress,
 
 		again, waitErr := e.backoff(ctx, &run.tried, Retry{Migration: run.ready.item.migration,
 			Direction: run.ready.compiled.Direction, Chunk: done.Chunks + 1, Err: err})
+		if waitErr != nil {
+			return errors.Join(err, waitErr)
+		}
+
 		if !again {
-			return errors.Join(run.tried.exhausted(err), waitErr)
+			return run.tried.exhausted(err)
 		}
 	}
 }

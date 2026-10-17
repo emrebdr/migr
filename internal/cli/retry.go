@@ -10,7 +10,7 @@ import (
 	"github.com/emrebdr/migr/internal/engine"
 )
 
-// retrying gives a run the backoff migr.yaml's safety block describes, and logs every retry it takes.
+// retrying gives a run its backoff and its two bounds from migr.yaml's safety block, and logs every retry.
 func (t *target) retrying(options engine.Options, log *slog.Logger) engine.Options {
 	options.Backoff = engine.Exponential{
 		Base:    t.cfg.Safety.LockBackoff.Duration(),
@@ -19,6 +19,8 @@ func (t *target) retrying(options engine.Options, log *slog.Logger) engine.Optio
 		Jitter:  jitter,
 	}
 	options.Retried = logRetry(log, t.cfg.Safety.Retries())
+	options.StatementTimeout = t.cfg.Safety.StatementTimeout.Duration()
+	options.MigrationTimeout = t.cfg.Safety.Migration()
 
 	return options
 }

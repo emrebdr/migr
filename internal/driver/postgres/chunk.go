@@ -146,7 +146,9 @@ func compare(key []string, operator string, first int) string {
 }
 
 // Chunk runs one slice inside the session's open transaction, and reports where it ended.
-func (c *pgConn) Chunk(ctx context.Context, s driver.Slice) (driver.Sliced, error) {
+func (c *pgConn) Chunk(ctx context.Context, s driver.Slice) (out driver.Sliced, err error) {
+	defer func() { err = stoppedBy(ctx, err) }()
+
 	if c.tx == nil {
 		return driver.Sliced{}, fmt.Errorf("%w: a chunk runs inside the transaction its checkpoint "+
 			"is written in, and this session has none open", ErrTransaction)

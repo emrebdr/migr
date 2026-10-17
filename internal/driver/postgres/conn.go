@@ -39,7 +39,7 @@ func (c *pgConn) Exec(ctx context.Context, stmt driver.Statement) error {
 	}
 
 	if _, err := c.runner().Exec(ctx, stmt.SQL); err != nil {
-		return fmt.Errorf("executing a statement on %s: %w", Name, classifyExec(err))
+		return stoppedBy(ctx, fmt.Errorf("executing a statement on %s: %w", Name, classifyExec(err)))
 	}
 
 	return nil

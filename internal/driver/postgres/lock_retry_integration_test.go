@@ -149,6 +149,15 @@ func holdTable(t *testing.T, dsn, table string) pgx.Tx {
 func contended(t *testing.T, dsn string) (*pgConn, string) {
 	t.Helper()
 
+	session, table, _ := contendedFor(t, dsn, retryLockWait)
+
+	return session, table
+}
+
+// contendedFor stages the same schema with a session whose statements wait as long as given, and names it.
+func contendedFor(t *testing.T, dsn string, wait time.Duration) (*pgConn, string, string) {
+	t.Helper()
+
 	target := scratchSchema(t, dsn)
 
 	if _, err := engine.Apply(t.Context(), queueSession(t, dsn, target),
@@ -157,14 +166,14 @@ func contended(t *testing.T, dsn string) (*pgConn, string) {
 	}
 
 	conn := open(t, dsn, driver.Options{Schema: target, HistoryTable: historyTable,
-		StatementLockWait: retryLockWait})
+		StatementLockWait: wait})
 
 	session, ok := conn.(*pgConn)
 	if !ok {
 		t.Fatalf("Open returned %T", conn)
 	}
 
-	return session, quote(target) + ".accounts"
+	return session, quote(target) + ".accounts", target
 }
 
 // retried builds the run's options with a real backoff and a real sleep, as migr up has.

@@ -55,7 +55,7 @@ func (c *mysqlConn) begin(ctx context.Context) (*sql.Tx, error) {
 		return nil, err
 	}
 
-	tx, err := c.conn.BeginTx(ctx, nil)
+	tx, err := c.conn.BeginTx(context.WithoutCancel(ctx), nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: beginning it: %w", ErrTransaction, err)
 	}

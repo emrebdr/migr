@@ -306,6 +306,14 @@ func validateSafety(v *validator, s Safety) {
 		v.add("safety.statement_timeout", "must be positive, got %s", s.StatementTimeout)
 	}
 
+	if s.StatementTimeout > 0 && s.LockTimeout > 0 && s.StatementTimeout <= s.LockTimeout {
+		v.add("safety.statement_timeout", "must be longer than safety.lock_timeout (%s), got %s: "+
+			"otherwise a statement waiting for a lock is stopped as too slow before its lock wait "+
+			"ends, and is never retried", s.LockTimeout, s.StatementTimeout)
+	}
+
+	validateMigrationTimeout(v, s)
+
 	if s.ReplicaLagThreshold <= 0 {
 		v.add("safety.replica_lag_threshold", "must be positive, got %s", s.ReplicaLagThreshold)
 	}
@@ -318,6 +326,24 @@ func validateSafety(v *validator, s Safety) {
 	if s.ChunkPause <= 0 {
 		v.add("safety.chunk_pause", "must be positive, got %s: chunks run back to back are an "+
 			"unthrottled backfill, which is itself an outage", s.ChunkPause)
+	}
+}
+
+// validateMigrationTimeout checks the optional bound on one migration against the bound on one statement.
+func validateMigrationTimeout(v *validator, s Safety) {
+	if s.MigrationTimeout == nil {
+		return
+	}
+
+	limit := s.Migration()
+
+	switch {
+	case limit <= 0:
+		v.add("safety.migration_timeout", "must be positive, got %s; leave it unset for no bound",
+			*s.MigrationTimeout)
+	case limit < s.StatementTimeout.Duration():
+		v.add("safety.migration_timeout", "must be at least safety.statement_timeout (%s), got %s: "+
+			"a migration is at least one statement", s.StatementTimeout, *s.MigrationTimeout)
 	}
 }
 

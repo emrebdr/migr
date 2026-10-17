@@ -32,7 +32,21 @@ var binaryTypes = map[string]bool{
 }
 
 // Query runs a migration's own read with the session refused writes, so the server refuses, not migr.
-func (c *mysqlConn) Query(ctx context.Context, q driver.Query) (out driver.Rows, err error) {
+func (c *mysqlConn) Query(ctx context.Context, q driver.Query) (driver.Rows, error) {
+	var out driver.Rows
+
+	err := c.interruptible(ctx, func(ctx context.Context) error {
+		read, err := c.readOnly(ctx, q)
+		out = read
+
+		return err
+	})
+
+	return out, err
+}
+
+// readOnly runs the read inside a read-only transaction the server enforces, the session pinned around it.
+func (c *mysqlConn) readOnly(ctx context.Context, q driver.Query) (out driver.Rows, err error) {
 	if err := c.outsideTransaction(ErrQuery); err != nil {
 		return driver.Rows{}, err
 	}
@@ -79,17 +93,23 @@ func (c *mysqlConn) Perform(ctx context.Context, q driver.Query) (int64, error) 
 		return 0, err
 	}
 
-	result, err := c.conn.ExecContext(ctx, q.SQL, bindings(q.Args)...)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %w", ErrPerform, err)
-	}
+	var changed int64
 
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("%w: reading how many rows it changed: %w", ErrPerform, err)
-	}
+	err := c.interruptible(ctx, func(ctx context.Context) error {
+		result, err := c.conn.ExecContext(ctx, q.SQL, bindings(q.Args)...)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrPerform, err)
+		}
 
-	return changed, nil
+		changed, err = result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("%w: reading how many rows it changed: %w", ErrPerform, err)
+		}
+
+		return nil
+	})
+
+	return changed, err
 }
 
 // outsideTransaction refuses a migration's own SQL on a session that is already inside one.

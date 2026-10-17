@@ -102,6 +102,7 @@ func (d *pgDriver) Open(ctx context.Context, dsn string) (driver.Conn, error) {
 	pinLockTimeout(cfg, d.statementLockWait)
 	pinApplicationName(cfg)
 	pinKeepalives(cfg)
+	pinCancellation(cfg)
 
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {

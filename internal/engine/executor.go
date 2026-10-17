@@ -164,7 +164,12 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 	rec := e.newRecord(ready)
 	start := e.from
 
-	survived, retried, err := e.runRetrying(ctx, &ready, &rec)
+	bound, cancel := e.migrationBound(ctx)
+	defer cancel()
+
+	survived, retried, err := e.runRetrying(bound, &ready, &rec)
+	err = e.timedOut(bound, err)
+
 	if err != nil {
 		return Run{}, e.fail(ready.item, ready.compiled, errors.Join(
 			e.leftDirty(ready, survived, err), e.recordFailure(ctx, rec, survived, err)))
@@ -197,8 +202,12 @@ func (e *executor) runRetrying(ctx context.Context, ready *prepared, rec *histor
 
 		again, waitErr := e.backoff(ctx, &tried, Retry{Migration: ready.item.migration,
 			Direction: ready.compiled.Direction, Statement: statementOf(err), Err: err})
+		if waitErr != nil {
+			return survived, tried.retries, errors.Join(err, waitErr)
+		}
+
 		if !again {
-			return survived, tried.retries, errors.Join(tried.exhausted(err), waitErr)
+			return survived, tried.retries, tried.exhausted(err)
 		}
 
 		e.rewind(ready, start, original, survived)
@@ -381,12 +390,20 @@ func (e *executor) exec(ctx context.Context, stmts []driver.Statement) error {
 			continue
 		}
 
-		if err := e.conn.Exec(ctx, stmt); err != nil {
+		if err := e.execBounded(ctx, stmt); err != nil {
 			return &StatementError{Position: e.position, Statement: stmt, Err: err}
 		}
 	}
 
 	return nil
+}
+
+// execBounded runs one statement under safety.statement_timeout, naming the bound where it was reached.
+func (e *executor) execBounded(ctx context.Context, stmt driver.Statement) error {
+	bound, cancel := e.statementBound(ctx)
+	defer cancel()
+
+	return e.timedOut(bound, e.conn.Exec(bound, stmt))
 }
 
 // resumed reports a statement a stopped run already succeeded at, which this run counts but skips.

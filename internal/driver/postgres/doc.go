@@ -81,6 +81,16 @@
 // driver.ErrStatementLockTimeout, and internal/engine reruns the migration's transaction after a
 // jittered backoff -- the rollback having released every lock its earlier statements took (ADR 0082).
 //
+// # A canceled statement is canceled on the server
+//
+// pgx's default reaction to a canceled context is a deadline on its own socket, after which the
+// dead connection sends a cancel request from a goroutine and terminates: measured at M13-T3 on 16
+// and 17, the statement did stop, but only after Exec had returned, and the session -- the one
+// holding the advisory lock and writing the failed run's row -- was gone. pinCancellation sets the
+// cancel-request handler instead, which sends the request first and waits for 57014, with a 5s
+// socket deadline as the fallback for a server that never answers. 57014 says nothing about why, so
+// stoppedBy joins the context's ending to it (ADR 0083).
+//
 // # A duration is spelled to the server, not printed
 //
 // lock_timeout takes an integer and at most one unit from us, ms, s, min, h, d. Go's canonical

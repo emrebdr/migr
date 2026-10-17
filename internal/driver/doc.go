@@ -161,6 +161,17 @@
 // internal/engine can retry it after a backoff and internal/cli can exit 3 once the retries are
 // spent (M13-T2, ADR 0082). It is never the migration lock's: that one waits once (ADR 0020).
 //
+// # A canceled statement is stopped on the server, and the session survives it
+//
+// An Exec, Query, Perform or Chunk whose context ends returns only once the server has stopped the
+// statement, and the session is still usable; its error joins that ending to what the server said,
+// so errors.Is(err, context.Canceled) holds on every driver (M13-T3, ADR 0083). Leaving it to the
+// client library ended the session on all three engines -- and on MySQL 8.0 left the ALTER waiting
+// on the server for its whole lock wait, readers queued behind it -- so each driver does it itself:
+// PostgreSQL by the protocol's cancel request, MySQL by KILL QUERY from a second connection, and
+// SQLite by sqlite3_interrupt, which is in-process. internal/engine owns the bounds that end a
+// context, safety.statement_timeout and safety.migration_timeout, and drivers own nothing about them.
+//
 // LockBusyError carries who holds the lock, and LockHolder is deliberately shaped for three
 // engines rather than one: Process is a string because MySQL's holder is a connection id, SQLite's
 // an OS pid in a lock file, and PostgreSQL's a backend pid. Elapsed is a duration the server

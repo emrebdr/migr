@@ -2,6 +2,7 @@ package config
 
 import (
 	"slices"
+	"time"
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
@@ -77,11 +78,21 @@ type Safety struct {
 	LockRetries         *int                  `yaml:"lock_retries"          json:"lock_retries"`
 	LockBackoff         Duration              `yaml:"lock_backoff"          json:"lock_backoff"`
 	StatementTimeout    Duration              `yaml:"statement_timeout"     json:"statement_timeout"`
+	MigrationTimeout    *Duration             `yaml:"migration_timeout"     json:"migration_timeout,omitempty"`
 	MaxLockImpact       capability.LockImpact `yaml:"max_lock_impact"       json:"max_lock_impact"`
 	AutoRewrite         bool                  `yaml:"auto_rewrite"          json:"auto_rewrite"`
 	ReplicaLagThreshold Duration              `yaml:"replica_lag_threshold" json:"replica_lag_threshold"`
 	ChunkRows           *int                  `yaml:"chunk_rows"            json:"chunk_rows"`
 	ChunkPause          Duration              `yaml:"chunk_pause"           json:"chunk_pause"`
+}
+
+// Migration returns how long one migration may run, its retries included, and zero for no bound.
+func (s Safety) Migration() time.Duration {
+	if s.MigrationTimeout == nil {
+		return 0
+	}
+
+	return s.MigrationTimeout.Duration()
 }
 
 // Retries returns how many times a statement that gave up on a lock is tried again, zero none.

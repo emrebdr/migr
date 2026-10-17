@@ -59,6 +59,7 @@ type recorder struct {
 	calls         []string
 	fail          string
 	busy          map[string]int
+	slow          string
 	inTx          bool
 	store         *journal
 	lockErr       error
@@ -94,8 +95,14 @@ func (r *recorder) note(call string) {
 }
 
 // Exec records the statement and where it ran, failing the one a test asked it to fail.
-func (r *recorder) Exec(_ context.Context, stmt driver.Statement) error {
+func (r *recorder) Exec(ctx context.Context, stmt driver.Statement) error {
 	r.note(r.describeExec(stmt))
+
+	if stmt.SQL == r.slow {
+		<-ctx.Done()
+
+		return fmt.Errorf("the fake server stopped the statement: %w", ctx.Err())
+	}
 
 	if stmt.SQL == r.fail {
 		return errRefused

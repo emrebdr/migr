@@ -144,6 +144,8 @@ func (d *mysqlDriver) Open(ctx context.Context, dsn string) (driver.Conn, error)
 		return nil, errors.Join(err, closeDB(db))
 	}
 
+	session.killer = newKiller(connector)
+
 	return session, nil
 }
 
@@ -171,6 +173,13 @@ func (d *mysqlDriver) prepare(ctx context.Context, session *mysqlConn) error {
 	if err := applyVariables(ctx, session, d.statementLockWait); err != nil {
 		return err
 	}
+
+	id, err := readConnectionID(ctx, session)
+	if err != nil {
+		return err
+	}
+
+	session.id = id
 
 	version, err := detectVersion(ctx, session)
 	if err != nil {

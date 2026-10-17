@@ -144,6 +144,20 @@ func spelled(values []string) []any {
 
 // Chunk runs one slice inside the session's open transaction, and reports where it ended.
 func (c *mysqlConn) Chunk(ctx context.Context, s driver.Slice) (driver.Sliced, error) {
+	var out driver.Sliced
+
+	err := c.interruptible(ctx, func(ctx context.Context) error {
+		sliced, err := c.chunk(ctx, s)
+		out = sliced
+
+		return err
+	})
+
+	return out, err
+}
+
+// chunk finds the next chunk's bound and runs the write over it, on a context the library cannot cancel.
+func (c *mysqlConn) chunk(ctx context.Context, s driver.Slice) (driver.Sliced, error) {
 	if c.tx == nil {
 		return driver.Sliced{}, fmt.Errorf("%w: a chunk runs inside the transaction its checkpoint "+
 			"is written in, and this session has none open", ErrTransaction)

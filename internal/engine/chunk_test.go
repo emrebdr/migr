@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,6 +27,8 @@ type keyed struct {
 	rows int
 	// failAt is the chunk, counting from one across every run, that fails; zero fails none.
 	failAt int
+	// busyAt is the chunk, counting from one across every run, that gives up on a lock; zero none.
+	busyAt int
 	// served counts the chunks asked for, across every run that shares this table.
 	served int
 	// slices is every slice a chunk was asked for, in order.
@@ -70,6 +73,10 @@ func (k *keyed) Chunk(_ context.Context, s driver.Slice) (driver.Sliced, error) 
 
 	if k.served == k.failAt {
 		return driver.Sliced{}, errRefused
+	}
+
+	if k.served == k.busyAt {
+		return driver.Sliced{}, fmt.Errorf("%w: the fake's row lock is held", driver.ErrStatementLockTimeout)
 	}
 
 	k.slices = append(k.slices, s)

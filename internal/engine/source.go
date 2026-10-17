@@ -75,6 +75,10 @@ type Options struct {
 	Sleep Sleeper
 	// Progress is told about every chunk that commits, and an unset one tells nobody.
 	Progress func(Progress)
+	// Backoff decides whether a statement that gave up on a lock is tried again, and an unset one never does.
+	Backoff Backoff
+	// Retried is told about every retry before its wait, and an unset one tells nobody.
+	Retried func(Retry)
 }
 
 // check reports what an apply run was not given, before it takes a lock it could not use.

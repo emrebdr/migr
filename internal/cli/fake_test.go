@@ -39,6 +39,10 @@ type fake struct {
 	table bool
 	// refuse is the statement this database rejects, empty when it rejects none.
 	refuse string
+	// contended is the statement that gives up waiting for a lock, empty when none does.
+	contended string
+	// contentions is how many more times that statement gives up before it succeeds.
+	contentions int
 	// autoCommits makes this database declare no transactional DDL, as MySQL's driver does.
 	autoCommits bool
 	// unsupported is the SQL whose operation this driver will not compile at all.
@@ -357,6 +361,12 @@ func (c *fakeConn) Exec(_ context.Context, stmt driver.Statement) error {
 
 	if stmt.SQL == c.fake.refuse {
 		return errRefused
+	}
+
+	if stmt.SQL == c.fake.contended && c.fake.contentions > 0 {
+		c.fake.contentions--
+
+		return fmt.Errorf("%w: another session holds the table", driver.ErrStatementLockTimeout)
 	}
 
 	return nil

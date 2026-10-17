@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/emrebdr/migr/internal/checksum"
@@ -161,9 +162,9 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 	}
 
 	rec := e.newRecord(ready)
-	e.position = 0
+	start := e.from
 
-	survived, err := e.runMigration(ctx, &ready, e.recorder(&rec))
+	survived, retried, err := e.runRetrying(ctx, &ready, &rec)
 	if err != nil {
 		return Run{}, e.fail(ready.item, ready.compiled, errors.Join(
 			e.leftDirty(ready, survived, err), e.recordFailure(ctx, rec, survived, err)))
@@ -172,10 +173,48 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 	return Run{
 		Migration:  ready.item.migration,
 		Ordinal:    rec.Ordinal,
-		Statements: ready.compiled.Len() - e.from,
+		Statements: ready.compiled.Len() - start,
 		Started:    rec.AppliedAt,
 		Duration:   rec.Duration,
+		Retries:    retried,
 	}, nil
+}
+
+// runRetrying runs a migration, trying it again after a lock wait spent for as long as the backoff allows.
+func (e *executor) runRetrying(ctx context.Context, ready *prepared, rec *history.Record,
+) (int32, int, error) {
+	var tried attempts
+
+	start, original := e.from, slices.Clone(ready.compiled.Steps)
+
+	for {
+		e.position = 0
+
+		survived, err := e.runMigration(ctx, ready, e.recorder(rec))
+		if err == nil {
+			return 0, tried.retries, nil
+		}
+
+		again, waitErr := e.backoff(ctx, &tried, Retry{Migration: ready.item.migration,
+			Direction: ready.compiled.Direction, Statement: statementOf(err), Err: err})
+		if !again {
+			return survived, tried.retries, errors.Join(tried.exhausted(err), waitErr)
+		}
+
+		e.rewind(ready, start, original, survived)
+	}
+}
+
+// rewind sets up the next attempt: from the start where the rollback undid everything, else past what held.
+func (e *executor) rewind(ready *prepared, start int32, original []plan.Step, survived int32) {
+	if e.conn.Capabilities().TransactionalDDL() {
+		e.from = start
+		ready.compiled.Steps = slices.Clone(original)
+
+		return
+	}
+
+	e.from = survived
 }
 
 // checkRunnable refuses a migration this executor cannot run atomically, naming the task that will.

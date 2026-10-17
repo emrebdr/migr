@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
@@ -37,10 +39,20 @@ func (c *pgConn) Exec(ctx context.Context, stmt driver.Statement) error {
 	}
 
 	if _, err := c.runner().Exec(ctx, stmt.SQL); err != nil {
-		return fmt.Errorf("executing a statement on %s: %w", Name, err)
+		return fmt.Errorf("executing a statement on %s: %w", Name, classifyExec(err))
 	}
 
 	return nil
+}
+
+// classifyExec marks a statement that spent safety.lock_timeout waiting, so the engine can retry it.
+func classifyExec(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == lockNotAvailable {
+		return fmt.Errorf("%w: %w", driver.ErrStatementLockTimeout, err)
+	}
+
+	return err
 }
 
 // checkStatementFits refuses a statement declaring it cannot run where this session would run it.

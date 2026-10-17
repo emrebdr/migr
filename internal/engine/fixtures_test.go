@@ -58,6 +58,7 @@ type recorder struct {
 	caps          capability.Set
 	calls         []string
 	fail          string
+	busy          map[string]int
 	inTx          bool
 	store         *journal
 	lockErr       error
@@ -98,6 +99,12 @@ func (r *recorder) Exec(_ context.Context, stmt driver.Statement) error {
 
 	if stmt.SQL == r.fail {
 		return errRefused
+	}
+
+	if r.busy[stmt.SQL] > 0 {
+		r.busy[stmt.SQL]--
+
+		return fmt.Errorf("%w: the fake's lock is held", driver.ErrStatementLockTimeout)
 	}
 
 	return nil

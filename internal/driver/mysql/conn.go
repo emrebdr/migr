@@ -23,6 +23,9 @@ const (
 	errKeyTooLong = 1071
 )
 
+// errLockWaitTimeout is ER_LOCK_WAIT_TIMEOUT, which both a metadata-lock and a row-lock wait end in.
+const errLockWaitTimeout = 1205
+
 // mysqlConn is one pinned MySQL session, never a pool: the migration lock belongs to a connection.
 type mysqlConn struct {
 	// db is the pool this session drew its one connection from, and closes at the end.
@@ -68,9 +71,11 @@ func (c *mysqlConn) Exec(ctx context.Context, stmt driver.Statement) error {
 	return nil
 }
 
-// explainExec states the rule behind the two refusals a pure Compile could not have prevented.
+// explainExec marks a lock wait spent and states the rule behind two refusals Compile could not prevent.
 func explainExec(err error) error {
 	switch {
+	case hasNumber(err, errLockWaitTimeout):
+		return fmt.Errorf("%w: %w", driver.ErrStatementLockTimeout, err)
 	case hasNumber(err, errBlobKeyWithoutLength):
 		return &IndexKeyError{Number: errBlobKeyWithoutLength, Err: err, Detail: "MySQL will not put " +
 			"a text or blob column in a key without a prefix length, and no v1 operation carries one: " +

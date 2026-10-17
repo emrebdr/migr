@@ -12,9 +12,11 @@ import (
 // Exit codes, as documented in CLAUDE.md §5.
 //
 // ExitCode resolves an explicit ExitError first, so a command may always classify a failure
-// itself. Below that it reads three sentinels, because recognizing them in one place is what saves
+// itself. Below that it reads four sentinels, because recognizing them in one place is what saves
 // every command from having to remember them: driver.ErrLockTimeout, since giving up on the
-// migration lock is contention rather than a runtime error; engine.ErrDrifted, since an
+// migration lock is contention rather than a runtime error, and driver.ErrStatementLockTimeout for
+// the same reason about a table lock, once every retry safety.lock_retries allows is spent (ADR
+// 0082) -- the same command succeeds once whoever holds it lets go; engine.ErrDrifted, since an
 // applied migration that was edited is the one failure invariant #6 gives a code of its own; and
 // engine.ErrDestructive, which is the rule for exit 2 exactly -- the operator retypes the command
 // with --allow-destructive, or names the kind in migr.yaml, and the same command then runs.
@@ -86,7 +88,7 @@ func ExitCode(err error) int {
 		return exitErr.Code
 	}
 
-	if errors.Is(err, driver.ErrLockTimeout) {
+	if errors.Is(err, driver.ErrLockTimeout) || errors.Is(err, driver.ErrStatementLockTimeout) {
 		return ExitLock
 	}
 

@@ -490,9 +490,11 @@ func (t *target) connect(ctx context.Context, opts *options) (*session, error) {
 	opts.log.Info("connected", "database", t.name, "driver", t.db.Driver,
 		"server", conn.ServerVersion())
 
-	return &session{conn: conn, database: t.name, options: t.paced(engine.Options{
+	options := t.paced(engine.Options{
 		Planner: plan.Planner{Compiler: d, Expander: expanderOf(conn)},
-	}, conn, opts.log)}, nil
+	}, conn, opts.log)
+
+	return &session{conn: conn, database: t.name, options: t.retrying(options, opts.log)}, nil
 }
 
 // open resolves the target, discovers the migrations, and opens a session ready to run a direction.

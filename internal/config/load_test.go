@@ -59,7 +59,7 @@ func TestExampleFromClaudeMDLoads(t *testing.T) {
 		{field: "lock.strategy", got: cfg.Lock.Strategy, want: LockAdvisory},
 		{field: "lock.timeout", got: cfg.Lock.Timeout.Duration(), want: 30 * time.Second},
 		{field: "safety.lock_timeout", got: cfg.Safety.LockTimeout.Duration(), want: 3 * time.Second},
-		{field: "safety.lock_retries", got: cfg.Safety.LockRetries, want: 5},
+		{field: "safety.lock_retries", got: cfg.Safety.Retries(), want: 5},
 		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: capability.BriefExclusive},
 		{field: "safety.auto_rewrite", got: cfg.Safety.AutoRewrite, want: true},
 	}
@@ -315,7 +315,7 @@ databases:
 		{field: "lock.strategy", got: cfg.Lock.Strategy, want: LockStrategy("")},
 		{field: "lock.timeout", got: cfg.Lock.Timeout.Duration(), want: 30 * time.Second},
 		{field: "safety.lock_timeout", got: cfg.Safety.LockTimeout.Duration(), want: 3 * time.Second},
-		{field: "safety.lock_retries", got: cfg.Safety.LockRetries, want: 5},
+		{field: "safety.lock_retries", got: cfg.Safety.Retries(), want: 5},
 		{field: "safety.statement_timeout", got: cfg.Safety.StatementTimeout.Duration(), want: 30 * time.Second},
 		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: capability.BriefExclusive},
 		{field: "safety.replica_lag_threshold", got: cfg.Safety.ReplicaLagThreshold.Duration(), want: 5 * time.Second},

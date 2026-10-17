@@ -105,7 +105,7 @@ func (c *sqliteConn) commit(tx *sql.Tx) error {
 		return fmt.Errorf("%w: %w: %w", ErrTransaction, ErrCommitDiscarded, err)
 	}
 
-	return fmt.Errorf("%w: committing it: %w", ErrTransaction, err)
+	return fmt.Errorf("%w: committing it: %w", ErrTransaction, classifyBusy(err))
 }
 
 // rollback discards the transaction, and one SQLite already discarded is not a second failure.

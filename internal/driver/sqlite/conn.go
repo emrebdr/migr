@@ -8,6 +8,8 @@ import (
 	"os"
 	"time"
 
+	sqlite3 "modernc.org/sqlite/lib"
+
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
@@ -46,10 +48,19 @@ func (c *sqliteConn) Exec(ctx context.Context, stmt driver.Statement) error {
 	}
 
 	if _, err := c.runner().ExecContext(ctx, stmt.SQL); err != nil {
-		return fmt.Errorf("executing a statement on %s: %w", Name, err)
+		return fmt.Errorf("executing a statement on %s: %w", Name, classifyBusy(err))
 	}
 
 	return nil
+}
+
+// classifyBusy marks a wait for the write lock that spent busy_timeout, so the engine can retry it.
+func classifyBusy(err error) error {
+	if hasCode(err, sqlite3.SQLITE_BUSY) {
+		return fmt.Errorf("%w: %w", driver.ErrStatementLockTimeout, err)
+	}
+
+	return err
 }
 
 // checkStatementFits refuses a statement declaring it cannot run where this session would run it.

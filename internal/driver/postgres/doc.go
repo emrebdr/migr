@@ -75,9 +75,11 @@
 // Invariant #12's "a timeout retries with backoff rather than queueing" is about DDL statements,
 // and its reason does not transfer: an ALTER TABLE blocked behind a long-running query blocks every
 // later query on that table, so staying queued is itself the outage. An advisory lock blocks
-// nothing but other migr runs. safety.lock_retries belongs to that per-statement bound (M13-T2),
-// which is why it sits in the safety block beside safety.lock_timeout rather than beside
-// lock.timeout. See ADR 0020.
+// nothing but other migr runs. safety.lock_retries belongs to that per-statement bound, which is why
+// it sits in the safety block beside safety.lock_timeout rather than beside lock.timeout. See ADR
+// 0020. Since M13-T2 a statement whose lock_timeout expires is 55P03 wrapped in
+// driver.ErrStatementLockTimeout, and internal/engine reruns the migration's transaction after a
+// jittered backoff -- the rollback having released every lock its earlier statements took (ADR 0082).
 //
 // # A duration is spelled to the server, not printed
 //

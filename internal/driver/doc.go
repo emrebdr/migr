@@ -156,6 +156,11 @@
 // PostgreSQL adds the advisory key an operator matches against pg_locks — but the sentinel has to
 // survive errors.Is.
 //
+// A statement that spends safety.lock_timeout is a different failure, and ErrStatementLockTimeout
+// names it: every driver wraps its engine's own answer -- 55P03, 1205, SQLITE_BUSY -- so that
+// internal/engine can retry it after a backoff and internal/cli can exit 3 once the retries are
+// spent (M13-T2, ADR 0082). It is never the migration lock's: that one waits once (ADR 0020).
+//
 // LockBusyError carries who holds the lock, and LockHolder is deliberately shaped for three
 // engines rather than one: Process is a string because MySQL's holder is a connection id, SQLite's
 // an OS pid in a lock file, and PostgreSQL's a backend pid. Elapsed is a duration the server

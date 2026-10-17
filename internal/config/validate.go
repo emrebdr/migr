@@ -292,8 +292,14 @@ func validateSafety(v *validator, s Safety) {
 		v.add("safety.lock_timeout", "must be positive, got %s", s.LockTimeout)
 	}
 
-	if s.LockRetries < 0 {
-		v.add("safety.lock_retries", "must not be negative, got %d", s.LockRetries)
+	if s.Retries() < 0 {
+		v.add("safety.lock_retries", "must not be negative, got %d; 0 tries a statement that gave "+
+			"up on a lock only once", s.Retries())
+	}
+
+	if s.LockBackoff <= 0 {
+		v.add("safety.lock_backoff", "must be positive, got %s: a retry with no backoff goes "+
+			"straight back into the queue it timed out of", s.LockBackoff)
 	}
 
 	if s.StatementTimeout <= 0 {

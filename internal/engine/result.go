@@ -35,6 +35,8 @@ type Run struct {
 	Written int64
 	// Resumed reports a run that carried on from the checkpoint an earlier run committed.
 	Resumed bool
+	// Retries is how many times a statement or a chunk was tried again after giving up on a lock.
+	Retries int
 }
 
 // Skipped is one migration this invocation did not run, and the state it was left in.

@@ -15,7 +15,8 @@
 // docs/adr/0069-per-driver-introspection.md, docs/adr/0021-apply-executor.md,
 // docs/adr/0022-rollback-executor.md, docs/adr/0023-batch-narrowing.md,
 // docs/adr/0024-dirty-runs.md and docs/adr/0026-dry-run-and-sql-sources.md. A data-only migration
-// runs in chunks and carries on after an interruption as of M12-T3 (docs/adr/0078).
+// runs in chunks and carries on after an interruption as of M12-T3 (docs/adr/0078), and a statement
+// that gave up on a lock is tried again after a backoff as of M13-T2 (docs/adr/0082).
 //
 // # A preview reads what an apply ensures
 //
@@ -520,4 +521,20 @@
 // pace.go is the seam M13-T8 drives: a Pacer is asked before every chunk, the first included, with
 // what the chunks so far did, and answers how many rows the next covers, how long to wait for it,
 // and why it is waiting. The wait goes through a Sleeper, so no test here ever sleeps.
+//
+// # A statement that gave up on a lock is tried again
+//
+// Invariant #12's second half: a lock timeout retries with backoff rather than queueing. retry.go is
+// the loop, and driver.ErrStatementLockTimeout is the only failure it repeats, so a refusal is never
+// sent twice. Backoff is the seam -- Exponential doubles a base up to a cap with half of each delay
+// random, from a Jitter the caller injects since this package may hold no randomness -- and Retried
+// is told of every retry before its wait, which internal/cli logs as a warning (ADR 0082).
+//
+// What is rerun depends on what survived. On transactional DDL the rollback undid every statement
+// and released every lock they took, so the whole migration runs again from where this run began,
+// with its steps restored so an emulated operation is expanded again from the catalog the rollback
+// put back. Where DDL commits as it runs, the statements before the one that waited are applied, so
+// the next attempt begins at that one and keeps the expansions it already ran. A chunk is its own
+// transaction and is rerun alone. Nothing is written to the history between attempts; the last
+// failure is recorded as any failure is, wrapped in a LockRetryError saying how often it was tried.
 package engine

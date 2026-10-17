@@ -51,6 +51,8 @@ type chunkRun struct {
 	chunks int64
 	// written is how many rows those chunks changed or inserted.
 	written int64
+	// tried is how often a chunk was tried again after giving up on a lock, across every chunk.
+	tried attempts
 }
 
 // performChunked runs a data-only migration a chunk at a time, from a checkpoint where one is given.
@@ -71,6 +73,7 @@ func (e *executor) performChunked(ctx context.Context, ready prepared, from *his
 		Duration:  elapsed(run.rec.AppliedAt, e.opts.Clock()),
 		Chunks:    run.chunks,
 		Written:   run.written,
+		Retries:   run.tried.retries,
 		Resumed:   from != nil,
 	}, nil
 }
@@ -254,7 +257,7 @@ func (e *executor) chunkOnce(ctx context.Context, run *chunkRun, chunker driver.
 	marking := false
 	next := history.Checkpoint{}
 
-	err := e.conn.Transact(ctx, func(ctx context.Context) error {
+	err := e.retryChunk(ctx, run, done, func(ctx context.Context) error {
 		out, err := chunker.Chunk(ctx, driver.Slice{Op: done.Op, Key: done.Key, After: done.Cursor,
 			Rows: rows})
 		if err != nil {
@@ -286,6 +289,22 @@ func (e *executor) chunkOnce(ctx context.Context, run *chunkRun, chunker driver.
 	}
 
 	return sliced, nil
+}
+
+// retryChunk runs one chunk's transaction, running it again after a lock wait spent while retries remain.
+func (e *executor) retryChunk(ctx context.Context, run *chunkRun, done Progress, work driver.Work) error {
+	for {
+		err := e.conn.Transact(ctx, work)
+		if err == nil {
+			return nil
+		}
+
+		again, waitErr := e.backoff(ctx, &run.tried, Retry{Migration: run.ready.item.migration,
+			Direction: run.ready.compiled.Direction, Chunk: done.Chunks + 1, Err: err})
+		if !again {
+			return errors.Join(run.tried.exhausted(err), waitErr)
+		}
+	}
 }
 
 // checkpointAfter is what a committed chunk leaves: the cursor it reached, or the next operation's start.

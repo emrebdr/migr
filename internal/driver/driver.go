@@ -98,6 +98,15 @@ const DefaultLockWait = 30 * time.Second
 // DefaultStatementLockWait bounds one statement's wait for a lock when migr.yaml names none.
 const DefaultStatementLockWait = 3 * time.Second
 
+// DefaultLockRetries is how many times a statement that gave up on a lock is tried again by default.
+const DefaultLockRetries = 5
+
+// DefaultLockBackoff is the first retry's delay when migr.yaml names none, doubled for each one after.
+const DefaultLockBackoff = 500 * time.Millisecond
+
+// MaxLockBackoff is the longest one retry's delay grows to, however many retries came before it.
+const MaxLockBackoff = 30 * time.Second
+
 // Conn is one pinned database session. Everything needing a database lives here.
 type Conn interface {
 	// Exec runs one compiled statement.

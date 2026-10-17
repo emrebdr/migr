@@ -46,6 +46,8 @@ type ran struct {
 	Written int64 `json:"written,omitempty"`
 	// Resumed reports a run that carried on from the checkpoint an earlier run committed.
 	Resumed bool `json:"resumed,omitempty"`
+	// Retries is how many times a statement or chunk was tried again after giving up on a lock.
+	Retries int `json:"lock_retries,omitempty"`
 	// Duration is how long the run took.
 	Duration elapsed `json:"duration_ms"`
 }
@@ -60,12 +62,18 @@ func ranOf(run engine.Run) ran {
 		Chunks:     run.Chunks,
 		Written:    run.Written,
 		Resumed:    run.Resumed,
+		Retries:    run.Retries,
 		Duration:   elapsed(run.Duration),
 	}
 }
 
 // describeWork says what a run executed: its statements, or the chunks a data-only one ran in.
 func describeWork(run ran) string {
+	return describeExecuted(run) + describeRetries(run.Retries)
+}
+
+// describeExecuted says what a run executed: its statements, or the chunks a data-only one ran in.
+func describeExecuted(run ran) string {
 	if run.Chunks == 0 {
 		return describeStatements(int(run.Statements))
 	}
@@ -77,6 +85,18 @@ func describeWork(run ran) string {
 	}
 
 	return described
+}
+
+// describeRetries says how often a run was tried again after giving up on a lock, and nothing if never.
+func describeRetries(retries int) string {
+	switch retries {
+	case 0:
+		return ""
+	case 1:
+		return ", after 1 lock retry"
+	default:
+		return fmt.Sprintf(", after %d lock retries", retries)
+	}
 }
 
 // planned is one migration an invocation would have performed, compiled but never executed.

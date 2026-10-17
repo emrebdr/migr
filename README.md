@@ -438,6 +438,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0079](docs/adr/0079-expand-contract-helper.md) | Replacing a column through four migrations, each a phase of one declared change |
 | [0080](docs/adr/0080-seed-listing-and-rollback.md) | Listing, rolling back and settling seeds, as subcommands over the seed history |
 | [0081](docs/adr/0081-lock-verdicts-resolved-against-the-table.md) | Lock verdicts are pessimistic where they depend on the table, and a session may lower them |
+| [0082](docs/adr/0082-statement-lock-retry.md) | A statement that gave up on a lock is tried again, after a jittered backoff, a bounded number of times |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

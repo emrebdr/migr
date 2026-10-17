@@ -74,13 +74,23 @@ type Runtime struct {
 // Safety holds the thresholds that gate zero-downtime checks.
 type Safety struct {
 	LockTimeout         Duration              `yaml:"lock_timeout"          json:"lock_timeout"`
-	LockRetries         int                   `yaml:"lock_retries"          json:"lock_retries"`
+	LockRetries         *int                  `yaml:"lock_retries"          json:"lock_retries"`
+	LockBackoff         Duration              `yaml:"lock_backoff"          json:"lock_backoff"`
 	StatementTimeout    Duration              `yaml:"statement_timeout"     json:"statement_timeout"`
 	MaxLockImpact       capability.LockImpact `yaml:"max_lock_impact"       json:"max_lock_impact"`
 	AutoRewrite         bool                  `yaml:"auto_rewrite"          json:"auto_rewrite"`
 	ReplicaLagThreshold Duration              `yaml:"replica_lag_threshold" json:"replica_lag_threshold"`
 	ChunkRows           *int                  `yaml:"chunk_rows"            json:"chunk_rows"`
 	ChunkPause          Duration              `yaml:"chunk_pause"           json:"chunk_pause"`
+}
+
+// Retries returns how many times a statement that gave up on a lock is tried again, zero none.
+func (s Safety) Retries() int {
+	if s.LockRetries == nil {
+		return driver.DefaultLockRetries
+	}
+
+	return *s.LockRetries
 }
 
 // Rows returns how many rows a chunk of a data-only migration covers, zero running none in chunks.

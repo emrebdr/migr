@@ -105,6 +105,15 @@
 // that copies no rows costs nothing. It surfaced as a false rewrite in a measurement whose insert had
 // failed, which is why every live probe here asserts its row count.
 //
+// # A lock wait spent is retried by the engine
+//
+// lock_wait_timeout bounds a statement's wait for a metadata lock and innodb_lock_wait_timeout its
+// wait for a row lock, and both end in error 1205 on both servers, which Exec wraps in
+// driver.ErrStatementLockTimeout (M13-T2, ADR 0082). DDL here commits as it runs, so the engine
+// continues from the statement that waited rather than sending the ones before it again -- a rerun
+// from the start is error 1060, a duplicate column, measured. While it backs off the migration is
+// between states with no row saying so, which is the window a crash between two statements has.
+//
 // # A uuid default is refused while this server writes a binary log
 //
 // ALTER TABLE ... ADD COLUMN ... DEFAULT (UUID()) is error 1674 on MySQL whenever log_bin is on,

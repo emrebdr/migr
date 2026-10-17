@@ -116,8 +116,11 @@
 //
 // database/sql rolls a transaction back itself when the context it was begun with is canceled, so
 // the rollback here tolerates sql.ErrTxDone rather than reporting a second failure. A COMMIT that
-// fails with SQLITE_BUSY leaves SQLite's own transaction open while database/sql considers it done;
-// the run fails loudly, and closing the session -- which every command does -- is what discards it.
+// fails with SQLITE_BUSY ends SQLite's own transaction as well -- measured at M13-T2, an explicit
+// ROLLBACK afterwards answers that none is active, which corrects what this paragraph said before.
+// So a busy statement and a busy COMMIT are both driver.ErrStatementLockTimeout, and the engine
+// reruns the transaction after a backoff (ADR 0082): in the default rollback journal, another
+// writer makes the statement busy and a reader makes the COMMIT busy.
 //
 // # Identifiers are always quoted, and there is no length to check
 //

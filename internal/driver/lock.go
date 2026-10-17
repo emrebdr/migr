@@ -10,6 +10,9 @@ import (
 // ErrLockTimeout marks an acquire that gave up waiting, which is not one that was refused.
 var ErrLockTimeout = errors.New("gave up waiting for the migration lock")
 
+// ErrStatementLockTimeout marks a statement that gave up waiting for a table lock under safety.lock_timeout.
+var ErrStatementLockTimeout = errors.New("a statement gave up waiting for a lock")
+
 // LockHolder is whoever a driver found holding the migration lock, in the terms its own engine uses.
 type LockHolder struct {
 	// Process names the holder the way its engine does, so an operator has something to act on.

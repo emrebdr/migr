@@ -117,6 +117,7 @@ func applyDefaults(cfg *Config) {
 	setDuration(&cfg.Runtime.CancelGrace, protocol.DefaultCancelGrace)
 	setDuration(&cfg.Runtime.ShutdownGrace, protocol.DefaultShutdownGrace)
 	setDuration(&cfg.Safety.LockTimeout, driver.DefaultStatementLockWait)
+	setDuration(&cfg.Safety.LockBackoff, driver.DefaultLockBackoff)
 	setDuration(&cfg.Safety.StatementTimeout, 30*time.Second)
 	setDuration(&cfg.Safety.ReplicaLagThreshold, 5*time.Second)
 	setDuration(&cfg.Safety.ChunkPause, driver.DefaultChunkPause)
@@ -126,8 +127,9 @@ func applyDefaults(cfg *Config) {
 		cfg.Safety.ChunkRows = &rows
 	}
 
-	if cfg.Safety.LockRetries == 0 {
-		cfg.Safety.LockRetries = 5
+	if cfg.Safety.LockRetries == nil {
+		retries := driver.DefaultLockRetries
+		cfg.Safety.LockRetries = &retries
 	}
 
 	if cfg.Safety.MaxLockImpact == "" {

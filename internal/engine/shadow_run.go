@@ -105,7 +105,7 @@ func (e *executor) startShadow(ctx context.Context, job *shadowJob, stream captu
 		return err
 	}
 
-	create, err := job.shadower.CreateShadow(job.shadow)
+	create, err := job.shadower.CreateShadow(ctx, job.shadow)
 	if err != nil {
 		return err
 	}
@@ -199,12 +199,30 @@ func (e *executor) copyShadow(ctx context.Context, job *shadowJob, stream captur
 		done.Chunks++
 		e.reportShadow(job.shadowProgress())
 
-		if _, err := e.replayOnce(ctx, job, stream); err != nil {
+		if err := e.replayCaughtUp(ctx, job, stream, done); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// replayCaughtUp reads the log once, and again for as long as the stream trails by more than CaptureLag.
+func (e *executor) replayCaughtUp(ctx context.Context, job *shadowJob, stream capture.Stream, done Progress) error {
+	for {
+		batch, err := e.replayOnce(ctx, job, stream)
+		if err != nil || e.opts.CaptureLag <= 0 || batch.Behind <= e.opts.CaptureLag {
+			return err
+		}
+
+		waiting := done
+		waiting.Waiting, waiting.Throttle = true, fmt.Sprintf("the change stream %s trails the log by "+
+			"%s, above safety.replica_lag_threshold (%s) -- reading it before copying more",
+			job.request.Name, batch.Behind.Round(time.Millisecond), e.opts.CaptureLag)
+		e.report(waiting)
+
+		job.paused.holds++
+	}
 }
 
 // copyOnce copies one chunk and records how far the copy got, in one transaction.

@@ -80,7 +80,7 @@ type Batch struct {
 type Stream interface {
 	// Start returns the position the stream began reading at.
 	Start() Position
-	// Next returns the changes committed since the last call, waiting a bounded time for some.
+	// Next returns the changes committed since the last call, and none only once it has read to where the log ended as it began.
 	Next(ctx context.Context) (Batch, error)
 	// Close stops reading and keeps the server-side resource, so a later stream resumes from a position.
 	Close(ctx context.Context) error

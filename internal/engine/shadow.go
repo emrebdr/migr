@@ -208,14 +208,22 @@ func (e *executor) prepareShadow(ctx context.Context, ready prepared, from *hist
 		return nil, err
 	}
 
+	shadow := driver.Shadow{Table: table, Shadow: ShadowName(table, m.Version),
+		Retired: RetiredName(table, m.Version), Key: key, Ops: operationsOf(ready.compiled)}
+
+	if from == nil {
+		if err := shadower.Admits(ctx, shadow); err != nil {
+			return nil, shadowRefusal(m, err.Error())
+		}
+	}
+
 	job := &shadowJob{
 		ready:    prepared{item: ready.item, compiled: ready.compiled.Shadow(), sum: ready.sum},
 		shadower: shadower,
 		store:    store,
 		rec:      e.newRecord(ready),
-		shadow: driver.Shadow{Table: table, Shadow: ShadowName(table, m.Version),
-			Retired: RetiredName(table, m.Version), Key: key, Ops: operationsOf(ready.compiled)},
-		request: capture.Request{Name: CaptureName(table, m.Version), Tables: []string{table}},
+		shadow:   shadow,
+		request:  capture.Request{Name: CaptureName(table, m.Version), Tables: []string{table}},
 	}
 
 	if from != nil {
@@ -337,13 +345,18 @@ func (e *executor) reportShadow(p ShadowProgress) {
 }
 
 // planShadow says how a migration declaring a shadow table would run, marking its plan, and nil for any other.
-func (e *executor) planShadow(ctx context.Context, item queued, dir ir.Direction, ready *prepared) *ShadowPlan {
+func (e *executor) planShadow(ctx context.Context, item queued, dir ir.Direction, ready *prepared,
+	first bool) *ShadowPlan {
 	if dir != ir.Up || !e.shadows(item.migration) {
 		return nil
 	}
 
 	ready.compiled = ready.compiled.Shadow()
 	shadow := &ShadowPlan{Resume: item.shadow}
+
+	if !first {
+		return e.planUnread(*ready, shadow)
+	}
 
 	job, err := e.prepareShadow(ctx, *ready, item.shadow)
 	if err != nil {
@@ -354,6 +367,29 @@ func (e *executor) planShadow(ctx context.Context, item queued, dir ir.Direction
 
 	shadow.Table, shadow.Shadow = job.shadow.Table, job.shadow.Shadow
 	shadow.Retired, shadow.Capture = job.shadow.Retired, job.request.Name
+	shadow.Retention = e.conn.Capabilities().Capture().Retention
+
+	return shadow
+}
+
+// planUnread judges a queued-behind migration on everything but its table, which the migrations ahead of it may change.
+func (e *executor) planUnread(ready prepared, shadow *ShadowPlan) *ShadowPlan {
+	m := ready.item.migration
+
+	shadower, _, err := e.shadowing(m)
+	if err == nil {
+		shadow.Table, err = shadowedTable(m, ready.compiled, shadower)
+	}
+
+	if err != nil {
+		shadow.Refused = err
+
+		return shadow
+	}
+
+	shadow.Shadow, shadow.Retired = ShadowName(shadow.Table, m.Version), RetiredName(shadow.Table, m.Version)
+	shadow.Capture, shadow.Unread = CaptureName(shadow.Table, m.Version), true
+	shadow.Retention = e.conn.Capabilities().Capture().Retention
 
 	return shadow
 }

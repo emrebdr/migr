@@ -5,12 +5,19 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/emrebdr/migr/internal/capability"
 )
 
 // binlogQuery reads the two binary-log settings a row-image reader needs beyond log_bin itself.
 const binlogQuery = `SELECT @@global.binlog_format, @@global.binlog_row_image`
+
+// retentionQuery reads how long the server keeps a binary log file before purging it by age.
+const retentionQuery = `SELECT @@global.binlog_expire_logs_seconds`
+
+// rowValueQuery reads whether row images are sent whole, which MySQL alone can be told not to.
+const rowValueQuery = `SELECT @@global.binlog_row_value_options`
 
 // grantsQuery lists this session's own global privileges by name, which carries no password hash
 // where SHOW GRANTS on MariaDB does.
@@ -40,17 +47,34 @@ type captureAnswer struct {
 	format string
 	// image is binlog_row_image.
 	image string
+	// rowValues is binlog_row_value_options, which MariaDB has no variable for and reads as empty.
+	rowValues string
+	// expires is binlog_expire_logs_seconds, and -1 where it was not read.
+	expires int64
 	// privileges are this session's global privileges.
 	privileges []string
 }
 
 // readCapture asks whether this server permits a binlog reader, reading a failed answer as not permitted.
-func readCapture(ctx context.Context, c *mysqlConn, logBin bool) capability.Capture {
+func readCapture(ctx context.Context, c *mysqlConn, logBin bool, version serverVersion) capability.Capture {
 	a := captureAnswer{logBin: logBin}
 
 	if err := c.runner().QueryRowContext(ctx, binlogQuery).Scan(&a.format, &a.image); err != nil {
 		return capability.Lacks(fmt.Sprintf("an answer migr could read about binlog_format and "+
 			"binlog_row_image (%v)", err))
+	}
+
+	a.expires = -1
+
+	if version.Variant() == MySQL {
+		if err := c.runner().QueryRowContext(ctx, rowValueQuery).Scan(&a.rowValues); err != nil {
+			return capability.Lacks(fmt.Sprintf("an answer migr could read about "+
+				"binlog_row_value_options (%v)", err))
+		}
+
+		if err := c.runner().QueryRowContext(ctx, retentionQuery).Scan(&a.expires); err != nil {
+			a.expires = -1
+		}
 	}
 
 	privileges, err := readPrivileges(ctx, c)
@@ -103,6 +127,11 @@ func (a captureAnswer) capture() capability.Capture {
 		missing = append(missing, fmt.Sprintf("binlog_row_image = FULL (it is %s)", a.image))
 	}
 
+	if strings.TrimSpace(a.rowValues) != "" {
+		missing = append(missing, fmt.Sprintf("binlog_row_value_options empty, so every update carries "+
+			"its whole row (it is %s)", a.rowValues))
+	}
+
 	if !slices.Contains(a.privileges, privReplicationSlave) {
 		missing = append(missing, "the REPLICATION SLAVE privilege on *.*")
 	}
@@ -115,5 +144,19 @@ func (a captureAnswer) capture() capability.Capture {
 		return capability.Lacks(missing...)
 	}
 
-	return capability.Permits()
+	return capability.Permits().Retains(a.retention())
+}
+
+// retention says how long the server keeps its binary log, and nothing where that was not read.
+func (a captureAnswer) retention() string {
+	switch {
+	case a.expires < 0:
+		return ""
+	case a.expires == 0:
+		return "binlog_expire_logs_seconds = 0, so no binary log is purged by age -- a manual PURGE " +
+			"BINARY LOGS still ends it"
+	default:
+		return fmt.Sprintf("binlog_expire_logs_seconds = %d, so a binary log file is purged %s after it "+
+			"is closed", a.expires, time.Duration(a.expires)*time.Second)
+	}
 }

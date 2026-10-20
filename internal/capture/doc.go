@@ -33,7 +33,14 @@
 // on the way. Insert and update carry the whole row after the write, which is what lets the shadow
 // apply one as an upsert in any order against the copy (ADR 0089, B).
 //
-// Nothing here is implemented by a real driver yet: MySQL's binlog reader is M13-T10 and
-// PostgreSQL's logical decoding is M13-T15. Every driver's Capture refuses with ErrUnsupported and a
-// reason until then, and SQLite's always will.
+// # An empty batch means the end of the log
+//
+// Stream.Next returns no change only once it has read to where the log ended as the call began, which
+// is what lets a cutover's catch-up under its brief lock be complete rather than merely quick: the
+// writes are stopped, so that end is the last write (M13-T10, ADR 0091).
+//
+// MySQL's binlog reader implements this (M13-T10, ADR 0091): a transaction is handed over once its
+// commit is read, so a batch never ends inside one, and a position is a GTID set where the server
+// records GTIDs and a file and offset where it does not. PostgreSQL's logical decoding is M13-T15;
+// until then that driver's Capture refuses with ErrUnsupported, and SQLite's always will.
 package capture

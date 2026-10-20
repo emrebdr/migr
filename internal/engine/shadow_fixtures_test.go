@@ -57,6 +57,8 @@ type world struct {
 	calls []string
 	// read is the log position the last read of a stream reached.
 	read int
+	// refuses is what the session's Admits answers, nil admitting the table.
+	refuses error
 }
 
 // newWorld returns a server holding people with the given number of rows, permitting capture.
@@ -280,8 +282,15 @@ func (c *worldConn) Close(context.Context) error { return nil }
 // Shadows refuses nothing, since every fixture's operation is an index the copy can carry.
 func (c *worldConn) Shadows(ir.Operation) error { return nil }
 
+// Admits refuses the table where the world was told to, and records that it was asked.
+func (c *worldConn) Admits(_ context.Context, s driver.Shadow) error {
+	c.w.calls = append(c.w.calls, "admits "+s.Table)
+
+	return c.w.refuses
+}
+
 // CreateShadow compiles the empty copy.
-func (c *worldConn) CreateShadow(s driver.Shadow) ([]driver.Statement, error) {
+func (c *worldConn) CreateShadow(_ context.Context, s driver.Shadow) ([]driver.Statement, error) {
 	return []driver.Statement{{SQL: "create " + s.Shadow}}, nil
 }
 

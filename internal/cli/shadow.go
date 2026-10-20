@@ -23,6 +23,7 @@ func (t *target) shadowing(options engine.Options, d driver.Driver, conn driver.
 	options.Capture = func(ctx context.Context, req capture.Request) (capture.Stream, error) {
 		return d.Capture(ctx, dsn, req)
 	}
+	options.CaptureLag = t.cfg.Safety.ReplicaLagThreshold.Duration()
 	options.Shadowed = logShadow(log)
 
 	return options
@@ -76,6 +77,10 @@ type shadowDoc struct {
 	Retired string `json:"retired,omitempty"`
 	// Capture is the server-side resource its change stream reads through.
 	Capture string `json:"capture,omitempty"`
+	// Retention says how long the server keeps the log a stopped run reads on from, absent where it says nothing.
+	Retention string `json:"retention,omitempty"`
+	// Unread reports a migration whose table is read only when the run reaches it, behind the ones ahead of it.
+	Unread bool `json:"unread,omitempty"`
 	// Stage is where a stopped run stands, which this one carries on from, absent for a fresh start.
 	Stage history.Stage `json:"stage,omitempty"`
 	// Position is the log position a stopped run recorded, which this one reads on from.
@@ -91,7 +96,7 @@ func shadowDocOf(planned *engine.ShadowPlan) *shadowDoc {
 	}
 
 	doc := &shadowDoc{Table: planned.Table, Shadow: planned.Shadow, Retired: planned.Retired,
-		Capture: planned.Capture}
+		Capture: planned.Capture, Retention: planned.Retention, Unread: planned.Unread}
 
 	if planned.Resume != nil {
 		doc.Stage, doc.Position = planned.Resume.Stage, planned.Resume.Position
@@ -120,6 +125,17 @@ func (m compiledMigration) writeShadow(b *strings.Builder) {
 		"changes from the replication log through %s, holds the copy in sync until the cutover is "+
 		"confirmed, then swaps it in and keeps the original as %s\n", m.Shadow.Table, m.Shadow.Shadow,
 		m.Shadow.Capture, m.Shadow.Retired)
+
+	if m.Shadow.Unread {
+		fmt.Fprintf(b, "       ⧉  %s is read when the run reaches this migration -- its key, and what "+
+			"this server can copy, are judged against the schema the migrations ahead of it leave\n",
+			m.Shadow.Table)
+	}
+
+	if m.Shadow.Retention != "" {
+		fmt.Fprintf(b, "       ⧉  a stopped run carries on only while the server keeps its log: %s\n",
+			m.Shadow.Retention)
+	}
 
 	if m.Shadow.Stage != "" {
 		fmt.Fprintf(b, "       ↻  carries on %s from log position %s, where the run that stopped "+

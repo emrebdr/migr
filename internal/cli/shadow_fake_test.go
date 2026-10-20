@@ -58,8 +58,11 @@ type shadowConn struct {
 // Shadows refuses nothing.
 func (c *shadowConn) Shadows(ir.Operation) error { return nil }
 
+// Admits refuses no table.
+func (c *shadowConn) Admits(context.Context, driver.Shadow) error { return nil }
+
 // CreateShadow compiles the empty copy.
-func (c *shadowConn) CreateShadow(s driver.Shadow) ([]driver.Statement, error) {
+func (c *shadowConn) CreateShadow(_ context.Context, s driver.Shadow) ([]driver.Statement, error) {
 	return []driver.Statement{{SQL: "-- create " + s.Shadow}}, nil
 }
 
@@ -237,10 +240,13 @@ var (
 	_ history.Shadows = (*fakeStore)(nil)
 )
 
+// fakeRetention is how long the fake server says it keeps its log.
+const fakeRetention = "the fake keeps its log for a week"
+
 // captureFact is whether the fake server permits log-based capture, as its declaration states it.
 func (f *fake) captureFact() capability.Capture {
 	if f.captures {
-		return capability.Permits()
+		return capability.Permits().Retains(fakeRetention)
 	}
 
 	return capability.Lacks(lackedCapture)

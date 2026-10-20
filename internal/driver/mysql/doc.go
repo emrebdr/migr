@@ -589,6 +589,29 @@
 // Open reads log_bin, binlog_format and binlog_row_image, and the session's own global privileges
 // from information_schema.USER_PRIVILEGES -- never SHOW GRANTS, which prints a password hash on
 // MariaDB -- into capability.Facts.Capture (M13-T16, ADR 0090). REPLICATION CLIENT is accepted under
-// MariaDB's 10.5 name, BINLOG MONITOR, too. A failed read is read as not permitted. Capture itself,
-// a row-format binlog reader, is M13-T10's: until then it refuses with capture.ErrUnsupported.
+// MariaDB's 10.5 name, BINLOG MONITOR, too. A failed read is read as not permitted. MySQL alone also
+// needs binlog_row_value_options empty, since PARTIAL_JSON sends half an image, and says how long it
+// keeps its log -- binlog_expire_logs_seconds -- as the fact's Retention.
+//
+// # A shadow table, kept current from the binary log
+//
+// Capture reads one table's row events through go-mysql (M13-T10, ADR 0091), on a pool and a
+// replication connection of its own, under a server id derived from the capture's name and moved past
+// every id the server and its replicas hold. A transaction is handed over once its commit is read and
+// the position moves only then: gtid:<set> where the server records GTIDs, file:<name>:<offset> where
+// it does not. An ALTER, RENAME, DROP or TRUNCATE of the table stops it naming the statement, and a
+// purged position names binlog_expire_logs_seconds. Each value is rendered from the decoded event into
+// the text the server answers with -- an unsigned integer un-signed, an enum's label, a float as the
+// exact double it is, a timestamp in UTC -- and bound back by its column's class.
+//
+// shadow.go is the Shadower. Admits refuses MariaDB, MySQL before 8.0.13, foreign keys either way,
+// triggers, user-named checks and a type no replay renders. The shadow is CREATE TABLE ... LIKE, its
+// changes compiled against it, an alter_column expanded from the original's column. A chunk is INSERT
+// ... SELECT ... FOR SHARE ON DUPLICATE KEY UPDATE k = k, which keeps a replayed row, downgrades no
+// other error the way INSERT IGNORE would, and waits out a writer whose event is readable before its
+// commit is visible. A replay is REPLACE and DELETE by key. The cutover is LOCK TABLES on the table,
+// the shadow and the shadow state, the catch-up bounded by safety.lock_timeout, AUTO_INCREMENT carried
+// over, RENAME TABLE of both and UNLOCK TABLES -- measured, a writer queued on the lock lands in the
+// new table. MySQL holds no server resource for a reader, so retention is what a detached hold rests
+// on, and migr plan prints it.
 package mysql

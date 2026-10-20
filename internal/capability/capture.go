@@ -11,6 +11,8 @@ type Capture struct {
 	Permitted bool
 	// Missing names each setting or privilege that is not, with the value it needs, in the order read.
 	Missing []string
+	// Retention says how long the server keeps the log a stopped migration reads on from, empty where it says nothing.
+	Retention string
 }
 
 // Permits returns a capture fact for a server that has everything capture needs.
@@ -21,6 +23,13 @@ func Permits() Capture {
 // Lacks returns a capture fact for a server missing each of the named settings or privileges.
 func Lacks(missing ...string) Capture {
 	return Capture{Missing: slices.Clone(missing)}
+}
+
+// Retains returns the fact with how long the server keeps its log, said in the server's own terms.
+func (c Capture) Retains(retention string) Capture {
+	c.Retention = retention
+
+	return c
 }
 
 // Reason says why capture is refused, and is empty where it is permitted.
@@ -39,5 +48,6 @@ func (c Capture) Reason() string {
 
 // Capture returns whether this server permits log-based change capture, and what it lacks where not.
 func (s Set) Capture() Capture {
-	return Capture{Permitted: s.facts.Capture.Permitted, Missing: slices.Clone(s.facts.Capture.Missing)}
+	return Capture{Permitted: s.facts.Capture.Permitted, Missing: slices.Clone(s.facts.Capture.Missing),
+		Retention: s.facts.Capture.Retention}
 }

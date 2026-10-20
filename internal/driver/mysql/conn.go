@@ -62,6 +62,10 @@ type mysqlConn struct {
 	killer killer
 	// replicas are the servers migr.yaml names as this one's replicas, whose lag paces a backfill.
 	replicas []*replica
+	// statementWait is safety.lock_timeout, which also bounds how long a cutover keeps writers waiting.
+	statementWait time.Duration
+	// pairs are the columns each shadow and its table both write, read once per shadow.
+	pairs map[string]pair
 }
 
 // Exec runs one compiled statement, inside this session's transaction when it has one open.

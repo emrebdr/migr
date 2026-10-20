@@ -261,11 +261,14 @@
 //
 // Driver.Capture opens a change stream on a connection of its own, which ADR 0014 B2 put on the
 // Driver because a stream outlives statements and fails apart from the pinned session. It is
-// mandatory, and every driver refuses it with capture.ErrUnsupported and a reason until M13-T10 and
-// M13-T15. Shadower is optional on a Conn, as Chunker is (M13-T9, ADR 0089): its absence is named by
-// the preflight rather than discovered at a call. Its copy chunk keeps a row already there, its apply
-// is idempotent, and its Cutover takes the engine's own brief lock and calls CatchUp under it, so the
-// engine never learns how a server locks for a swap.
+// mandatory; MySQL implements it from M13-T10 (ADR 0091), PostgreSQL refuses with
+// capture.ErrUnsupported until M13-T15, and SQLite always will. Shadower is optional on a Conn, as
+// Chunker is (M13-T9, ADR 0089): its absence is named by the preflight rather than discovered at a
+// call. Admits reads the table and refuses what that engine cannot carry through a shadow, before
+// the stream opens; CreateShadow takes a context because an emulated change is expanded from the
+// original's catalog row. Its copy chunk keeps a row already there, its apply is idempotent, and its
+// Cutover takes the engine's own brief lock and calls CatchUp under it, so the engine never learns
+// how a server locks for a swap.
 //
 // # A note for M2-T3
 //

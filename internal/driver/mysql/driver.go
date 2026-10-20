@@ -167,7 +167,8 @@ func (d *mysqlDriver) establish(ctx context.Context, db *sql.DB, database string
 	}
 
 	session := &mysqlConn{db: db, conn: conn, database: database, table: d.table,
-		stored: d.table, seeds: d.seeds, seedStored: d.seeds, lockWait: d.lockWait}
+		stored: d.table, seeds: d.seeds, seedStored: d.seeds, lockWait: d.lockWait,
+		statementWait: d.statementLockWait}
 
 	if err := d.prepare(ctx, session); err != nil {
 		return nil, errors.Join(err, closeConn(conn))
@@ -204,7 +205,7 @@ func (d *mysqlDriver) prepare(ctx context.Context, session *mysqlConn) error {
 		return err
 	}
 
-	declaration := serverFacts{version: version, logBin: logBin, capture: readCapture(ctx, session, logBin)}
+	declaration := serverFacts{version: version, logBin: logBin, capture: readCapture(ctx, session, logBin, version)}
 
 	caps, err := capability.NewSet(declaration.facts(), declaration.rules())
 	if err != nil {

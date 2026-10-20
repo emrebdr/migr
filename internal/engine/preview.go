@@ -60,8 +60,12 @@ type ShadowPlan struct {
 	Retired string
 	// Capture is the server-side resource its change stream reads through.
 	Capture string
+	// Retention says how long the server keeps the log a stopped run of it reads on from, empty where unsaid.
+	Retention string
 	// Resume is where a stopped run stands, which this one would carry on from.
 	Resume *history.ShadowState
+	// Unread reports a migration queued behind another, whose table a preview cannot read as the run will meet it.
+	Unread bool
 	// Refused is why the run would refuse it before creating anything, nil where it would not.
 	Refused error
 }
@@ -369,7 +373,7 @@ func (e *executor) compileAll(ctx context.Context, queue []queued, dir ir.Direct
 			return steps, err
 		}
 
-		shadow := e.planShadow(ctx, item, dir, &ready)
+		shadow := e.planShadow(ctx, item, dir, &ready, len(steps) == 0)
 		if shadow == nil {
 			e.expandExact(ctx, len(steps), &ready)
 		}

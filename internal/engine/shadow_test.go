@@ -14,6 +14,7 @@ import (
 	"github.com/emrebdr/migr/internal/capture"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
 )
 
 // The version, copy and retired original of the one staged shadow-table migration.
@@ -362,6 +363,9 @@ func TestAShadowTableMigrationIsRefusedBeforeAnythingIsCreated(t *testing.T) {
 			From: &ir.ColumnsDef{Columns: []string{"id"}}}}, says: "not a change to one existing table"},
 		{name: "the retired name held", stage: func(w *world) { w.tables[shadowRetired] = map[string]string{} },
 			says: "already exists"},
+		{name: "the table not admitted", stage: func(w *world) {
+			w.refuses = errors.New("people has a trigger, which a rename would carry to the retired table")
+		}, says: "has a trigger"},
 	}
 
 	for _, tc := range cases {
@@ -585,5 +589,105 @@ func TestTheRowsCopiedAreCountedOnceWhereverTheCopyIsKilled(t *testing.T) {
 				t.Errorf("the copy of 7 rows reports %d copied after a kill at save %d", copied, n)
 			}
 		})
+	}
+}
+
+func TestTheCopyWaitsForAChangeStreamTrailingByMoreThanTheThreshold(t *testing.T) {
+	w := newWorld(4)
+	w.batch = 1
+	copies := 0
+	w.at = func(point string) {
+		if point == "copy" {
+			copies++
+			if copies == 1 {
+				for i := range 6 {
+					w.write(capture.Update, 1, "busy"+strconv.Itoa(i))
+				}
+			}
+		}
+
+		if point == "next" && copies >= 2 {
+			poll(w)
+		}
+	}
+
+	c := connect(t, w)
+	opts := shadowRun(t, c)
+	opts.CaptureLag = 2 * time.Millisecond
+
+	var throttled []string
+
+	opts.Progress = func(p Progress) {
+		if p.Waiting && strings.Contains(p.Throttle, "change stream") {
+			throttled = append(throttled, p.Throttle)
+		}
+	}
+
+	if _, err := Apply(t.Context(), c, opts); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	checkCutOver(t, w)
+
+	second := slices.Index(w.calls[slices.Index(w.calls, "copy")+1:], "copy")
+	reads := 0
+
+	for _, call := range w.calls[slices.Index(w.calls, "copy")+1:][:second] {
+		if call == "next" {
+			reads++
+		}
+	}
+
+	if reads < 4 || len(throttled) < 3 || !strings.Contains(throttled[0], "safety.replica_lag_threshold") {
+		t.Errorf("the copy read the log %d times before its second chunk and reported %d holds (%v), "+
+			"want it to read until the stream trailed by 2ms or less", reads, len(throttled), throttled)
+	}
+}
+
+// poll confirms the cutover once the copy is held, which the throttle test needs and no app counts.
+func poll(w *world) {
+	if state, found := w.states[shadowVersion]; found && state.Stage == history.StageSyncing {
+		state.Confirmed = true
+		w.states[shadowVersion] = state
+	}
+}
+
+func TestAPreviewReadsNoTableForAShadowMigrationQueuedBehindAnother(t *testing.T) {
+	w := newWorld(3)
+	c := connect(t, w)
+
+	opts := shadowRun(t, c)
+	staged, src := staged(t, "", "")
+	opts.Migrations, opts.Source = staged.Migrations, src
+	src.ops[versionAt(0)] = ir.Operations{ir.CreateTable{Table: "pets",
+		Columns: []ir.Column{{Name: "id", Type: mustType(t, "int64")}}, PrimaryKey: []string{"id"}}}
+	src.ops[versionAt(1)] = ir.Operations{ir.AddIndex{Table: "pets", Name: "pets_id", Columns: []string{"id"}}}
+	opts.Online = migration.Online{versionAt(1): migration.ShadowTable}
+
+	previewed, err := Preview(t.Context(), c, opts, ir.Up)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+
+	planned := previewed.Steps[1].Shadow
+	if planned == nil || planned.Refused != nil || !planned.Unread || planned.Table != "pets" ||
+		planned.Retired != RetiredName("pets", versionAt(1)) {
+		t.Fatalf("the preview of a shadow-table migration whose table the one ahead creates reported %+v", planned)
+	}
+
+	if slices.Contains(w.calls, "admits pets") {
+		t.Errorf("the preview asked the server about a table the run has not created yet: %v", w.calls)
+	}
+
+	src.ops[versionAt(1)] = ir.Operations{ir.AddIndex{Table: "pets", Name: "pets_id", Columns: []string{"id"}},
+		ir.AddIndex{Table: peopleTable, Name: "people_id", Columns: []string{"id"}}}
+
+	previewed, err = Preview(t.Context(), c, opts, ir.Up)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+
+	if refused := previewed.Steps[1].Shadow.Refused; !errors.Is(refused, ErrCannotShadow) {
+		t.Errorf("a queued-behind migration changing two tables was previewed as %v, want it refused", refused)
 	}
 }

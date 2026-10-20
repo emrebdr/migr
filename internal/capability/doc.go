@@ -129,7 +129,8 @@
 // It is a field on a struct rather than a method on an interface, so adding it reopens no driver.
 // Facts.Capture was the other, and arrived in M13-T16 (ADR 0090): Capture names every setting and
 // privilege a server lacks for log-based change capture, its zero value permits nothing, and each
-// driver reads it at Open, an answer it cannot read being read as not permitted. That is ADR 0004's retrofit-cost argument applied to the model that argument created,
+// driver reads it at Open, an answer it cannot read being read as not permitted. Its Retention says,
+// in the server's own terms, how long the log a stopped migration reads on from is kept (M13-T10). That is ADR 0004's retrofit-cost argument applied to the model that argument created,
 // and it is why Set is a struct. Facts.TransactionalDDL was the third and arrived in M3-T3, so
 // M4-T9 read a field rather than adding one — and then found that the field answers only one of the
 // three ways a failure leaves statements behind, so the engine asks what survived and consults this

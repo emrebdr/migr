@@ -618,4 +618,12 @@
 // copy and never the hold, and a cancel detaches with the capture resource kept. Resolve's
 // RepairRolledBack is the abort, by the names the state row recorded; Retire drops the retained
 // original. Only an up runs through the shadow: a rollback is the ordinary inverse.
+//
+// Since M13-T10 (ADR 0091) three things more. The session's Shadower.Admits is asked after the key is
+// read and before the stream opens, so a table that engine cannot carry is refused with nothing
+// created. A preview judges only the first queued migration against the live table: a later one's
+// table may be one a migration ahead of it creates, so it is judged on everything that reads no table,
+// and marked Unread. And while the stream trails by more than Options.CaptureLag, the copy reads the
+// log again instead of copying on, each read reported as a held chunk, so a copy cannot outrun the
+// replay into a cutover that never catches up.
 package engine

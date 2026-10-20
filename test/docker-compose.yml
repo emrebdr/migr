@@ -21,6 +21,10 @@
 # postgres17 runs wal_level=logical and postgres16 does not (M13-T16), so each driver's capture fact is
 # read from a server that permits log-based change capture and from one that refuses it by name.
 #
+# The MySQL services also mount initdb/grant-replication.sql, so the test user can read the binary log
+# a shadow-table migration keeps its copy current from, and mysql80gtid is the one MySQL that records
+# GTIDs (M13-T10): a shadow's position is a GTID set there and a file and offset on mysql80.
+#
 # Ports are non-default so this never collides with a server an operator is already running.
 # The DSNs matching these are the defaults in internal/driver/postgres and internal/driver/mysql;
 # override with MIGR_TEST_PG16_DSN, MIGR_TEST_PG17_DSN, MIGR_TEST_MYSQL80_DSN and
@@ -126,6 +130,27 @@ services:
       interval: 1s
       timeout: 5s
       retries: 90
+
+  # A MySQL 8.0 that records a GTID for every transaction, so a shadow-table migration's recorded
+  # position is read back as a GTID set on one server and as a file and offset on mysql80 (M13-T10).
+  # Only the shadow-table suites use it.
+  mysql80gtid:
+    image: mysql:8.0
+    command: ["--server-id=3", "--gtid-mode=ON", "--enforce-gtid-consistency=ON"]
+    environment:
+      MYSQL_ROOT_PASSWORD: migr
+      MYSQL_USER: migr
+      MYSQL_PASSWORD: migr
+      MYSQL_DATABASE: migr
+    ports:
+      - "55481:3306"
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -u migr -pmigr -e 'SELECT 1' migr"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
 
   # healthcheck.sh ships in the MariaDB image and is its documented answer to the same problem:
   # --connect proves the real server is accepting connections, --innodb_initialized that the

@@ -63,23 +63,36 @@ func TestAShadowStateIsRecordedBesideTheHistoryAndASaveKeepsItsConfirmationOnBot
 
 func TestEachServerDeclaresBinlogCaptureAsItIsConfigured(t *testing.T) {
 	want := map[string][]string{
-		"mysql80":    {"REPLICATION SLAVE", "REPLICATION CLIENT"},
-		"mariadb114": {"log_bin = ON", "binlog_format = ROW (it is MIXED)", "REPLICATION SLAVE"},
+		"mariadb114": {"log_bin = ON", "binlog_format = ROW (it is MIXED)"},
 	}
 
 	eachServer(t, func(t *testing.T, s server, c *mysqlConn) {
-		reason := c.Capabilities().Capture().Reason()
+		fact := c.Capabilities().Capture()
+
+		if s.name == "mysql80" && !fact.Permitted {
+			t.Errorf("a ROW server whose user holds both replication grants declares %q", fact.Reason())
+		}
 
 		for _, missing := range want[s.name] {
-			if !strings.Contains(reason, missing) {
-				t.Errorf("the server declares %q, which does not name %q", reason, missing)
+			if !strings.Contains(fact.Reason(), missing) {
+				t.Errorf("the server declares %q, which does not name %q", fact.Reason(), missing)
 			}
 		}
-
-		if s.name == "mysql80" && strings.Contains(reason, "binlog_format") {
-			t.Errorf("a ROW server declares %q", reason)
-		}
 	})
+
+	plain := openServer(t, server{name: "mysql80", dsn: "migr_plain:migr_plain@tcp(127.0.0.1:55480)/migr"},
+		driver.Options{HistoryTable: uniqueName(t)})
+
+	reason := plain.Capabilities().Capture().Reason()
+	for _, missing := range []string{"REPLICATION SLAVE", "REPLICATION CLIENT"} {
+		if !strings.Contains(reason, missing) {
+			t.Errorf("a user without the replication grants declares %q, which does not name %q", reason, missing)
+		}
+	}
+
+	if strings.Contains(reason, "binlog_format") || strings.Contains(reason, "binlog_row_value_options") {
+		t.Errorf("a ROW server declares %q", reason)
+	}
 }
 
 // sourceRoot is mysql80's root, which granting a privilege needs and migr never does.
@@ -142,7 +155,7 @@ func TestAnAnswerThatCannotBeReadIsReadAsNotPermittedOnMySQL(t *testing.T) {
 	gone := *c
 	gone.conn = closed
 
-	if fact := readCapture(t.Context(), &gone, true); fact.Permitted || !strings.Contains(fact.Reason(), "could read") {
+	if fact := readCapture(t.Context(), &gone, true, serverVersion{variant: MySQL}); fact.Permitted || !strings.Contains(fact.Reason(), "could read") {
 		t.Errorf("an unread answer was declared %+v", fact)
 	}
 }

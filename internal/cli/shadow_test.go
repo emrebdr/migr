@@ -169,7 +169,8 @@ func TestPlanSaysHowAShadowTableMigrationRunsAndWhatItCostsALiveTable(t *testing
 	}
 
 	for _, want := range []string{"through a shadow table: copies users into " + usersShadow,
-		"keeps the original as " + usersRetired, "(through a shadow table: the rename at cutover)"} {
+		"keeps the original as " + usersRetired, "(through a shadow table: the rename at cutover)",
+		"a stopped run carries on only while the server keeps its log: " + fakeRetention} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("plan does not say %q:\n%s", want, stdout)
 		}

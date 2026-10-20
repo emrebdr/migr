@@ -28,8 +28,10 @@ type CatchUp func(ctx context.Context) error
 type Shadower interface {
 	// Shadows reports why an operation cannot be performed through a shadow table, and nil where it can.
 	Shadows(op ir.Operation) error
+	// Admits reports why this table cannot be changed through a shadow here, and nil where it can.
+	Admits(ctx context.Context, s Shadow) error
 	// CreateShadow returns the statements creating the shadow, empty and already carrying the operations.
-	CreateShadow(s Shadow) ([]Statement, error)
+	CreateShadow(ctx context.Context, s Shadow) ([]Statement, error)
 	// CopyChunk copies the rows after a key into the shadow inside the open transaction, keeping any already there.
 	CopyChunk(ctx context.Context, s Shadow, after []string, rows int) (Sliced, error)
 	// ApplyChanges writes captured changes to the shadow inside the open transaction, idempotently.

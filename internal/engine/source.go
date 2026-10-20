@@ -98,6 +98,8 @@ type Options struct {
 	Shadower driver.Shadower
 	// Capture opens the change stream a shadow-table migration keeps its copy current from, nil where none can.
 	Capture Capturer
+	// CaptureLag is the most a change stream may trail before the copy waits for it, and zero never waits.
+	CaptureLag time.Duration
 	// Shadowed is told about every moment of a shadow-table migration, and an unset one tells nobody.
 	Shadowed func(ShadowProgress)
 }

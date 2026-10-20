@@ -10,6 +10,10 @@ import (
 // ErrDSN marks a connection string this driver refuses to open, for errors.Is.
 var ErrDSN = errors.New("connection string cannot be used")
 
+// ErrReplicas refuses replicas in migr.yaml, since a database file has none to read a lag on.
+var ErrReplicas = errors.New("replicas is not read for SQLite: a database file has no replicas, so " +
+	"remove the key")
+
 // ErrConnect marks a database this driver could not open a usable session against, for errors.Is.
 var ErrConnect = errors.New("cannot open a SQLite session")
 

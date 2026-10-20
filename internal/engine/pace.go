@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 )
@@ -33,6 +34,8 @@ type Progress struct {
 	Done bool
 	// Throttle is why the pacer held the chunk that just committed back, and empty where it did not.
 	Throttle string
+	// Waiting reports a report made while the next chunk is held back, rather than after one committed.
+	Waiting bool
 	// Resumed reports a run that carried on from a checkpoint an earlier run committed.
 	Resumed bool
 }
@@ -45,6 +48,8 @@ type Pace struct {
 	Wait time.Duration
 	// Throttle says why the wait is longer than the pacer's own pause, and is empty where it is not.
 	Throttle string
+	// Hold asks the engine to wait and then ask again, rather than wait and run the chunk.
+	Hold bool
 }
 
 // Pacer sizes and times every chunk, the first included, and is the seam M13-T8 drives from replica lag.
@@ -68,6 +73,68 @@ func (s Steady) Pace(_ context.Context, done Progress) (Pace, error) {
 	}
 
 	return Pace{Rows: s.Rows, Wait: s.Pause}, nil
+}
+
+// lagPoll is the least time a pacer held back by replica lag waits before reading the lag again.
+const lagPoll = time.Second
+
+// Lagged is the pacer that holds every chunk back while a replica trails by more than its threshold.
+type Lagged struct {
+	// Steady is the size and pause every chunk gets while the replicas keep up.
+	Steady Steady
+	// Reader is the session that reads each replica's lag.
+	Reader driver.LagReader
+	// Threshold is the most any replica may trail before a chunk is held back.
+	Threshold time.Duration
+}
+
+// Pace holds the next chunk back while any replica is too far behind or unreadable, and paces steadily otherwise.
+func (l Lagged) Pace(ctx context.Context, done Progress) (Pace, error) {
+	lags, err := l.Reader.ReplicaLag(ctx)
+	if err != nil {
+		lags = []driver.Lag{{Replica: "the replicas", Err: err}}
+	}
+
+	if worst, behind := l.worst(lags); behind {
+		return Pace{Hold: true, Wait: l.poll(), Throttle: l.describe(worst)}, nil
+	}
+
+	return l.Steady.Pace(ctx, done)
+}
+
+// poll is how long a held chunk waits before the lag is read again: the pause, or a second at least.
+func (l Lagged) poll() time.Duration {
+	return max(l.Steady.Pause, lagPoll)
+}
+
+// worst returns the replica a chunk must wait for -- an unreadable one first, else the furthest behind.
+func (l Lagged) worst(lags []driver.Lag) (driver.Lag, bool) {
+	var (
+		found  driver.Lag
+		behind bool
+	)
+
+	for _, lag := range lags {
+		switch {
+		case !lag.Known():
+			return lag, true
+		case lag.Behind > l.Threshold && (!behind || lag.Behind > found.Behind):
+			found, behind = lag, true
+		}
+	}
+
+	return found, behind
+}
+
+// describe says why a chunk is held back, naming the replica and the threshold it is judged against.
+func (l Lagged) describe(lag driver.Lag) string {
+	if !lag.Known() {
+		return fmt.Sprintf("replica lag unknown on %s: %v -- waiting, since a replica migr cannot read "+
+			"is treated as one too far behind", lag.Replica, lag.Err)
+	}
+
+	return fmt.Sprintf("replica lag %s on %s, above safety.replica_lag_threshold (%s) -- waiting for it "+
+		"to catch up", lag.Behind.Round(time.Millisecond), lag.Replica, l.Threshold)
 }
 
 // Sleeper waits a duration, returning early with the context's error when it is canceled.
@@ -108,13 +175,44 @@ func (e *executor) sleeper() Sleeper {
 	return sleep
 }
 
-// paced asks the pacer for the next chunk and waits as long as it says, refusing a chunk of no rows.
-func (e *executor) paced(ctx context.Context, done Progress) (Pace, error) {
-	next, err := e.pacer().Pace(ctx, done)
-	if err != nil {
-		return Pace{}, fmt.Errorf("pacing chunk %d of operation %d (%s): %w", done.Chunks+1,
-			done.Index, done.Op.Kind(), err)
+// paced asks the pacer for the next chunk, waiting out every hold, and refuses a chunk of no rows.
+func (e *executor) paced(ctx context.Context, done Progress, run *chunkRun) (Pace, error) {
+	for {
+		next, err := e.pacer().Pace(ctx, done)
+		if err != nil {
+			return Pace{}, fmt.Errorf("pacing chunk %d of operation %d (%s): %w", done.Chunks+1,
+				done.Index, done.Op.Kind(), err)
+		}
+
+		if !next.Hold {
+			return e.allowed(ctx, done, next)
+		}
+
+		if err := e.holdBack(ctx, done, next, run); err != nil {
+			return Pace{}, err
+		}
 	}
+}
+
+// holdBack reports a chunk held back and waits as the pacer said, before the pacer is asked again.
+func (e *executor) holdBack(ctx context.Context, done Progress, next Pace, run *chunkRun) error {
+	waiting := done
+	waiting.Waiting, waiting.Throttle = true, next.Throttle
+	e.report(waiting)
+
+	run.holds++
+	run.waited += next.Wait
+
+	if err := e.sleeper()(ctx, next.Wait); err != nil {
+		return fmt.Errorf("holding chunk %d of operation %d (%s) back -- %s: %w", done.Chunks+1,
+			done.Index, done.Op.Kind(), next.Throttle, err)
+	}
+
+	return nil
+}
+
+// allowed waits before a chunk the pacer let through, refusing one of no rows.
+func (e *executor) allowed(ctx context.Context, done Progress, next Pace) (Pace, error) {
 
 	if next.Rows < 1 {
 		return Pace{}, fmt.Errorf("pacing chunk %d of operation %d (%s): the pacer allowed %d "+

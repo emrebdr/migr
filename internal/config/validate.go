@@ -139,6 +139,16 @@ func validateDatabases(v *validator, dbs map[string]Database) {
 		v.require("databases."+name+".driver", db.Driver)
 		v.require("databases."+name+".dsn", db.DSN.Reveal())
 		validateEnvironment(v, "databases."+name+".environment", db.Environment)
+		validateReplicas(v, "databases."+name+".replicas", db.Replicas)
+	}
+}
+
+// validateReplicas refuses a replica named by nothing, which no driver could connect to.
+func validateReplicas(v *validator, path string, replicas []Secret) {
+	for i, r := range replicas {
+		if strings.TrimSpace(r.Reveal()) == "" {
+			v.add(fmt.Sprintf("%s[%d]", path, i), "is blank, and a replica is a connection string")
+		}
 	}
 }
 

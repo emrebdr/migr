@@ -249,6 +249,14 @@
 // place a name is ever checked, and it rejects a variant rather than quietly accepting a second
 // way to say the same thing.
 //
+// # Reading how far behind a replica is
+//
+// LagReader is optional on a Conn, as Assessor is (M13-T8, ADR 0088): ReplicaLag returns one Lag per
+// replica the session knows of, none where the server has none, and a Lag whose Err is set where its
+// lag could not be read -- which a pacer treats as a replica too far behind rather than as one caught
+// up. A replica is named so an operator recognizes it and never by a string carrying a credential.
+// Where an engine reports lag only on the replica, Options.Replicas is where the driver reads it.
+//
 // # A note for M2-T3
 //
 // depguard denies the internal/driver/ prefix everywhere except cmd/migr, so a shared

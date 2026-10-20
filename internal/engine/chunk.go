@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
@@ -53,6 +54,10 @@ type chunkRun struct {
 	written int64
 	// tried is how often a chunk was tried again after giving up on a lock, across every chunk.
 	tried attempts
+	// holds is how often a pacer held a chunk back, every poll counted.
+	holds int
+	// waited is how long those holds waited together.
+	waited time.Duration
 }
 
 // performChunked runs a data-only migration a chunk at a time, from a checkpoint where one is given.
@@ -78,6 +83,8 @@ func (e *executor) performChunked(ctx context.Context, ready prepared, from *his
 		Written:   run.written,
 		Retries:   run.tried.retries,
 		Resumed:   from != nil,
+		Holds:     run.holds,
+		Held:      run.waited,
 	}, nil
 }
 
@@ -203,7 +210,7 @@ func (e *executor) runOperation(ctx context.Context, run *chunkRun, chunker driv
 	done := run.progressFrom(at, step, key)
 
 	for {
-		pace, err := e.paced(ctx, done)
+		pace, err := e.paced(ctx, done, run)
 		if err != nil {
 			return &ChunkError{Index: step.Index, Op: step.Op, Chunk: done.Chunks + 1, Err: err}
 		}

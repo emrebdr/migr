@@ -41,7 +41,7 @@ func New(opts driver.Options) (driver.Driver, error) {
 	}
 
 	return &mysqlDriver{schema: opts.Schema, table: table, seeds: opts.Seeding(),
-		lockWait: lockWait, statementLockWait: statementLockWait}, nil
+		lockWait: lockWait, statementLockWait: statementLockWait, replicas: opts.Replicas}, nil
 }
 
 // checkHistoryTable refuses a history table name this driver cannot compile its own schema for.
@@ -113,6 +113,8 @@ type mysqlDriver struct {
 	lockWait time.Duration
 	// statementLockWait bounds each statement, and is migr.yaml's safety.lock_timeout.
 	statementLockWait time.Duration
+	// replicas are the connection strings of the servers whose lag this engine reports only there.
+	replicas []string
 }
 
 // Name returns the driver's registered name.
@@ -132,6 +134,11 @@ func (d *mysqlDriver) Open(ctx context.Context, dsn string) (driver.Conn, error)
 		return nil, err
 	}
 
+	replicas, err := replicasOf(d.replicas)
+	if err != nil {
+		return nil, err
+	}
+
 	connector, err := source.connector()
 	if err != nil {
 		return nil, err
@@ -146,6 +153,7 @@ func (d *mysqlDriver) Open(ctx context.Context, dsn string) (driver.Conn, error)
 	}
 
 	session.killer = newKiller(connector)
+	session.replicas = replicas
 
 	return session, nil
 }

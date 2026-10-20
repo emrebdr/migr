@@ -566,9 +566,16 @@
 // other dirty state is refused as before. Resolve's resume takes the same path in either direction,
 // and an asserted resolution clears the checkpoint in the transaction its row goes in.
 //
-// pace.go is the seam M13-T8 drives: a Pacer is asked before every chunk, the first included, with
-// what the chunks so far did, and answers how many rows the next covers, how long to wait for it,
-// and why it is waiting. The wait goes through a Sleeper, so no test here ever sleeps.
+// pace.go is the seam: a Pacer is asked before every chunk, the first included, with what the chunks
+// so far did, and answers how many rows the next covers, how long to wait for it, and why it is
+// waiting. The wait goes through a Sleeper, so no test here ever sleeps.
+//
+// Lagged is the pacer M13-T8 drives from replica lag (ADR 0088). It reads driver.LagReader on every
+// Pace and answers Hold -- wait, then ask again -- while any replica is above the threshold or could
+// not be read, naming the worst, an unreadable one first; the engine reports each held poll through
+// Progress with Waiting set, counts them on Run, and asks again after the wait. It keeps no state,
+// so the next reading under the threshold is the resume. A held wait ends with the run's context, so
+// safety.migration_timeout and Ctrl-C bound it exactly as they bound a lock backoff.
 //
 // # A statement that gave up on a lock is tried again
 //

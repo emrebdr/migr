@@ -73,7 +73,22 @@ func (c *Config) DriverOptions(db Database) driver.Options {
 		LockStrategy:      string(c.Lock.Strategy),
 		LockWait:          c.Lock.Timeout.Duration(),
 		StatementLockWait: c.Safety.LockTimeout.Duration(),
+		Replicas:          revealed(db.Replicas),
 	}
+}
+
+// revealed returns every replica's connection string unredacted, for handing to a driver.
+func revealed(replicas []Secret) []string {
+	if len(replicas) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(replicas))
+	for _, r := range replicas {
+		out = append(out, r.Reveal())
+	}
+
+	return out
 }
 
 // Environments returns every environment a seeds subdirectory may be for, sorted and once each.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -201,6 +202,8 @@ type chunks struct {
 	Rows int `json:"rows"`
 	// Pause is how long a run waits between two chunks, as migr.yaml paces it.
 	Pause string `json:"pause,omitempty"`
+	// ReplicaLag is the lag above which a run holds the next chunk back, absent where none is read.
+	ReplicaLag string `json:"replica_lag_threshold,omitempty"`
 	// Refusal is why migr up would refuse the operation, or why this preview could not render it.
 	Refusal string `json:"refusal,omitempty"`
 }
@@ -339,8 +342,8 @@ func compiledOf(s *session, previewed engine.Previewed) compiledPlan {
 	pace := paceOf(s.options)
 
 	for _, step := range previewed.Steps {
-		rendered.Migrations = append(rendered.Migrations, migrationOf(s.ceiling, s.options.Allow, pace,
-			step))
+		rendered.Migrations = append(rendered.Migrations, heldOnLag(migrationOf(s.ceiling,
+			s.options.Allow, pace, step), lagOf(s.options)))
 		rendered.Direct += len(step.Direct)
 
 		if chunked := step.Plan.Chunked(); chunked > 0 {
@@ -415,11 +418,38 @@ func partsOf(compiled plan.Plan) int {
 
 // paceOf reads how a session's runs size and space their chunks, which a Steady pacer states.
 func paceOf(options engine.Options) engine.Steady {
-	if steady, ok := options.Pacer.(engine.Steady); ok {
-		return steady
+	switch pacer := options.Pacer.(type) {
+	case engine.Steady:
+		return pacer
+	case engine.Lagged:
+		return pacer.Steady
+	default:
+		return engine.Steady{Rows: options.Planner.ChunkRows}
+	}
+}
+
+// heldOnLag says, on every operation of a migration that runs in chunks, the lag that holds them back.
+func heldOnLag(m compiledMigration, lag time.Duration) compiledMigration {
+	if lag <= 0 {
+		return m
 	}
 
-	return engine.Steady{Rows: options.Planner.ChunkRows}
+	for i := range m.Operations {
+		if m.Operations[i].Chunks != nil {
+			m.Operations[i].Chunks.ReplicaLag = lag.String()
+		}
+	}
+
+	return m
+}
+
+// lagOf is the replica lag a run holds chunks back above, and nothing for a run that reads none.
+func lagOf(options engine.Options) time.Duration {
+	if lagged, ok := options.Pacer.(engine.Lagged); ok {
+		return lagged.Threshold
+	}
+
+	return 0
 }
 
 // chunked renders how a data operation runs: in chunks with one chunk's statements, or why as one.
@@ -1140,6 +1170,10 @@ func (c chunks) describe() string {
 
 	if c.Pause != "" {
 		described += ", pausing " + c.Pause + " between them"
+	}
+
+	if c.ReplicaLag != "" {
+		described += ", held back while a replica trails by more than " + c.ReplicaLag
 	}
 
 	return described + ", each committed on its own"

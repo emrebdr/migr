@@ -23,6 +23,8 @@ type Options struct {
 	LockWait time.Duration
 	// StatementLockWait bounds one statement's wait for a lock, and is migr.yaml's safety.lock_timeout.
 	StatementLockWait time.Duration
+	// Replicas are the servers a driver reads replica lag on, where its engine reports lag only there.
+	Replicas []string
 }
 
 // Namespace returns what identifies one migr installation, defaulting what migr.yaml left unset.

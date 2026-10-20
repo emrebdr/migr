@@ -39,6 +39,10 @@ type Run struct {
 	Written int64
 	// Resumed reports a run that carried on from the checkpoint an earlier run committed.
 	Resumed bool
+	// Holds is how often a pacer held a chunk back, every poll counted, and zero where none was.
+	Holds int
+	// Held is how long those holds waited together.
+	Held time.Duration
 	// Retries is how many times a statement or a chunk was tried again after giving up on a lock.
 	Retries int
 	// Rewritten is how many of its operations ran as a safer sequence (ADR 0085).

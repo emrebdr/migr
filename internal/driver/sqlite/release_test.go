@@ -1,9 +1,11 @@
 package sqlite
 
 import (
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 )
@@ -59,5 +61,11 @@ func TestEnsureAddsTheReleaseTableToAHistoryThatPredatesIt(t *testing.T) {
 		t.Error("Ensure did not create the release table beside a history that already existed")
 		t.Log("Every database migrated before this build has a history and no release table, so")
 		t.Log("creating it only alongside a new history would leave none of them able to gate a step.")
+	}
+}
+
+func TestReplicasAreRefusedSinceADatabaseFileHasNone(t *testing.T) {
+	if _, err := New(driver.Options{Replicas: []string{"elsewhere.db"}}); !errors.Is(err, ErrReplicas) {
+		t.Errorf("New returned %v, want ErrReplicas", err)
 	}
 }

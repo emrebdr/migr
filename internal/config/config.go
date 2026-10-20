@@ -49,6 +49,8 @@ type Database struct {
 	Schema string `yaml:"schema" json:"schema,omitempty"`
 	// Environment names the seeds subdirectory this database also runs, defaulting to its own key.
 	Environment string `yaml:"environment" json:"environment"`
+	// Replicas are where a driver whose engine reports lag only on the replica reads it, redacted like DSN.
+	Replicas []Secret `yaml:"replicas" json:"replicas,omitempty"`
 }
 
 // History configures where applied migrations are recorded.

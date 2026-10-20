@@ -40,6 +40,10 @@ func New(opts driver.Options) (driver.Driver, error) {
 		return nil, err
 	}
 
+	if len(opts.Replicas) > 0 {
+		return nil, ErrReplicas
+	}
+
 	return &pgDriver{
 		schema:            opts.Schema,
 		table:             table,

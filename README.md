@@ -445,6 +445,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0085](docs/adr/0085-rewriting-unsafe-operations.md) | A session performs an operation more safely than its plain compile, and the plan says so |
 | [0086](docs/adr/0086-lock-impact-gate.md) | A plan shows each operation's lock cost, and `--require-safe` fails one above the ceiling |
 | [0087](docs/adr/0087-release-gated-phases.md) | A step of a change across deploys runs under a release after its prior step's |
+| [0088](docs/adr/0088-replica-lag-pacing.md) | A chunk waits while a replica trails, and a replica migr cannot read counts as trailing |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -24,10 +24,21 @@ func (t *target) paced(options engine.Options, conn driver.Conn, log *slog.Logge
 
 	options.Planner.ChunkRows = rows
 	options.Chunker = chunkerOf(conn)
-	options.Pacer = engine.Steady{Rows: rows, Pause: t.cfg.Safety.ChunkPause.Duration()}
+	options.Pacer = t.pacerFor(engine.Steady{Rows: rows, Pause: t.cfg.Safety.ChunkPause.Duration()}, conn)
 	options.Progress = logProgress(log)
 
 	return options
+}
+
+// pacerFor holds chunks back on replica lag where the session reads it, and paces steadily otherwise.
+func (t *target) pacerFor(steady engine.Steady, conn driver.Conn) engine.Pacer {
+	reader, reads := conn.(driver.LagReader)
+	if !reads {
+		return steady
+	}
+
+	return engine.Lagged{Steady: steady, Reader: reader,
+		Threshold: t.cfg.Safety.ReplicaLagThreshold.Duration()}
 }
 
 // logProgress logs every committed chunk at progress level, which is what -v asks for.
@@ -45,6 +56,12 @@ func logProgress(log *slog.Logger) func(engine.Progress) {
 
 		if p.Resumed {
 			attrs = append(attrs, "resumed", true)
+		}
+
+		if p.Waiting {
+			log.Info("holding the next chunk back", attrs...)
+
+			return
 		}
 
 		log.Info("committed a chunk", attrs...)

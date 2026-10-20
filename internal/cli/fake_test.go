@@ -71,6 +71,10 @@ type fake struct {
 	assessed int
 	// releases is the release table beside the migration history.
 	releases []history.Release
+	// lags is each replica-lag read's answer in turn, the last repeated, and none where there are no replicas.
+	lags [][]driver.Lag
+	// lagReads counts how often the replica lag was read.
+	lagReads int
 	// seedReleases is the release table beside the seed history.
 	seedReleases []history.Release
 	// lockErr is what acquiring the migration lock reports, nil when it succeeds.
@@ -576,6 +580,17 @@ func (c *fakeConn) Chunk(_ context.Context, s driver.Slice) (driver.Sliced, erro
 	}
 
 	return driver.Sliced{Written: 1, Last: []string{"1"}, Done: true}, nil
+}
+
+// ReplicaLag answers with the next scripted reading, which is no replicas where none was scripted.
+func (c *fakeConn) ReplicaLag(context.Context) ([]driver.Lag, error) {
+	c.fake.lagReads++
+
+	if len(c.fake.lags) == 0 {
+		return nil, nil
+	}
+
+	return c.fake.lags[min(c.fake.lagReads, len(c.fake.lags))-1], nil
 }
 
 // CompileChunk renders a chunk as two statements naming what it reads and writes, for a plan to print.

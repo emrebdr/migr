@@ -54,6 +54,10 @@ func New(opts driver.Options) (driver.Driver, error) {
 		return nil, err
 	}
 
+	if len(opts.Replicas) > 0 {
+		return nil, ErrReplicas
+	}
+
 	return &sqliteDriver{table: table, seeds: opts.Seeding(), lockWait: lockWait,
 		statementLockWait: statementLockWait}, nil
 }

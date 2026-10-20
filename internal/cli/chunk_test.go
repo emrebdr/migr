@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
@@ -32,8 +33,8 @@ func TestPlanShowsTheChunkADataOnlyMigrationRunsInAndWhatItPagesBy(t *testing.T)
 	}
 
 	for _, want := range []string{
-		`chunks: 1000 rows at a time by "users" (id), pausing 100ms between them, each ` +
-			`committed on its own`,
+		`chunks: 1000 rows at a time by "users" (id), pausing 100ms between them, held back ` +
+			`while a replica trails by more than 5s, each committed on its own`,
 		"-- the bound of a chunk keyed by (id)",
 		"-- one chunk of data_backfill",
 		"1 operation run in chunks",
@@ -167,5 +168,43 @@ func TestADirtyChunkedRunCarriesItsCheckpointInTheFailureDocument(t *testing.T) 
 	if doc.Dirty.Chunk == nil || doc.Dirty.Chunk.Chunks != 2 || doc.Dirty.Chunk.Cursor[0] != "2000" {
 		t.Errorf("the failure document carries the checkpoint %+v:\n%s", doc.Dirty.Chunk,
 			out.String())
+	}
+}
+
+func TestUpHoldsAChunkWhileAReplicaTrailsAndSaysSo(t *testing.T) {
+	dir, f, drivers := chunkedProject(t)
+	f.lags = [][]driver.Lag{{{Replica: "standby1", Behind: 7 * time.Second}}, {{Replica: "standby1"}}}
+
+	stdout, stderr, err := runScripted(t, dir, actBackfills, drivers, "-v", "up")
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+
+	for _, want := range []string{"holding the next chunk back",
+		"replica lag 7s on standby1, above safety.replica_lag_threshold (5s)"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("-v does not say %q:\n%s", want, stderr)
+		}
+	}
+
+	if !strings.Contains(stdout, "held back once for 1s by replica lag") {
+		t.Errorf("the summary does not say the run was held back:\n%s", stdout)
+	}
+
+	if f.lagReads < 2 {
+		t.Errorf("the lag was read %d times, and a held chunk reads it again before it runs", f.lagReads)
+	}
+}
+
+func TestPlanSaysTheLagAChunkIsHeldBackAbove(t *testing.T) {
+	dir, _, drivers := chunkedProject(t)
+
+	stdout, _, err := runScripted(t, dir, actBackfills, drivers, "plan")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	if !strings.Contains(stdout, "held back while a replica trails by more than 5s") {
+		t.Errorf("the plan does not say what holds a chunk back:\n%s", stdout)
 	}
 }

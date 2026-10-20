@@ -9,6 +9,10 @@ import (
 // ErrDSN marks a connection string this driver cannot parse, for errors.Is.
 var ErrDSN = errors.New("connection string cannot be parsed")
 
+// ErrReplicas refuses replicas in migr.yaml, since this engine reports every standby's lag on the primary.
+var ErrReplicas = errors.New("replicas is not read for PostgreSQL: the primary reports every standby's " +
+	"lag in pg_stat_replication, so remove the key")
+
 // ErrConnect marks a server this driver could not open a usable session against, for errors.Is.
 var ErrConnect = errors.New("cannot open a PostgreSQL session")
 

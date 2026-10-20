@@ -60,6 +60,8 @@ type mysqlConn struct {
 	id int64
 	// killer is the pool a kill is sent from, so stopping a statement never closes this session.
 	killer killer
+	// replicas are the servers migr.yaml names as this one's replicas, whose lag paces a backfill.
+	replicas []*replica
 }
 
 // Exec runs one compiled statement, inside this session's transaction when it has one open.
@@ -131,7 +133,7 @@ func (c *mysqlConn) ServerVersion() string {
 
 // Close gives the connection and the pool behind it back, and closing twice is not a failure.
 func (c *mysqlConn) Close(context.Context) error {
-	return errors.Join(closeConn(c.conn), closeDB(c.db), c.killer.close())
+	return errors.Join(closeConn(c.conn), closeDB(c.db), c.killer.close(), c.closeReplicas())
 }
 
 // compile-time proof that this session satisfies the contract every driver's session is held to,

@@ -100,4 +100,12 @@
 // redundant: url.Parse reads a driver-native DSN such as "user:pass@tcp(host)/db"
 // as scheme "user" with an opaque remainder, so the URL branch would find no
 // credentials and return the password intact.
+//
+// # Replicas are secrets too
+//
+// databases.<name>.replicas lists where a driver whose engine reports lag only on the replica reads
+// it (M13-T8, ADR 0088). Each entry is a Secret, expanded like dsn and redacted wherever it is
+// printed; a blank one is refused naming its place. Which engines read the list is the driver's to
+// say, so PostgreSQL and SQLite refuse it in their own constructors rather than here, this package
+// naming no engine.
 package config

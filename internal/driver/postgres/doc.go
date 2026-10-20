@@ -504,4 +504,15 @@
 // doubling can be escaped past. It has been the default since PostgreSQL 9.1 and is deprecated,
 // but Compile is pure and cannot read a session setting — so Open pins it rather than trusting it,
 // alongside search_path.
+//
+// # Replica lag is read on the primary
+//
+// ReplicaLag reads pg_stat_replication (M13-T8, ADR 0088), and the order its rules are read in was
+// measured on 16 against a standby replaying three seconds late: a standby with no WAL outstanding is
+// caught up whatever replay_lag says, since that column keeps its last measurement for about ten
+// seconds after the writes stop; with WAL outstanding replay_lag is the answer, and outstanding with
+// none measured is unknown; a NULL state is a user without pg_read_all_stats, which is unknown too.
+// replay_lag trails the writes it measures, climbing a second a second while they go on, so a burst
+// shorter than the threshold is never held. databases.<name>.replicas is refused: the primary
+// already reports every standby, and a list an operator keeps would miss the one they forgot.
 package postgres

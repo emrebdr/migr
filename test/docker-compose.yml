@@ -13,6 +13,11 @@
 # lock-impact tests need and migr itself never uses -- see that file. An existing volume predates
 # it, so `docker compose down -v` once is what picks it up.
 #
+# Two replicas lag behind on purpose (M13-T8): postgres16standby replays postgres16's WAL three
+# seconds late, and mysql80replica applies mysql80's migr_lag database three seconds late. They exist
+# so replica-lag pacing is measured against real lag rather than a fake, and every other suite
+# ignores them.
+#
 # Ports are non-default so this never collides with a server an operator is already running.
 # The DSNs matching these are the defaults in internal/driver/postgres and internal/driver/mysql;
 # override with MIGR_TEST_PG16_DSN, MIGR_TEST_PG17_DSN, MIGR_TEST_MYSQL80_DSN and
@@ -27,11 +32,35 @@ services:
       POSTGRES_DB: migr
     ports:
       - "55416:5432"
+    volumes:
+      - ./initdb-pg:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U migr -d migr"]
       interval: 1s
       timeout: 3s
       retries: 30
+
+  # A streaming standby of postgres16, replaying three seconds late, so the replica-lag tests read a
+  # real and predictable replay_lag from pg_stat_replication on the primary (M13-T8). It is a
+  # physical copy of the whole cluster, so nothing another suite does can break it.
+  postgres16standby:
+    image: postgres:16-alpine
+    depends_on:
+      postgres16:
+        condition: service_healthy
+    user: postgres
+    environment:
+      PGPASSWORD: migr
+    entrypoint: ["/bin/sh", "/standby/standby.sh"]
+    volumes:
+      - ./standby:/standby:ro
+    ports:
+      - "55426:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U migr -d migr"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
 
   postgres17:
     image: postgres:17-alpine
@@ -66,6 +95,30 @@ services:
       interval: 1s
       timeout: 5s
       retries: 60
+
+  # A replica of mysql80 applying three seconds late, so the replica-lag tests read a real and
+  # predictable Seconds_Behind_Source (M13-T8). It replicates migr_lag alone -- initdb/lag-database.sql
+  # says why -- from the source's position when it came up.
+  mysql80replica:
+    image: mysql:8.0
+    depends_on:
+      mysql80:
+        condition: service_healthy
+    command: ["--server-id=2", "--replicate-do-db=migr_lag"]
+    environment:
+      MYSQL_ROOT_PASSWORD: migr
+      MYSQL_USER: migr
+      MYSQL_PASSWORD: migr
+      MYSQL_DATABASE: migr_lag
+    ports:
+      - "55490:3306"
+    volumes:
+      - ./initdb-replica:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -u migr -pmigr -e 'SELECT 1' migr_lag"]
+      interval: 1s
+      timeout: 5s
+      retries: 90
 
   # healthcheck.sh ships in the MariaDB image and is its documented answer to the same problem:
   # --connect proves the real server is accepting connections, --innodb_initialized that the

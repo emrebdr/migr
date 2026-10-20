@@ -574,4 +574,13 @@
 // no actions declared compare equal across all four servers. The index this server creates for a
 // foreign key over an unindexed column is suppressed, no other engine creating one. See
 // docs/adr/0069-per-driver-introspection.md.
+//
+// # Replica lag is read on each replica
+//
+// MySQL and MariaDB report lag only on the replica, so ReplicaLag opens each databases.<name>.replicas
+// connection string on a pool of its own, lazily and under a five-second bound, and asks SHOW REPLICA
+// STATUS -- SHOW SLAVE STATUS before MySQL 8.0.22 and MariaDB 10.5.1 -- reading the row under either
+// spelling of its columns, since MariaDB keeps the old ones under the new statement (M13-T8, ADR
+// 0088). A stopped IO or SQL thread, a NULL lag, no row, error 1227 and an unreachable replica are
+// each unknown with a reason of their own; a replica is named by host:port, never by its DSN.
 package mysql

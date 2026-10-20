@@ -89,6 +89,10 @@ func runValidate(cmd *cobra.Command, opts *options, required bool) (err error) {
 		return err
 	}
 
+	if _, err := gatesOf(ordered, read.phases); err != nil {
+		return err
+	}
+
 	d, err := t.compiler(opts)
 	if err != nil {
 		return err

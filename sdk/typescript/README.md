@@ -147,10 +147,13 @@ export default replaceColumn("users", "email", t.string(255)).with(t.string(320)
 
 `renameTo(name)` ends the column under a new name instead, so swap renames nothing and contract
 drops the original; `via` and `retire` override the two derived names. Each unsafe step sends a
-warning naming what it breaks for an app version still serving, in plan mode too. Nothing yet stops
-the four running in one `migr up` — ordering them across deploys is the operator's until M13-T7 —
-and the backfill's `data_transform` and the contract's `drop_column` are destructive by kind, so a
-project permits both in `validation.allow_destructive`.
+warning naming what it breaks for an app version still serving, in plan mode too. Each phase also
+declares itself a **step** of the change, waiting on the one before it, and migr runs a step only
+under a release after the one that applied its prior step: a deploy runs `migr up --release <build>`
+(or sets `MIGR_RELEASE`), and the four land a deploy apart, the run holding at the next step rather
+than failing. A hand-written migration declares the same with a `phase` property —
+`{ change, name, after }`. The backfill's `data_transform` and the contract's `drop_column` are
+destructive by kind, so a project permits both in `validation.allow_destructive`.
 
 ### Logical types
 

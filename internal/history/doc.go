@@ -290,4 +290,14 @@
 // transaction of the chunk it describes and deleted in the one that appends the applied row. It is
 // where a run is, never what happened, and Reconcile never reads it -- the dirty row is what the
 // fold sees, and a checkpoint is what carries that run on.
+//
+// # The deploy a batch ran under
+//
+// A batch is one invocation and says nothing about which deploy it belonged to, which is what a step
+// of a change across deploys is judged by (M13-T7, ADR 0087). Releaser is a store's third table,
+// <history table>_releases, created from ReleaseSchema by Ensure: one row per batch naming the release
+// the operator gave it, written in the transaction of that batch's first applied row, so a batch that
+// applied nothing names none. Like the checkpoint table it is beside the log rather than in it -- the
+// history table has no schema evolution, and adding a column to every history ever created is the
+// cost a table of its own avoids. A database without it reads as having recorded no releases.
 package history

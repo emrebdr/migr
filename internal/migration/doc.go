@@ -124,4 +124,15 @@
 // than a second opinion about what a name may be. It converts to UTC itself, since a caller
 // holding a local instant would otherwise write local wall-clock digits into the field that
 // defines the order migrations run in.
+//
+// # A step of a change across deploys
+//
+// A migration may declare itself a Phase -- one step of a change, naming the step it waits on -- and
+// Gates resolves every waiting step to the migration carrying the step before it, over the order a run
+// uses (M13-T7, ADR 0087). It refuses, naming every file at once, a step waiting on one nothing
+// declares, one step two migrations declare, a step waiting on one that runs after it, and a blank or
+// self-referential declaration. Like a dependency, a phase is read from the migration and never
+// computed; unlike one it does not order anything, the timestamps and dependencies having done that,
+// and what it adds is the release a step waits for -- which internal/engine judges, since only a run
+// knows the history and the release it is under.
 package migration

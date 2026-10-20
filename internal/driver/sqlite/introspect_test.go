@@ -561,7 +561,8 @@ func TestTheSnapshotHoldsNeitherMigrsOwnHistoryNorSQLitesOwnTables(t *testing.T)
 	snapshot := introspect(t, c)
 
 	for _, name := range []string{c.table, c.seeds, history.ProgressTable(c.table),
-		history.ProgressTable(c.seeds), "sqlite_sequence"} {
+		history.ProgressTable(c.seeds), history.ReleaseTable(c.table), history.ReleaseTable(c.seeds),
+		"sqlite_sequence"} {
 		if _, held := snapshot.Table(name); held {
 			t.Errorf("the snapshot holds %q, which a differ would propose dropping", name)
 		}

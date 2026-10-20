@@ -22,7 +22,7 @@ const (
 SELECT c.relkind::text, c.relname, coalesce(pg_get_viewdef(c.oid), ''), c.relispartition
   FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
- WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'p', 'v', 'm') AND c.relname NOT IN ($1, $2, $3, $4)
+ WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'p', 'v', 'm') AND c.relname NOT IN ($1, $2, $3, $4, $5, $6)
  ORDER BY c.relname`
 
 	columnQuery = `
@@ -35,7 +35,7 @@ SELECT c.relname, a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull,
   LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
   LEFT JOIN pg_collation co ON co.oid = a.attcollation AND co.collname <> 'default'
  WHERE n.nspname = current_schema() AND a.attnum > 0 AND NOT a.attisdropped
-   AND c.relkind IN ('r', 'p') AND c.relname NOT IN ($1, $2, $3, $4)
+   AND c.relkind IN ('r', 'p') AND c.relname NOT IN ($1, $2, $3, $4, $5, $6)
  ORDER BY c.relname, a.attnum`
 
 	constraintQuery = `
@@ -50,7 +50,7 @@ SELECT t.relname, c.conname, c.contype::text, c.condeferrable,
   LEFT JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ON true
   LEFT JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
   LEFT JOIN pg_attribute fa ON fa.attrelid = c.confrelid AND fa.attnum = c.confkey[k.ord]
- WHERE n.nspname = current_schema() AND c.contype IN ('p', 'u', 'c', 'f') AND t.relname NOT IN ($1, $2, $3, $4)
+ WHERE n.nspname = current_schema() AND c.contype IN ('p', 'u', 'c', 'f') AND t.relname NOT IN ($1, $2, $3, $4, $5, $6)
  ORDER BY t.relname, c.conname, k.ord`
 
 	indexQuery = `
@@ -62,7 +62,7 @@ SELECT t.relname, i.relname, x.indisunique, x.indpred IS NOT NULL, x.indexprs IS
   JOIN pg_namespace n ON n.oid = t.relnamespace
   CROSS JOIN LATERAL generate_subscripts(x.indkey, 1) AS s
   LEFT JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = x.indkey[s]
- WHERE n.nspname = current_schema() AND t.relname NOT IN ($1, $2, $3, $4)
+ WHERE n.nspname = current_schema() AND t.relname NOT IN ($1, $2, $3, $4, $5, $6)
    AND NOT EXISTS (SELECT 1 FROM pg_constraint o
                     WHERE o.conindid = x.indexrelid AND o.conrelid = x.indrelid
                       AND o.contype IN ('p', 'u', 'x'))
@@ -315,7 +315,8 @@ func columnFindings(recorded, generated, identity, collation string) []string {
 // probe runs one of this file's reads, inside this session's transaction when it has one open.
 func (c *pgConn) probe(ctx context.Context, query string) (pgx.Rows, error) {
 	rows, err := c.runner().Query(ctx, query, c.history.table, c.seeds.table,
-		history.ProgressTable(c.history.table), history.ProgressTable(c.seeds.table))
+		history.ProgressTable(c.history.table), history.ProgressTable(c.seeds.table),
+		history.ReleaseTable(c.history.table), history.ReleaseTable(c.seeds.table))
 	if err != nil {
 		return nil, c.failedProbe("the catalog", err)
 	}

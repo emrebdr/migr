@@ -265,6 +265,7 @@ func (s *session) discover(id int64) *wire.Message {
 		migrations = append(migrations, wire.Discovered{
 			Version: entry.Version, File: entry.File,
 			Dependencies: dependencies(entry.Migration),
+			Phase:        wirePhase(entry.Migration),
 		})
 	}
 

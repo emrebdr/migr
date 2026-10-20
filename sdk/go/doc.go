@@ -100,8 +100,11 @@
 // Swap and Contract are unsafe while an app version that reads the old column is still
 // serving, and so is undoing Expand while one writes the new column; each sends a
 // warning saying so, in plan mode too, so migr plan shows it before migr up runs it.
-// Nothing yet stops the four running in one migr up -- ordering them across deploys is
-// the operator's until migr gates it (M13-T7). The backfill's data_transform and the
+// Each phase declares itself a step of the change, waiting on the phase before it
+// (Phased, ADR 0087), and migr runs a step only under a release after the one that
+// applied its prior step -- so a deploy passes migr up --release <build> and the four
+// land a deploy apart, the run holding at the next one rather than failing. A hand-written
+// migration declares the same through Phase. The backfill's data_transform and the
 // contract's drop_column are destructive by kind, so a project permits both in
 // validation.allow_destructive. A contract after a lossy function -- lower, upper or
 // trim -- is irreversible, since the values it drops cannot be rebuilt from the new

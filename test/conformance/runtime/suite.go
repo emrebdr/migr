@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -124,7 +125,32 @@ func (s Suite) reconcile(ctx context.Context, session *runtime.Session,
 	files, problems := parseDiscovered(loaded)
 	problems = append(problems, matchDiscovered(files, fixtures)...)
 
-	return files, append(problems, matchDeclared(loaded, fixtures)...)
+	problems = append(problems, matchDeclared(loaded, fixtures)...)
+
+	return files, append(problems, matchPhases(loaded, fixtures)...)
+}
+
+// matchPhases holds the step each migration declared itself to what its fixture defines.
+func matchPhases(loaded []protocol.Discovered, fixtures []Fixture) []string {
+	declared := make(map[string]*protocol.Phase, len(loaded))
+	for _, d := range loaded {
+		declared[d.Version] = d.Phase
+	}
+
+	var problems []string
+
+	for _, f := range fixtures {
+		got, reported := declared[f.Version]
+		if !reported || reflect.DeepEqual(got, f.Phase) {
+			continue
+		}
+
+		problems = append(problems, fmt.Sprintf("%s: this runtime declared the phase %+v and the "+
+			"fixture declares %+v -- a step is read from the migration, so every language reports "+
+			"the same one (ADR 0087)", f.Stem(), got, f.Phase))
+	}
+
+	return problems
 }
 
 // matchDeclared holds what each migration declared to what its fixture defines, list for list.

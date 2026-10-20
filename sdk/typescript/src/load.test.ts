@@ -137,6 +137,23 @@ test("dependencies are declared, and a computation of them is not a declaration"
   assert.equal(refusal({ up() {}, dependencies: "20260726T090000" }).code, "bad_member");
 });
 
+test("a phase no deploy could carry out is refused, and a declared one is kept", () => {
+  for (const phase of [
+    { name: "expand" },
+    { change: "users.email" },
+    { change: "", name: "expand" },
+    { change: "users.email", name: "swap", after: "swap" },
+    { change: "users.email", name: "swap", after: 1 },
+    "users.email",
+  ]) {
+    assert.equal(refusal({ up() {}, phase }).code, "bad_member", JSON.stringify(phase));
+  }
+
+  const declared = { change: "users.email", name: "contract", after: "swap" };
+
+  assert.deepEqual(fromModule(FILE, { up() {}, phase: declared }).migration.phase, declared);
+});
+
 test("a migration that both authors a down and declares it has none is refused", () => {
   const refused = refusal({ up() {}, down() {}, irreversible: "the rows are gone" });
 

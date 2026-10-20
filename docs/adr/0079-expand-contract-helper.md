@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Ordering the phases across deploys is ADR 0087's release gate.
 
 ## Date
 

@@ -387,7 +387,8 @@ func TestASnapshotDescribesTheFixtureAndNotMigrsOwnBookkeeping(t *testing.T) {
 		f := newFixture(t, c)
 
 		t.Cleanup(func() {
-			drop(context.WithoutCancel(t.Context()), c, c.table, history.ProgressTable(c.table))
+			drop(context.WithoutCancel(t.Context()), c, c.table, history.ProgressTable(c.table),
+				history.ReleaseTable(c.table))
 		})
 
 		if err := c.History().Ensure(t.Context()); err != nil {

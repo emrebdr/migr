@@ -34,6 +34,8 @@ type coded struct {
 	want int
 	// scripted reports a case a runtime actually answers for, not one whose adapter will not start.
 	scripted bool
+	// declares is what that runtime has its migrations declare, nothing for the default.
+	declares string
 }
 
 // codes is every ending this build can produce, keyed by the command that produces it.
@@ -92,6 +94,12 @@ var codes = []coded{
 		args: []string{"--dry-run", "--step", "-1"}, stage: staged, want: ExitValidation},
 	{name: "a migration edited after it was applied", command: "up", stage: stagedDrifted,
 		want: ExitDrift},
+	{name: "a step waiting for a later release", command: "up", args: []string{"--release", "r1"},
+		stage: stepping, declares: declaresSteps, want: ExitOK},
+	{name: "a step of a change across deploys, with no release", command: "up", stage: stepping,
+		declares: declaresSteps, want: ExitValidation},
+	{name: "a step waiting on one nothing declares", command: "up", args: []string{"--release", "r1"},
+		stage: stepping, declares: declaresStrayStep, want: ExitValidation},
 	{name: "down", command: "down", stage: stagedApplied, want: ExitOK},
 	{name: "a version this database does not carry", command: "down",
 		args: []string{"--to", versionAt(0)}, stage: staged, want: ExitRuntime},
@@ -207,7 +215,7 @@ func TestEveryCommandEndsWithTheCodeSection5Documents(t *testing.T) {
 			dir, _, drivers := c.stage(t)
 
 			_, _, err := runOptions(t, dir, &options{clock: ticking(noon), drivers: drivers,
-				runtimes: registryFor(t, c.scripted)},
+				runtimes: registryFor(t, c.scripted, c.declares)},
 				append(strings.Fields(c.command), c.args...)...)
 
 			if got := ExitCode(err); got != c.want {
@@ -218,10 +226,13 @@ func TestEveryCommandEndsWithTheCodeSection5Documents(t *testing.T) {
 }
 
 // registryFor returns what answers for a row's migrations, which is the default where none does.
-func registryFor(t *testing.T, scripted bool) *runtime.Registry {
+func registryFor(t *testing.T, scripted bool, declares string) *runtime.Registry {
 	t.Helper()
 
-	if !scripted {
+	switch {
+	case declares != "":
+		return declaringRegistry(t, actEmits, declares)
+	case !scripted:
 		return runtimeRegistry(t, config.LanguageGo, config.LanguageTypeScript)
 	}
 

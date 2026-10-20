@@ -289,6 +289,12 @@
 // judges every migration's up half with the session's rewrites and no assessment;
 // a report whose only problems are those exits 5, and any other problem keeps it 2.
 //
+// migr up, its --dry-run and migr plan take --release, the deploy a run belongs to, falling back to
+// MIGR_RELEASE (M13-T7, ADR 0087). A step of a change across deploys that waits for a later release
+// stops the run with a ⏸ held line naming it and why, and the run exits 0; --json carries held.
+// engine.ErrNoRelease is resolved to exit 2 beside ErrDestructive, the operator adding the flag, and
+// a phase declaration no deploy could carry out is exit 2 at discovery, in migr validate too.
+//
 // It marks an operation the session performs as a safer sequence with a ↳ rewritten
 // line naming its safety.rewrites key, how many statements it became and why, and
 // closes with a note naming the key that switches each one off (M13-T5, ADR 0085).

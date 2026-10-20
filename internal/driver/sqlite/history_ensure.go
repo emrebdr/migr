@@ -31,13 +31,17 @@ const historyColumnQuery = `SELECT name FROM pragma_table_info(?)`
 // ordinaryTable is the sqlite_schema type of a plain table, which is the only kind this store uses.
 const ordinaryTable = "table"
 
-// Ensure creates the history table and its checkpoint table if this database does not have them yet.
+// Ensure creates the history table, its checkpoint table and its release table where they are missing.
 func (h sqliteHistory) Ensure(ctx context.Context) error {
 	if err := h.ensureHistory(ctx); err != nil {
 		return err
 	}
 
-	return h.ensureProgress(ctx)
+	if err := h.ensureProgress(ctx); err != nil {
+		return err
+	}
+
+	return h.ensureReleases(ctx)
 }
 
 // ensureHistory creates the history table, or checks the one already there is one this build can write.

@@ -189,7 +189,8 @@ func TestTheCheckpointTableIsCreatedBesideTheHistoryAndKeptOutOfTheSnapshot(t *t
 
 		snapshot := introspect(t, session)
 		for _, name := range []string{session.history.table, session.seeds.table,
-			history.ProgressTable(session.history.table), history.ProgressTable(session.seeds.table)} {
+			history.ProgressTable(session.history.table), history.ProgressTable(session.seeds.table),
+			history.ReleaseTable(session.history.table), history.ReleaseTable(session.seeds.table)} {
 			if _, held := snapshot.Table(name); held {
 				t.Errorf("the snapshot holds %q, which every migr diff would then propose dropping",
 					name)

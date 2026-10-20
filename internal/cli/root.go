@@ -20,6 +20,7 @@ type options struct {
 	verbosity        int
 	allowDestructive bool
 	connect          bool
+	release          string
 	log              *slog.Logger
 	clock            func() time.Time
 	drivers          *driver.Registry

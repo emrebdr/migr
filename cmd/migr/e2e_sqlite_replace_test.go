@@ -237,26 +237,32 @@ func TestAColumnReplacementWalksItsFourPhasesAndRollsBackWhole(t *testing.T) {
 		t.Errorf("expand's plan warned, and adding a nullable column is safe:\n%s", logged)
 	}
 
-	if err := migr(t, config, "up", "--step", "1"); err != nil {
+	if err := migr(t, config, "up", "--step", "1", "--release", "r1"); err != nil {
 		t.Fatalf("expand: %v", err)
 	}
 
-	planned := migrOut(t, config, "plan", "--step", "1")
+	if held := migrOut(t, config, "up", "--release", "r1"); !strings.Contains(held,
+		"held: 20261001T090300_backfill_email.go waits for a later release") ||
+		!strings.Contains(held, `belongs to release "r1", which is this one`) {
+		t.Errorf("the backfill ran in the deploy that expanded, or the run did not say why not:\n%s", held)
+	}
+
+	planned := migrOut(t, config, "plan", "--step", "1", "--release", "r2")
 	if !strings.Contains(planned, `chunks: 50 rows at a time by "accounts" (id)`) {
 		t.Errorf("the backfill does not run in chunks:\n%s", planned)
 	}
 
-	backfilled := migrOut(t, config, "up", "--step", "1")
+	backfilled := migrOut(t, config, "up", "--step", "1", "--release", "r2")
 	if !strings.Contains(backfilled, "5 chunks, 200 rows written") {
 		t.Errorf("the backfill did not report its chunks:\n%s", backfilled)
 	}
 
-	if _, logged := migrBoth(t, config, "plan", "--step", "1"); !strings.Contains(logged,
+	if _, logged := migrBoth(t, config, "plan", "--step", "1", "--release", "r3"); !strings.Contains(logged,
 		`unsafe step: swap: \"accounts\".\"email\" now names the new column`) {
 		t.Errorf("swap's plan does not warn that it is unsafe:\n%s", logged)
 	}
 
-	if err := migr(t, config, "up", "--step", "1"); err != nil {
+	if err := migr(t, config, "up", "--step", "1", "--release", "r3"); err != nil {
 		t.Fatalf("swap: %v", err)
 	}
 
@@ -270,18 +276,19 @@ func TestAColumnReplacementWalksItsFourPhasesAndRollsBackWhole(t *testing.T) {
 		t.Errorf("the dry run does not count the backfill's down as no statements:\n%s", dry)
 	}
 
-	if refused := migrFailure(t, config, "up", "--step", "1"); !strings.Contains(refused, "drop_column") {
+	if refused := migrFailure(t, config, "up", "--step", "1", "--release", "r4"); !strings.Contains(refused,
+		"drop_column") {
 		t.Errorf("contract ran without its drop being permitted:\n%s", refused)
 	}
 
 	permit(t, config, "data_transform, drop_column")
 
-	if _, logged := migrBoth(t, config, "up", "--step", "1"); !strings.Contains(logged,
+	if _, logged := migrBoth(t, config, "up", "--step", "1", "--release", "r4"); !strings.Contains(logged,
 		"unsafe step: contract") {
 		t.Errorf("contract ran without warning that it is unsafe:\n%s", logged)
 	}
 
-	if err := migr(t, config, "up"); err != nil {
+	if err := migr(t, config, "up", "--release", "r5"); err != nil {
 		t.Fatalf("the check that every row kept its value under its own name: %v", err)
 	}
 
@@ -310,8 +317,14 @@ func TestAColumnReplacementWalksItsFourPhasesAndRollsBackWhole(t *testing.T) {
 			"after\n%s", before, restored)
 	}
 
-	if err := migr(t, config, "up"); err != nil {
-		t.Fatalf("running the replacement and its check again over the restored column: %v", err)
+	for _, release := range []string{"r6", "r7", "r8", "r9"} {
+		if err := migr(t, config, "up", "--release", release); err != nil {
+			t.Fatalf("running the replacement and its check again under %s: %v", release, err)
+		}
+	}
+
+	if status := migrOut(t, config, "status"); strings.Contains(status, "pending") {
+		t.Errorf("four deploys did not carry the replacement and its check through:\n%s", status)
 	}
 
 	t.Log("The second check passing is what says the rollback restored the values too: contract's")

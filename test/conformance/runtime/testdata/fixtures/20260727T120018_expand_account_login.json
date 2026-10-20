@@ -1,4 +1,5 @@
 {
+  "phase": {"change":"accounts.handle","name":"expand"},
   "up": [
     {"op":"add_column","table":"accounts","column":{"name":"login","type":"string(64)","nullable":true,"default":{"literal":"guest"}}}
   ],

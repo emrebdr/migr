@@ -27,7 +27,7 @@ func TestEnsureCreatesTheTableTheIndexItsLookupNeedsAndTheCheckpointTable(t *tes
 	slices.Sort(found)
 
 	want := []string{"index " + historyTable + "_version_idx", "table " + historyTable,
-		"table " + historyTable + "_progress"}
+		"table " + historyTable + "_progress", "table " + historyTable + "_releases"}
 	if !slices.Equal(found, want) {
 		t.Errorf("Ensure left %v, want %v", found, want)
 	}

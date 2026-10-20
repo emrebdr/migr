@@ -166,8 +166,8 @@ func TestAChunkOverACompositeKeyLocksItsOwnRangeAndNotTheTable(t *testing.T) {
 func TestTheCheckpointTableIsCreatedBesideTheHistoryOnBothServers(t *testing.T) {
 	eachServer(t, func(t *testing.T, _ server, c *mysqlConn) {
 		held := c.History().(mysqlHistory)
-		dropLater(t, c, held.table, held.progressTable())
-		drop(t.Context(), c, held.table, held.progressTable())
+		dropLater(t, c, held.table, held.progressTable(), held.releaseTable())
+		drop(t.Context(), c, held.table, held.progressTable(), held.releaseTable())
 
 		if cps, err := held.Checkpoints(t.Context()); err != nil || cps != nil {
 			t.Fatalf("a database with no checkpoint table answered %v, %v", cps, err)
@@ -200,8 +200,8 @@ func TestAStoppedChunkedMigrationResumesAgainstARealServerWithEveryRowCopiedOnce
 		manyPeople(t, c, people, archive, 60)
 
 		held := c.History().(mysqlHistory)
-		dropLater(t, c, held.table, held.progressTable())
-		drop(t.Context(), c, held.table, held.progressTable())
+		dropLater(t, c, held.table, held.progressTable(), held.releaseTable())
+		drop(t.Context(), c, held.table, held.progressTable(), held.releaseTable())
 
 		opts := staged(t, ir.Operations{ir.DataCopy{From: people, To: archive,
 			Columns: []ir.CopyColumn{{From: "id", To: "id"}, {From: "email", To: "email"}}}})

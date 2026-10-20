@@ -240,6 +240,29 @@ type journal struct {
 	dirty    error
 	resolved error
 	cps      []history.Checkpoint
+	releases []history.Release
+}
+
+// RecordRelease records the release of one batch, noting whether a transaction was open.
+func (j *journal) RecordRelease(_ context.Context, r history.Release) error {
+	if j.session.inTx {
+		j.session.note("release " + r.Name)
+	} else {
+		j.session.note("release-outside-any-transaction " + r.Name)
+	}
+
+	if err := r.Validate(); err != nil {
+		return err
+	}
+
+	j.releases = append(j.releases, r)
+
+	return nil
+}
+
+// Releases returns every release recorded.
+func (j *journal) Releases(context.Context) ([]history.Release, error) {
+	return j.releases, nil
 }
 
 // Ensure records the call and creates the table, unless a test staged a failure.

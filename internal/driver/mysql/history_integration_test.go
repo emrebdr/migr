@@ -30,8 +30,8 @@ func store(t *testing.T, c *mysqlConn) mysqlHistory {
 		t.Fatalf("History returned %T, not this package's store", c.History())
 	}
 
-	dropLater(t, c, held.table, history.ProgressTable(held.table))
-	drop(t.Context(), c, held.table, history.ProgressTable(held.table))
+	dropLater(t, c, held.table, history.ProgressTable(held.table), history.ReleaseTable(held.table))
+	drop(t.Context(), c, held.table, history.ProgressTable(held.table), history.ReleaseTable(held.table))
 
 	return held
 }
@@ -411,8 +411,8 @@ func TestASeedIsRecordedInTheSeedTableAndNowhereElse(t *testing.T) {
 				driver.DefaultSeedTable)
 		}
 
-		dropLater(t, c, seeds.table, history.ProgressTable(seeds.table))
-		drop(t.Context(), c, seeds.table, history.ProgressTable(seeds.table))
+		dropLater(t, c, seeds.table, history.ProgressTable(seeds.table), history.ReleaseTable(seeds.table))
+		drop(t.Context(), c, seeds.table, history.ProgressTable(seeds.table), history.ReleaseTable(seeds.table))
 
 		if err := seeds.Ensure(t.Context()); err != nil {
 			t.Fatalf("Ensure the seed history: %v", err)

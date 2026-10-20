@@ -266,6 +266,44 @@ test("discovery reports what was loaded, with the versions each migration declar
   assert.equal(await ended(session), EXIT_OK);
 });
 
+test("discovery reports the step a migration declares itself, and omits it where none is", async () => {
+  const session = await handshaken([
+    FILE,
+    {
+      default: { ...creating, phase: { change: "users.email", name: "contract", after: "swap" } },
+    },
+  ]);
+
+  session.send(request(2, "migration.discover", {}));
+
+  const result = (await session.take()).result as { migrations: Record<string, unknown>[] };
+
+  assert.deepEqual(result.migrations, [
+    {
+      version: VERSION,
+      file: FILE,
+      dependencies: [],
+      phase: { change: "users.email", name: "contract", after: "swap" },
+    },
+  ]);
+
+  assert.equal(await ended(session), EXIT_OK);
+});
+
+test("a step waiting on nothing sends no after, and a migration declaring none sends no phase", async () => {
+  const session = await handshaken([
+    FILE,
+    { default: { ...creating, phase: { change: "users.email", name: "expand" } } },
+  ]);
+
+  session.send(request(2, "migration.discover", {}));
+
+  const result = (await session.take()).result as { migrations: Record<string, unknown>[] };
+
+  assert.deepEqual(result.migrations[0]?.["phase"], { change: "users.email", name: "expand" });
+  assert.equal(await ended(session), EXIT_OK);
+});
+
 test("executing a migration emits through the callback and reports what it emitted", async () => {
   const session = await handshaken([FILE, { default: creating }]);
 

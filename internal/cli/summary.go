@@ -162,6 +162,59 @@ type runSummary struct {
 	Skipped []left `json:"skipped,omitempty"`
 	// Duration is how long every run in this invocation took together.
 	Duration elapsed `json:"duration_ms"`
+	// Held is the step this invocation stopped at because it waits for a later release.
+	Held *heldDoc `json:"held,omitempty"`
+}
+
+// heldDoc is a step a run stopped at to wait for a later release, as a report renders it.
+type heldDoc struct {
+	// Version is the waiting migration's UTC timestamp.
+	Version string `json:"version"`
+	// File is the waiting migration.
+	File string `json:"file"`
+	// Change is the change it is a step of.
+	Change string `json:"change"`
+	// Phase is the step it is.
+	Phase string `json:"phase"`
+	// After is the step it waits on.
+	After string `json:"after"`
+	// Prior is the migration carrying that step.
+	Prior string `json:"prior"`
+	// PriorRelease is the release that step was applied under, absent where it has not been applied.
+	PriorRelease string `json:"prior_release,omitempty"`
+	// Reason says why it waits and what lets it run.
+	Reason string `json:"reason"`
+}
+
+// heldOf renders a waiting step, and nothing where no step waited.
+func heldOf(held *engine.Held) *heldDoc {
+	if held == nil {
+		return nil
+	}
+
+	return &heldDoc{
+		Version:      held.Migration.Version,
+		File:         held.Migration.Filename(),
+		Change:       held.Phase.Change,
+		Phase:        held.Phase.Name,
+		After:        held.Phase.After,
+		Prior:        held.Prior.Filename(),
+		PriorRelease: held.PriorRelease,
+		Reason:       held.Reason,
+	}
+}
+
+// heldMarker sits beside a step a run stops at to wait for a later release.
+const heldMarker = "\u23f8"
+
+// write says that a run stops at this step, and why, which is the end of the run rather than a failure.
+func (h *heldDoc) write(b *strings.Builder) {
+	if h == nil {
+		return
+	}
+
+	fmt.Fprintf(b, "\n%s held: %s waits for a later release, and nothing after it runs either -- %s.\n",
+		heldMarker, h.File, h.Reason)
 }
 
 // planSummary is what one invocation would have done, having taken the lock and executed nothing.
@@ -180,6 +233,28 @@ type planSummary struct {
 	Steps []planned `json:"steps"`
 	// Skipped is one entry per migration this direction would not run.
 	Skipped []left `json:"skipped,omitempty"`
+	// Held is the step the run would stop at because it waits for a later release.
+	Held *heldDoc `json:"held,omitempty"`
+	// Unreleased is why migr up would refuse this run for naming no release, absent where it would not.
+	Unreleased string `json:"unreleased,omitempty"`
+}
+
+// describeUnreleased renders why a run naming no release would be refused, and nothing where it would not be.
+func describeUnreleased(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	return err.Error()
+}
+
+// writeUnreleased says that migr up would refuse this run until it names the deploy it belongs to.
+func writeUnreleased(b *strings.Builder, unreleased string) {
+	if unreleased == "" {
+		return
+	}
+
+	fmt.Fprintf(b, "\nmigr up would refuse this run: %s.\n", unreleased)
 }
 
 // summaryOf renders what an invocation did, and is built even when the invocation also failed.
@@ -190,6 +265,7 @@ func summaryOf(database string, dir ir.Direction, result engine.Result) runSumma
 		Batch:     result.Batch,
 		Runs:      make([]ran, 0, len(result.Runs)),
 		Skipped:   leftBehind(result.Skipped),
+		Held:      heldOf(result.Held),
 	}
 
 	var total time.Duration
@@ -209,13 +285,15 @@ func planOf(s *session, previewed engine.Previewed) planSummary {
 	allowed, caps := s.options.Allow, s.conn.Capabilities()
 
 	summary := planSummary{
-		Database:  s.database,
-		Direction: previewed.Direction,
-		DryRun:    true,
-		Recorded:  previewed.Recorded,
-		Batch:     previewed.Batch,
-		Steps:     make([]planned, 0, len(previewed.Steps)),
-		Skipped:   leftBehind(previewed.Skipped),
+		Database:   s.database,
+		Direction:  previewed.Direction,
+		DryRun:     true,
+		Recorded:   previewed.Recorded,
+		Batch:      previewed.Batch,
+		Steps:      make([]planned, 0, len(previewed.Steps)),
+		Skipped:    leftBehind(previewed.Skipped),
+		Held:       heldOf(previewed.Held),
+		Unreleased: describeUnreleased(previewed.Unreleased),
 	}
 
 	for _, step := range previewed.Steps {
@@ -296,6 +374,7 @@ func (s runSummary) String() string {
 
 	if len(s.Runs) == 0 {
 		fmt.Fprintf(&b, "\nnothing to do%s\n", describeSkipped(s.Skipped))
+		s.Held.write(&b)
 
 		return b.String()
 	}
@@ -309,6 +388,7 @@ func (s runSummary) String() string {
 
 	fmt.Fprintf(&b, "\n%s %s in %s%s\n", pastTense(s.Direction), describeMigrations(len(s.Runs)),
 		s.Duration, describeSkipped(s.Skipped))
+	s.Held.write(&b)
 
 	return b.String()
 }
@@ -326,6 +406,8 @@ func (s planSummary) String() string {
 
 	if len(s.Steps) == 0 {
 		fmt.Fprintf(&b, "\nnothing to do%s\n", describeSkipped(s.Skipped))
+		s.Held.write(&b)
+		writeUnreleased(&b, s.Unreleased)
 
 		return b.String()
 	}
@@ -343,6 +425,8 @@ func (s planSummary) String() string {
 
 	s.writeUnsupported(&b)
 	s.writeRefused(&b)
+	s.Held.write(&b)
+	writeUnreleased(&b, s.Unreleased)
 
 	return b.String()
 }

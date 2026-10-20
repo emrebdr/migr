@@ -19,7 +19,8 @@ import (
 // 0082) -- the same command succeeds once whoever holds it lets go; engine.ErrDrifted, since an
 // applied migration that was edited is the one failure invariant #6 gives a code of its own; and
 // engine.ErrDestructive, which is the rule for exit 2 exactly -- the operator retypes the command
-// with --allow-destructive, or names the kind in migr.yaml, and the same command then runs; and
+// with --allow-destructive, or names the kind in migr.yaml, and the same command then runs --
+// engine.ErrNoRelease beside it for the same reason, the operator adding --release; and
 // engine.ErrLockImpact, which --require-safe returns where an operation costs more than
 // safety.max_lock_impact allows, so a CI job can tell a plan that would block production from one
 // that failed (M13-T6, ADR 0086).
@@ -99,7 +100,7 @@ func ExitCode(err error) int {
 		return ExitDrift
 	}
 
-	if errors.Is(err, engine.ErrDestructive) {
+	if errors.Is(err, engine.ErrDestructive) || errors.Is(err, engine.ErrNoRelease) {
 		return ExitValidation
 	}
 

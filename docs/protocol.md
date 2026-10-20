@@ -345,6 +345,23 @@ Three things this deliberately is not:
 `dependencies` names **versions**, not filenames. The version is the key the engine proved unique,
 and the one `--to` and a history row already use.
 
+A migration that is **one step of a change carried out across deploys** also reports `phase`, and a
+migration that is not omits the member. A `phase` names the `change` it belongs to, the step's own
+`name`, and — where the step waits on another — the step it comes `after`, which is omitted where it
+waits on none:
+
+```json
+{"jsonrpc":"2.0","id":2,"result":{"migrations":[{"version":"20260727T160300","file":"20260727T160300_backfill_email.go","dependencies":[],"phase":{"change":"users.email","name":"backfill","after":"expand"}}]}}
+```
+
+The engine resolves every `after` to the migration declaring that step of the same change, refusing
+one that names nothing and one that runs later, and then runs a step only under a **release** after
+the one its prior step was applied under — so the steps of one change cannot land in one deploy. Like
+`dependencies` it is read from the migration and never computed. It was added as an optional result
+member, which [§10.2](#102-what-is-a-breaking-change) makes no break: an engine that does not know it
+ignores it, and an SDK that does not send it declares no step. See
+[ADR 0087](adr/0087-release-gated-phases.md).
+
 ### `migration.execute`
 
 Runs one migration in one direction. This is where a migration's own code runs.

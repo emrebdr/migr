@@ -1,4 +1,5 @@
 {
+  "phase": {"change":"accounts.email","name":"contract","after":"swap"},
   "up": [
     {"op":"drop_column","table":"accounts","column":"email_old","from":{"name":"email_old","type":"string(255)","nullable":true}}
   ],

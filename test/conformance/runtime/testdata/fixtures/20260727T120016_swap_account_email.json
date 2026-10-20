@@ -1,4 +1,5 @@
 {
+  "phase": {"change":"accounts.email","name":"swap","after":"backfill"},
   "up": [
     {"op":"alter_column","table":"accounts","column":"email","nullable":true,"from":{"nullable":false}},
     {"op":"alter_column","table":"accounts","column":"email_next","nullable":false,"from":{"nullable":true}},

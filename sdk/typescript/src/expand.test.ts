@@ -185,6 +185,28 @@ test("only the unsafe steps warn, and each names what it breaks", async () => {
   }
 });
 
+test("each phase of a replacement waits on the one before it, a release apart", () => {
+  const r = replaceColumn("users", "email", t.string(255)).with(t.string(320));
+
+  assert.deepEqual(r.expand().phase, { change: "users.email", name: "expand" });
+  assert.deepEqual(r.backfill().phase, {
+    change: "users.email",
+    name: "backfill",
+    after: "expand",
+  });
+  assert.deepEqual(r.swap().phase, { change: "users.email", name: "swap", after: "backfill" });
+  assert.deepEqual(r.contract().phase, {
+    change: "users.email",
+    name: "contract",
+    after: "swap",
+  });
+  assert.deepEqual(r.through("lower").contract().phase, {
+    change: "users.email",
+    name: "contract",
+    after: "swap",
+  });
+});
+
 test("a replacement that cannot be carried out is refused by every phase", async () => {
   const refused: [Replacement, RegExp][] = [
     [replaceColumn("", "email", t.string(255)).with(t.text()), /table is required/],

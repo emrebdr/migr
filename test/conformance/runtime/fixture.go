@@ -13,6 +13,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
 
 // tree is the fixture set itself, embedded so a caller runs the suite from any directory.
@@ -80,6 +81,8 @@ type Fixture struct {
 	Writes []Write
 	// Dependencies are the versions it declares it must follow, which every SDK reports identically.
 	Dependencies []string
+	// Phase is the step of a change across deploys it declares itself, nil where it declares none.
+	Phase *protocol.Phase
 
 	// up is the manifest's own bytes for Up, compacted, which is what an SDK is compared against.
 	up []byte
@@ -118,6 +121,7 @@ type manifest struct {
 	Reads        []Read          `json:"reads,omitempty"`
 	Writes       []Write         `json:"writes,omitempty"`
 	Dependencies []string        `json:"dependencies,omitempty"`
+	Phase        *protocol.Phase `json:"phase,omitempty"`
 }
 
 // ErrNoFixtures marks a fixture directory with nothing in it, which every SDK would pass.
@@ -225,6 +229,7 @@ func build(f Fixture, m manifest) (Fixture, error) {
 	var err error
 
 	f.Refusal, f.Reads, f.Writes, f.Dependencies = m.DownRefusal, m.Reads, m.Writes, m.Dependencies
+	f.Phase = m.Phase
 
 	if f.Up, f.up, err = canonical("up", m.Up); err != nil {
 		return Fixture{}, err

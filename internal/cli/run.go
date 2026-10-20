@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -43,8 +44,27 @@ func newUpCmd(opts *options) *cobra.Command {
 	})
 
 	registerAllowDestructive(cmd, opts)
+	registerRelease(cmd, opts)
 
 	return cmd
+}
+
+// releaseVariable is the environment variable a deploy may name its release in instead of the flag.
+const releaseVariable = "MIGR_RELEASE"
+
+// registerRelease binds the flag naming the deploy a run belongs to, on the commands that judge a step by it.
+func registerRelease(cmd *cobra.Command, opts *options) {
+	cmd.Flags().StringVar(&opts.release, "release", "",
+		"the deploy this run belongs to, such as a build id; "+releaseVariable+" when unset")
+}
+
+// releaseOf is the release this invocation names, by flag or else by environment.
+func releaseOf(opts *options) string {
+	if opts.release != "" {
+		return opts.release
+	}
+
+	return os.Getenv(releaseVariable)
 }
 
 // newDownCmd builds the `migr down` subcommand.
@@ -165,9 +185,22 @@ func performDirection(cmd *cobra.Command, opts *options, s *session, dir ir.Dire
 		return runErr
 	}
 
+	logHeld(opts, result.Held)
+
 	written := writeResult(cmd.OutOrStdout(), opts, summaryOf(s.database, dir, result))
 
 	return errors.Join(runErr, written)
+}
+
+// logHeld says, at -v, that a run stopped at a step waiting for a later release.
+func logHeld(opts *options, held *engine.Held) {
+	if held == nil {
+		return
+	}
+
+	opts.log.Info("a step waits for a later release, so the run stops before it",
+		"migration", held.Migration.Filename(), "change", held.Phase.Change, "phase", held.Phase.Name,
+		"after", held.Prior.Filename())
 }
 
 // previewDirection reports what the direction would run, having taken the lock and executed nothing.

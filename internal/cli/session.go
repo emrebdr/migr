@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -175,6 +176,8 @@ type reading struct {
 	stop closer
 	// declared is what each migration says it must follow, which only a started runtime reports.
 	declared migration.Declared
+	// phases is what each migration says it is a step of, which only a started runtime reports either.
+	phases migration.Phases
 }
 
 // sources returns what reads every language this directory holds, what ends them, and what they declared.
@@ -183,6 +186,7 @@ func (t *target) sources(ctx context.Context, opts *options, conn driver.Conn,
 	routed := routedByLanguage(found)
 	built := mux{byExt: make(map[string]engine.Source, len(routed))}
 	declared := make(migration.Declared, len(found))
+	phases := make(migration.Phases)
 
 	var stops []closer
 
@@ -206,9 +210,10 @@ func (t *target) sources(ctx context.Context, opts *options, conn driver.Conn,
 		}
 
 		merge(declared, read.declared)
+		maps.Copy(phases, read.phases)
 	}
 
-	return reading{source: built, stop: allEnding(stops), declared: declared}, nil
+	return reading{source: built, stop: allEnding(stops), declared: declared, phases: phases}, nil
 }
 
 // merge folds one language's declarations into the run's, which the routes keep from colliding.
@@ -235,12 +240,12 @@ func (t *target) sourceFor(ctx context.Context, opts *options, conn driver.Conn,
 		return reading{}, err
 	}
 
-	declared, err := checkLoaded(ctx, started, lang, mine)
+	declared, phases, err := checkLoaded(ctx, started, lang, mine)
 	if err != nil {
 		return reading{}, errors.Join(err, stop(context.WithoutCancel(ctx)))
 	}
 
-	return reading{source: started, stop: stop, declared: declared}, nil
+	return reading{source: started, stop: stop, declared: declared, phases: phases}, nil
 }
 
 // needsRuntime reports whether a language is read by a process rather than by reading a file here.
@@ -263,20 +268,20 @@ func routedByLanguage(found []migration.Migration) map[config.Language][]migrati
 
 // checkLoaded holds what a runtime loaded to what was routed to it, and returns what it declared.
 func checkLoaded(ctx context.Context, started *runtime.Session, lang config.Language,
-	routed []migration.Migration) (migration.Declared, error) {
-	loaded, declared, err := started.Loaded(ctx)
+	routed []migration.Migration) (migration.Declared, migration.Phases, error) {
+	loaded, declared, phases, err := started.Loaded(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := errors.Join(
 		missingFrom(lang, routed, loaded),
 		surplusIn(lang, routed, loaded),
 	); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return declared, nil
+	return declared, phases, nil
 }
 
 // missingFrom reports a migration routed to a runtime that the runtime did not load.
@@ -539,10 +544,22 @@ func (s *session) attach(ctx context.Context, t *target, opts *options,
 
 	s.stop = read.stop
 
-	files, err := t.sequence(opts, found, read.declared)
+	ordered, err := overlaid(opts, found, read.declared)
 	if err != nil {
 		return err
 	}
+
+	gates, err := gatesOf(ordered, read.phases)
+	if err != nil {
+		return err
+	}
+
+	files, err := hashed(t.fsys, ordered)
+	if err != nil {
+		return err
+	}
+
+	s.options.Phases, s.options.Gates, s.options.Release = read.phases, gates, releaseOf(opts)
 
 	s.options.Source = read.source
 	s.options.Migrations = files
@@ -572,15 +589,14 @@ func rulesFor(t *target) (*rule.Set, error) {
 	return &rules, nil
 }
 
-// sequence settles the order a run performs, which is what each migration declared over the timestamps.
-func (t *target) sequence(opts *options, found []migration.Migration,
-	declared migration.Declared) ([]history.File, error) {
-	ordered, err := overlaid(opts, found, declared)
+// gatesOf resolves every step that waits on another, refusing declarations no deploy could carry out.
+func gatesOf(ordered []migration.Migration, phases migration.Phases) (map[string]migration.Gate, error) {
+	gates, err := migration.Gates(ordered, phases)
 	if err != nil {
-		return nil, err
+		return nil, NewExitError(ExitValidation, err)
 	}
 
-	return hashed(t.fsys, ordered)
+	return gates, nil
 }
 
 // overlaid puts the migrations in the order their declarations and their timestamps together name.

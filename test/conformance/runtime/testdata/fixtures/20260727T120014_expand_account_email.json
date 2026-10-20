@@ -1,4 +1,5 @@
 {
+  "phase": {"change":"accounts.email","name":"expand"},
   "up": [
     {"op":"add_column","table":"accounts","column":{"name":"email_next","type":"string(320)","nullable":true}}
   ],

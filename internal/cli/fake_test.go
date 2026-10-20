@@ -69,6 +69,10 @@ type fake struct {
 	assessErr error
 	// assessed counts the operations this session was asked to read a table for.
 	assessed int
+	// releases is the release table beside the migration history.
+	releases []history.Release
+	// seedReleases is the release table beside the seed history.
+	seedReleases []history.Release
 	// lockErr is what acquiring the migration lock reports, nil when it succeeds.
 	lockErr error
 	// inTx reports whether a transaction is open, which is what a history write must be inside.
@@ -538,13 +542,14 @@ func (c *fakeConn) Capabilities() capability.Set {
 
 // History reports this session's store.
 func (c *fakeConn) History() history.Store {
-	return &fakeStore{fake: c.fake, table: &c.fake.table, runs: &c.fake.runs, cps: &c.fake.checkpoints}
+	return &fakeStore{fake: c.fake, table: &c.fake.table, runs: &c.fake.runs, cps: &c.fake.checkpoints,
+		releases: &c.fake.releases}
 }
 
 // Seeds returns the seed history, which notes every call it is asked under a seed- prefix.
 func (c *fakeConn) Seeds() history.Store {
 	return &fakeStore{fake: c.fake, table: &c.fake.seedTable, runs: &c.fake.seedRuns,
-		cps: &c.fake.seedCheckpoints, prefix: "seed-"}
+		cps: &c.fake.seedCheckpoints, releases: &c.fake.seedReleases, prefix: "seed-"}
 }
 
 // ServerVersion reports the version the declaration was resolved against.
@@ -599,6 +604,26 @@ type fakeStore struct {
 	prefix string
 	// cps is the checkpoints this store's checkpoint table holds.
 	cps *[]history.Checkpoint
+	// releases is the releases this store's release table holds.
+	releases *[]history.Release
+}
+
+// RecordRelease records one batch's release, noting whether a transaction was open.
+func (s *fakeStore) RecordRelease(_ context.Context, r history.Release) error {
+	s.fake.note(s.prefix + describeWrite("record-release", s.fake.inTx))
+
+	if err := r.Validate(); err != nil {
+		return err
+	}
+
+	*s.releases = append(*s.releases, r)
+
+	return nil
+}
+
+// Releases returns every release this store holds.
+func (s *fakeStore) Releases(context.Context) ([]history.Release, error) {
+	return slices.Clone(*s.releases), nil
 }
 
 // SaveCheckpoint replaces one migration's checkpoint, noting whether a transaction was open.

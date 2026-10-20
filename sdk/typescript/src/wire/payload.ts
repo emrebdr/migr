@@ -75,6 +75,18 @@ export interface Discovered {
   file: string;
   /** The versions this migration declares it must follow, read and never computed. */
   dependencies: string[];
+  /** The step of a change across deploys this migration declares itself, absent where it declares none. */
+  phase?: WirePhase;
+}
+
+/** WirePhase is one step of a change across deploys, as migration.discover carries it. */
+export interface WirePhase {
+  /** The change the step belongs to. */
+  change: string;
+  /** The step. */
+  name: string;
+  /** The step it waits on, absent where it waits on none. */
+  after?: string;
 }
 
 /** DiscoverResult is every migration this SDK loaded, with what each one declares. */

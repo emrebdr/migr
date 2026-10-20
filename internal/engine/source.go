@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"time"
 
@@ -85,6 +86,12 @@ type Options struct {
 	StatementTimeout time.Duration
 	// MigrationTimeout bounds each migration, its retries and their backoff included, and zero none.
 	MigrationTimeout time.Duration
+	// Phases is what each migration declares itself a step of, keyed by version, and nil where none does.
+	Phases migration.Phases
+	// Gates is every step that waits on another, resolved over the order this run uses.
+	Gates map[string]migration.Gate
+	// Release names the deploy this run belongs to, which a step waiting on an earlier one is judged by.
+	Release string
 }
 
 // check reports what an apply run was not given, before it takes a lock it could not use.
@@ -103,6 +110,12 @@ func (o Options) check() error {
 
 	if o.Runtime == nil {
 		return ErrNoRuntime
+	}
+
+	if o.Release != "" {
+		if err := history.ValidateRelease(o.Release); err != nil {
+			return fmt.Errorf("%w: %w", ErrNoRelease, err)
+		}
 	}
 
 	return o.Scope.check()

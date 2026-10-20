@@ -35,6 +35,8 @@ type executor struct {
 	committed int32
 	// shift is how many ordinals the rows of chunked runs in progress took beyond their own.
 	shift int32
+	// released reports that this batch's release is recorded, which happens once per batch.
+	released bool
 }
 
 // ordinalOf returns the ordinal a queued migration's row is written at, after any chunked run's own.
@@ -385,6 +387,10 @@ func (e *executor) newRecord(ready prepared) history.Record {
 func (e *executor) recorder(rec *history.Record) driver.Work {
 	return func(ctx context.Context) error {
 		rec.Duration = elapsed(rec.AppliedAt, e.opts.Clock())
+
+		if err := e.recordRelease(ctx); err != nil {
+			return err
+		}
 
 		return e.store.Record(ctx, *rec)
 	}

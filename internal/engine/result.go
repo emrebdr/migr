@@ -17,6 +17,8 @@ type Result struct {
 	Runs []Run
 	// Skipped is one entry per migration this invocation did not run, whether by state or by scope.
 	Skipped []Skipped
+	// Held is the step this invocation stopped at because it waits for a later release, nil where none did.
+	Held *Held
 }
 
 // Run is one migration this invocation applied, and what it cost.

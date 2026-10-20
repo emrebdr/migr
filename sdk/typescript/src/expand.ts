@@ -7,7 +7,7 @@
 // sent in both modes, so migr plan shows it before migr up runs it.
 
 import type { Column, Default } from "./column.ts";
-import type { Migration } from "./migration.ts";
+import type { Migration, Phase } from "./migration.ts";
 import { TRANSFORMS, type Transform } from "./operation.ts";
 import type { Schema } from "./schema.ts";
 import type { Type } from "./type.ts";
@@ -240,9 +240,17 @@ function swapConsequence(d: Declared): string {
   return `${quoted(d, d.column)} now names the new column and ${quoted(d, old(d))} the old one, so every app version still serving must already read and write the new one`;
 }
 
+/** step declares one phase of a replacement, named by its table and column, waiting on the phase before it. */
+function step(d: Declared, name: string, after?: string): Phase {
+  return after === undefined
+    ? { change: `${d.table}.${d.column}`, name }
+    : { change: `${d.table}.${d.column}`, name, after };
+}
+
 /** expandPhase adds the replacing column, nullable, so no app version writing the table is refused. */
 function expandPhase(d: Declared): Migration {
   return {
+    phase: step(d, "expand"),
     async up(s) {
       validate(d);
 
@@ -269,6 +277,7 @@ function expandPhase(d: Declared): Migration {
 /** backfillPhase fills the replacing column from the old one, and undoes nothing of its own. */
 function backfillPhase(d: Declared): Migration {
   return {
+    phase: step(d, "backfill", "expand"),
     async up(s) {
       validate(d);
 
@@ -284,6 +293,7 @@ function backfillPhase(d: Declared): Migration {
 /** swapPhase relaxes the old column, tightens the new one, and in the keep-name form swaps names. */
 function swapPhase(d: Declared): Migration {
   return {
+    phase: step(d, "swap", "backfill"),
     async up(s) {
       validate(d);
       unsafe(s, d, "swap", swapConsequence(d));
@@ -349,6 +359,7 @@ async function contractUp(s: Schema, d: Declared): Promise<void> {
 /** contractPhase drops the old column, and its down copies the values back from the new one. */
 function contractPhase(d: Declared): Migration {
   return {
+    phase: step(d, "contract", "swap"),
     up: (s) => contractUp(s, d),
     async down(s) {
       validate(d);
@@ -367,6 +378,7 @@ function contractPhase(d: Declared): Migration {
 /** lossyContractPhase drops an old column whose values the backfill did not carry over whole. */
 function lossyContractPhase(d: Declared): Migration {
   return {
+    phase: step(d, "contract", "swap"),
     up: (s) => contractUp(s, d),
     irreversible: `${quoted(d, final(d))} was filled through ${d.fn}, which loses what the old column held, so the values contract drops cannot be rebuilt from it`,
     validate: () => validate(d),

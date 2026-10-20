@@ -277,6 +277,39 @@ func (r Replacement) unsafe(s *Schema, step, consequence string) {
 	})
 }
 
+// The four steps, as each phase declares itself. Each waits on the one before it, a release apart.
+const (
+	stepExpand   = "expand"
+	stepBackfill = "backfill"
+	stepSwap     = "swap"
+	stepContract = "contract"
+)
+
+// change names this replacement the way every phase of it does, by the table and the column it replaces.
+func (r Replacement) change() string {
+	return r.table + "." + r.column
+}
+
+// step declares one phase of this replacement, waiting on the phase before it.
+func (r Replacement) step(name, after string) Phase {
+	return Phase{Change: r.change(), Name: name, After: after}
+}
+
+// Phase declares the expand, which waits on nothing.
+func (p expandPhase) Phase() Phase { return p.r.step(stepExpand, "") }
+
+// Phase declares the backfill, which runs a release after the expand.
+func (p backfillPhase) Phase() Phase { return p.r.step(stepBackfill, stepExpand) }
+
+// Phase declares the swap, which runs a release after the backfill.
+func (p swapPhase) Phase() Phase { return p.r.step(stepSwap, stepBackfill) }
+
+// Phase declares the contract, which runs a release after the swap.
+func (p contractPhase) Phase() Phase { return p.r.step(stepContract, stepSwap) }
+
+// Phase declares the lossy contract, which runs a release after the swap as the other one does.
+func (p lossyContractPhase) Phase() Phase { return p.r.step(stepContract, stepSwap) }
+
 // quoted names a column of this replacement's table as an operator reads it.
 func (r Replacement) quoted(column string) string {
 	return fmt.Sprintf("%q.%q", r.table, column)

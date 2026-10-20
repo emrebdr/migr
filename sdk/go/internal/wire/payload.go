@@ -126,6 +126,14 @@ type Discovered struct {
 	Version      string   `json:"version"`
 	File         string   `json:"file"`
 	Dependencies []string `json:"dependencies"`
+	Phase        *Phase   `json:"phase,omitempty"`
+}
+
+// Phase is the step of a change across deploys a migration declares itself, absent where it declares none.
+type Phase struct {
+	Change string `json:"change"`
+	Name   string `json:"name"`
+	After  string `json:"after,omitempty"`
 }
 
 // ExecuteParams names one migration, one direction, and whether this call runs it or asks it.

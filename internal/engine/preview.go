@@ -24,6 +24,10 @@ type Previewed struct {
 	Steps []Planned
 	// Skipped is one entry per migration this direction would not run, whether by state or by scope.
 	Skipped []Skipped
+	// Held is the step the run would stop at because it waits for a later release, nil where none would.
+	Held *Held
+	// Unreleased is why migr up would refuse this run for naming no release, nil where it would not.
+	Unreleased error
 }
 
 // Planned is one migration a preview would run, compiled for this engine but never executed.
@@ -113,9 +117,44 @@ func (e *executor) previewAll(ctx context.Context, dir ir.Direction) (Previewed,
 		return previewed, err
 	}
 
+	queue, err = e.previewGates(ctx, &previewed, report, queue)
+	if err != nil {
+		return previewed, err
+	}
+
 	previewed.Steps, err = e.compileAll(ctx, queue, dir)
 
 	return previewed, err
+}
+
+// previewGates cuts a queue at the step the run would stop at, judged as the run would judge it.
+func (e *executor) previewGates(ctx context.Context, previewed *Previewed, report history.Report,
+	queue []queued) ([]queued, error) {
+	if previewed.Direction != ir.Up {
+		return queue, nil
+	}
+
+	previewed.Unreleased = e.needsRelease(queue)
+
+	releases, err := e.releases(ctx, queue)
+	if err != nil {
+		return nil, err
+	}
+
+	statuses, _ := report.Resolved()
+	g := gating{statuses: statuses, releases: releases}
+
+	for i, item := range queue {
+		if held, waits := e.held(item, g.statuses, g.releases); waits {
+			previewed.Held = held
+
+			return queue[:i], nil
+		}
+
+		g = g.ran(item.migration, previewed.Batch, e.opts.Release)
+	}
+
+	return queue, nil
 }
 
 // The first and no other, because a preview applies nothing: the schema every later migration will

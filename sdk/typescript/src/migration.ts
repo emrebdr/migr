@@ -25,6 +25,16 @@ export type Down = (s: Schema) => void | Promise<void>;
 /** Validate reports what is wrong with this migration, reaching no database. */
 export type Validate = () => void | Promise<void>;
 
+/** Phase is one step of a change carried out across several deploys, as the migration carrying it declares it. */
+export interface Phase {
+  /** change names the change this step belongs to, unique to it across the project. */
+  readonly change: string;
+  /** name is the step, unique within its change. */
+  readonly name: string;
+  /** after is the step of the same change that must be applied under an earlier release. */
+  readonly after?: string;
+}
+
 /** Change is what every migration has, however it is undone. */
 interface Change {
   /** up performs the change, and is the only member a migration must have. */
@@ -33,6 +43,8 @@ interface Change {
   validate?: Validate;
   /** dependencies are the versions this migration must follow, declared and never computed. */
   dependencies?: readonly string[];
+  /** phase is the step of a change across deploys this migration is, which migr runs a release apart. */
+  phase?: Phase;
 }
 
 /** UndoShape is the three honest answers to how a migration is undone, written as three shapes. */
@@ -88,6 +100,11 @@ export function declared(m: Migration): string | undefined {
 /** dependencies returns what a migration declares it must follow, which is nothing by default. */
 export function dependencies(m: Migration): readonly string[] {
   return m.dependencies ?? [];
+}
+
+/** phase returns the step a migration declares itself, if it declares one. */
+export function phase(m: Migration): Phase | undefined {
+  return m.phase;
 }
 
 /** check runs a migration's own validation, which a migration that has none passes. */

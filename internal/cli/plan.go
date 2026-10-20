@@ -42,6 +42,7 @@ func newPlanCmd(opts *options) *cobra.Command {
 	cmd.Flags().BoolVar(&safe.shown, "safety", false,
 		"print each operation's lock verdict, and which exceed safety.max_lock_impact")
 	registerRequireSafe(cmd, &safe.required)
+	registerRelease(cmd, opts)
 
 	return cmd
 }
@@ -313,6 +314,10 @@ type compiledPlan struct {
 	Chunked int `json:"chunked_operations"`
 	// Ceiling is safety.max_lock_impact, which every operation's lock is judged against.
 	Ceiling capability.LockImpact `json:"max_lock_impact"`
+	// Held is the step the run would stop at because it waits for a later release.
+	Held *heldDoc `json:"held,omitempty"`
+	// Unreleased is why migr up would refuse this run for naming no release, absent where it would not.
+	Unreleased string `json:"unreleased,omitempty"`
 	// safety prints the lock axis in the text rendering, which a document always carries.
 	safety bool
 }
@@ -327,6 +332,8 @@ func compiledOf(s *session, previewed engine.Previewed) compiledPlan {
 		Migrations: make([]compiledMigration, 0, len(previewed.Steps)),
 		Skipped:    leftBehind(previewed.Skipped),
 		Ceiling:    s.ceiling,
+		Held:       heldOf(previewed.Held),
+		Unreleased: describeUnreleased(previewed.Unreleased),
 	}
 
 	pace := paceOf(s.options)
@@ -595,6 +602,8 @@ func (p compiledPlan) String() string {
 
 	if len(p.Migrations) == 0 {
 		fmt.Fprintf(&b, "\nnothing to do%s\n", describeSkipped(p.Skipped))
+		p.Held.write(&b)
+		writeUnreleased(&b, p.Unreleased)
 
 		return b.String()
 	}
@@ -616,6 +625,8 @@ func (p compiledPlan) String() string {
 	p.writeUnrestorableNote(&b)
 	p.writeRefusedNote(&b)
 	p.writeSafetyNote(&b)
+	p.Held.write(&b)
+	writeUnreleased(&b, p.Unreleased)
 
 	return b.String()
 }

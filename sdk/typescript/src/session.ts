@@ -55,9 +55,15 @@ import {
   PROTOCOL_VERSION,
   SHUTDOWN,
 } from "./wire/method.ts";
-import type { Direction, Discovered, ExecuteResult, InitializeParams } from "./wire/payload.ts";
+import type {
+  Direction,
+  Discovered,
+  ExecuteResult,
+  InitializeParams,
+  WirePhase,
+} from "./wire/payload.ts";
 import { readCancel, readExecute, readInitialize, readValidate } from "./wire/payload.ts";
-import { dependencies } from "./migration.ts";
+import { dependencies, phase } from "./migration.ts";
 
 /** EXIT_OK is what a runtime exits with after answering shutdown, and after losing its engine. */
 export const EXIT_OK = 0;
@@ -460,10 +466,28 @@ function listed(registry: Registry): Discovered[] {
       version: entry.version,
       file: entry.file,
       dependencies: [...dependencies(entry.migration)],
+      ...wirePhase(entry.migration),
     }));
   } catch (thrown) {
     throw unloadable(thrown);
   }
+}
+
+/** wirePhase renders the step a migration declares itself as the wire carries it, and nothing where it declares none. */
+function wirePhase(m: Migration): { phase?: WirePhase } {
+  const declared = phase(m);
+
+  if (declared === undefined) {
+    return {};
+  }
+
+  return {
+    phase: {
+      change: declared.change,
+      name: declared.name,
+      ...(declared.after === undefined || declared.after === "" ? {} : { after: declared.after }),
+    },
+  };
 }
 
 /** unloadable reports migrations that could not be read, with the code sdk/go's discover uses. */

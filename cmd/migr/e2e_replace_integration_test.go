@@ -71,7 +71,8 @@ func clearReplacement(t *testing.T) {
 
 	outliving := context.WithoutCancel(t.Context())
 
-	for _, table := range []string{replaceTable, replaceHistoryTable, replaceHistoryTable + "_progress"} {
+	for _, table := range []string{replaceTable, replaceHistoryTable, replaceHistoryTable + "_progress",
+		replaceHistoryTable + "_releases"} {
 		if err := pgtest.Drop(outliving, openedWith(outliving, t, ""), targetSchema, table); err != nil {
 			t.Fatalf("dropping %s: %v", table, err)
 		}
@@ -87,14 +88,21 @@ func TestAColumnReplacementWalksItsFourPhasesAndRollsBackWholeOnPostgreSQL(t *te
 
 	before := digest(t, replaceHistoryTable)
 
-	for _, phase := range []string{"expand", "backfill", "swap", "contract"} {
-		out := migrOut(t, config, "up", "--step", "1")
+	for i, phase := range []string{"expand", "backfill", "swap", "contract"} {
+		release := fmt.Sprintf("r%d", i+1)
+
+		out := migrOut(t, config, "up", "--step", "1", "--release", release)
 		if phase == "backfill" && !strings.Contains(out, "5 chunks, 200 rows written") {
 			t.Errorf("the backfill did not run in chunks:\n%s", out)
 		}
+
+		if held := migrOut(t, config, "up", "--release", release); phase != "contract" &&
+			!strings.Contains(held, "waits for a later release") {
+			t.Errorf("the step after %s ran in the deploy that ran %s:\n%s", phase, phase, held)
+		}
 	}
 
-	if err := migr(t, config, "up"); err != nil {
+	if err := migr(t, config, "up", "--release", "r5"); err != nil {
 		t.Fatalf("the check that every row kept its value under its own name: %v", err)
 	}
 
@@ -112,7 +120,13 @@ func TestAColumnReplacementWalksItsFourPhasesAndRollsBackWholeOnPostgreSQL(t *te
 		t.Errorf("the rollback did not restore the schema\nbefore\n%s\nafter\n%s", before, restored)
 	}
 
-	if err := migr(t, config, "up"); err != nil {
-		t.Fatalf("running the replacement and its check again over the restored column: %v", err)
+	for _, release := range []string{"r6", "r7", "r8", "r9"} {
+		if err := migr(t, config, "up", "--release", release); err != nil {
+			t.Fatalf("running the replacement and its check again under %s: %v", release, err)
+		}
+	}
+
+	if status := migrOut(t, config, "status"); strings.Contains(status, "pending") {
+		t.Errorf("four deploys did not carry the replacement and its check through:\n%s", status)
 	}
 }

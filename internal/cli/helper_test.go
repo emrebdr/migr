@@ -84,7 +84,14 @@ const (
 	declaresUnknown = "unknown"
 	// declaresFirst has every migration but the first declare it, which a seed reads as a migration.
 	declaresFirst = "first"
+	// declaresSteps has each migration declare itself the next step of one change, each after the last.
+	declaresSteps = "steps"
+	// declaresStrayStep has each migration declare a step waiting on one no migration declares.
+	declaresStrayStep = "stray-step"
 )
+
+// steppedChange is the change declaresSteps has every migration declare itself a step of.
+const steppedChange = "users.email"
 
 // strayVersion is the migration actLoadsExtra claims, which no file in any staged project carries.
 const strayVersion = "20991231T235959"
@@ -220,7 +227,7 @@ func (r *scriptedRuntime) loadable() ([]protocol.Discovered, error) {
 		}
 
 		loaded = append(loaded, protocol.Discovered{Version: m.Version, File: m.Filename(),
-			Dependencies: r.declaredBy(m, found)})
+			Dependencies: r.declaredBy(m, found), Phase: r.stepOf(m, found)})
 	}
 
 	return loaded, nil
@@ -258,6 +265,25 @@ func (r *scriptedRuntime) declaredBy(m migration.Migration,
 	}
 
 	return []string{}
+}
+
+// stepOf renders the step this script has one migration declare itself, and nothing where it declares none.
+func (r *scriptedRuntime) stepOf(m migration.Migration, found []migration.Migration) *protocol.Phase {
+	at := slices.IndexFunc(found, func(other migration.Migration) bool { return other.Version == m.Version })
+
+	switch r.declares {
+	case declaresSteps:
+		step := &protocol.Phase{Change: steppedChange, Name: fmt.Sprintf("step%d", at)}
+		if at > 0 {
+			step.After = fmt.Sprintf("step%d", at-1)
+		}
+
+		return step
+	case declaresStrayStep:
+		return &protocol.Phase{Change: steppedChange, Name: fmt.Sprintf("step%d", at), After: "nothing"}
+	}
+
+	return nil
 }
 
 // chained declares the migration after this one, closing the loop for the last one only in a cycle.

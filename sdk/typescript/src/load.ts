@@ -25,7 +25,7 @@ export interface Loaded {
 }
 
 /** NAMED are the members a module may export one by one, which is the second of the two styles. */
-const NAMED = ["up", "down", "validate", "dependencies", "irreversible"] as const;
+const NAMED = ["up", "down", "validate", "dependencies", "irreversible", "phase"] as const;
 
 /** fromModule reads one imported module as the migration its filename names. */
 export function fromModule(file: string, namespace: unknown): Loaded {
@@ -127,6 +127,7 @@ function checked(file: string, source: Record<string, unknown>): Migration {
   checkOptionalFunction(file, source["down"], "down");
   checkOptionalFunction(file, source["validate"], "validate");
   checkDependencies(file, source["dependencies"]);
+  checkPhase(file, source["phase"]);
   checkIrreversible(file, source["irreversible"]);
   checkDirections(file, source["down"], source["irreversible"]);
 
@@ -175,6 +176,44 @@ function checkDependencies(file: string, value: unknown): void {
       file,
       `${file} exports dependencies as ${describeType(value)}, and dependencies is a list of ` +
         "versions this migration declares, never one it computes",
+    );
+  }
+}
+
+/** checkPhase refuses a declared step that names no change or no step, or waits on itself. */
+function checkPhase(file: string, value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+
+  const declared = value as Partial<Record<"change" | "name" | "after", unknown>>;
+
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    typeof declared.change !== "string" ||
+    typeof declared.name !== "string" ||
+    (declared.after !== undefined && typeof declared.after !== "string")
+  ) {
+    throw new MigrationError(
+      "bad_member",
+      file,
+      `${file} exports phase as ${describeType(value)}, and phase is a change, a step and the ` +
+        "step it waits on, each a string",
+    );
+  }
+
+  if (
+    declared.change.trim() === "" ||
+    declared.name.trim() === "" ||
+    declared.after === declared.name
+  ) {
+    throw new MigrationError(
+      "bad_member",
+      file,
+      `${file} declares the phase ${JSON.stringify(declared.name)} of ` +
+        `${JSON.stringify(declared.change)}, and a phase names a change and a step that waits on ` +
+        "another step, never on itself",
     );
   }
 }

@@ -3,9 +3,12 @@ package engine
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
 )
 
@@ -44,25 +47,71 @@ func (e *executor) applyAll(ctx context.Context) (Result, error) {
 		return Result{Skipped: skipped}, nil
 	}
 
+	if err := e.needsRelease(queue); err != nil {
+		return Result{Skipped: skipped}, err
+	}
+
+	releases, err := e.releases(ctx, queue)
+	if err != nil {
+		return Result{Skipped: skipped}, err
+	}
+
 	e.batch, err = allocateBatch(ctx, e.store)
 	if err != nil {
 		return Result{Skipped: skipped}, err
 	}
 
-	return e.applyQueue(ctx, queue, skipped)
+	statuses, _ := report.Resolved()
+
+	return e.applyQueue(ctx, queue, skipped, gating{statuses: statuses, releases: releases})
+}
+
+// gating is what a run judges a waiting step by: the history before it ran, and the releases recorded.
+type gating struct {
+	// statuses is every migration's state before this run.
+	statuses []history.Status
+	// releases is which deploy each batch ran under.
+	releases []history.Release
+}
+
+// ran returns the view a later step is judged by once this run has applied one migration in its batch.
+func (g gating) ran(m migration.Migration, batch int64, release string) gating {
+	statuses := make([]history.Status, 0, len(g.statuses))
+	for _, s := range g.statuses {
+		if s.Version == m.Version {
+			s.State, s.Recorded = history.StateApplied, history.Record{Batch: batch, Version: m.Version}
+		}
+
+		statuses = append(statuses, s)
+	}
+
+	releases := g.releases
+	if _, named := history.ReleaseOf(releases, batch); !named && release != "" {
+		releases = append(slices.Clone(releases), history.Release{Batch: batch, Name: release})
+	}
+
+	return gating{statuses: statuses, releases: releases}
 }
 
 // applyQueue runs the queue in order, abandoning the rest at the first migration that fails.
-func (e *executor) applyQueue(ctx context.Context, queue []queued, skipped []Skipped) (Result, error) {
+func (e *executor) applyQueue(ctx context.Context, queue []queued, skipped []Skipped,
+	g gating) (Result, error) {
 	result := Result{Batch: e.batch, Skipped: skipped}
 
 	for _, item := range queue {
+		if held, waits := e.held(item, g.statuses, g.releases); waits {
+			result.Held = held
+
+			return result, nil
+		}
+
 		applied, err := e.applyOne(ctx, item)
 		if err != nil {
 			return result, err
 		}
 
 		result.Runs = append(result.Runs, applied)
+		g = g.ran(item.migration, e.batch, e.opts.Release)
 	}
 
 	return result, nil

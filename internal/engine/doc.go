@@ -511,6 +511,24 @@
 // second, took error 1674, and was recorded dirty -- which then refused both directions until migr
 // resolve. See ADR 0064.
 //
+// # A step waits for a later release, and a run stops at it without failing
+//
+// Options.Gates is every step of a change across deploys that waits on another, resolved by
+// migration.Gates, and Options.Release names the deploy this run belongs to (M13-T7, ADR 0087). Before
+// a queued migration is asked anything, Gated judges it against the history as it stood before the
+// run, advanced by what this run has applied since: it waits while its prior step is not applied, or
+// belongs to this release, and the run then stops there with Result.Held and no error -- a change
+// partway through its deploys is the normal state of one, and failing would fail every deploy until
+// it finished. Everything after the step waits too, since order is kept. A preview stops at the same
+// step and says so.
+//
+// A queue holding any step needs a release, ErrNoRelease before anything runs, so every step is
+// recorded under one; the release is written by recordRelease in the transaction of the batch's first
+// applied row. A prior step whose batch recorded none counts as an earlier release, which only a run
+// before releases were recorded can leave. A rollback and a resume are never held. Where DDL commits
+// as it goes, a hold at a swap or after one says the swap is two commits, read from TransactionalDDL
+// rather than from a driver's name.
+//
 // # What an operation costs against the ceiling
 //
 // Exceeding is the third gate of that shape and the only one no run reads: it reports every step

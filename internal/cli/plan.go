@@ -23,6 +23,7 @@ const statementIndent = "          "
 // newPlanCmd builds the `migr plan` subcommand.
 func newPlanCmd(opts *options) *cobra.Command {
 	narrow := &narrowing{}
+	safe := &safety{}
 
 	cmd := &cobra.Command{
 		Use:   "plan",
@@ -32,18 +33,40 @@ func newPlanCmd(opts *options) *cobra.Command {
 			"the history, but writes nothing at all — not even the history table.",
 		Args: argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPlan(cmd, opts, *narrow)
+			return runPlan(cmd, opts, *narrow, *safe)
 		},
 	}
 
 	narrow.selectors(cmd, "plan only the first N migrations the direction would act on")
 	cmd.Flags().BoolVar(&narrow.down, "down", false, "plan the rollback rather than the pending run")
+	cmd.Flags().BoolVar(&safe.shown, "safety", false,
+		"print each operation's lock verdict, and which exceed safety.max_lock_impact")
+	registerRequireSafe(cmd, &safe.required)
 
 	return cmd
 }
 
+// safety is what migr plan was asked about the lock axis: whether to print it, and whether to gate on it.
+type safety struct {
+	// shown prints each operation's lock verdict beside its support verdict.
+	shown bool
+	// required fails the plan, with exit code 5, where an operation exceeds safety.max_lock_impact.
+	required bool
+}
+
+// printed reports whether the lock axis is printed, which gating on it implies.
+func (s safety) printed() bool {
+	return s.shown || s.required
+}
+
+// registerRequireSafe binds the gate flag, on the two commands that read it and no others.
+func registerRequireSafe(cmd *cobra.Command, required *bool) {
+	cmd.Flags().BoolVar(required, "require-safe", false,
+		"exit 5 if any operation costs a live database more than safety.max_lock_impact allows")
+}
+
 // runPlan compiles what a direction would run against this database and prints every statement.
-func runPlan(cmd *cobra.Command, opts *options, narrow narrowing) (err error) {
+func runPlan(cmd *cobra.Command, opts *options, narrow narrowing, safe safety) (err error) {
 	dir := narrow.direction()
 
 	scope, err := narrow.scope(dir)
@@ -60,20 +83,57 @@ func runPlan(cmd *cobra.Command, opts *options, narrow narrowing) (err error) {
 		err = errors.Join(err, s.close(context.WithoutCancel(cmd.Context())))
 	}()
 
-	return report(cmd, opts, s, dir)
+	return report(cmd, opts, s, dir, safe)
 }
 
 // report compiles the direction and prints what it got, which a refusal partway leaves worth printing.
-func report(cmd *cobra.Command, opts *options, s *session, dir ir.Direction) error {
+func report(cmd *cobra.Command, opts *options, s *session, dir ir.Direction, safe safety) error {
 	previewed, planErr := s.preview(cmd.Context(), dir)
 
 	if planErr != nil && len(previewed.Steps) == 0 {
 		return planErr
 	}
 
-	written := writeResult(cmd.OutOrStdout(), opts, compiledOf(s, previewed))
+	warnUnassessed(opts, previewed)
 
-	return errors.Join(planErr, written)
+	rendered := compiledOf(s, previewed)
+	rendered.safety = safe.printed()
+
+	written := writeResult(cmd.OutOrStdout(), opts, rendered)
+	if planErr != nil || written != nil || !safe.required {
+		return errors.Join(planErr, written)
+	}
+
+	return gate(s.ceiling, previewed)
+}
+
+// warnUnassessed logs every migration whose verdicts stayed at their worst because a table could not be read.
+func warnUnassessed(opts *options, previewed engine.Previewed) {
+	for _, planned := range previewed.Steps {
+		if planned.Unassessed != nil {
+			opts.log.Warn("a lock verdict stays at its worst: the table it depends on could not be read",
+				"migration", planned.Plan.Migration.Filename(), "error", planned.Unassessed)
+		}
+	}
+}
+
+// gate fails a preview holding an operation that costs more than the ceiling, and passes any other.
+func gate(ceiling capability.LockImpact, previewed engine.Previewed) error {
+	failed := &engine.LockImpactError{Ceiling: ceiling}
+
+	for _, planned := range previewed.Steps {
+		found := engine.Exceeding(planned.Plan, ceiling)
+		if len(found) > 0 {
+			failed.Exceeded = append(failed.Exceeded, engine.Exceeded{Migration: planned.Plan.Migration,
+				Direction: planned.Plan.Direction, Found: found})
+		}
+	}
+
+	if len(failed.Exceeded) == 0 {
+		return nil
+	}
+
+	return failed
 }
 
 // operation is one operation a migration emitted, beside what the driver would do with it.
@@ -106,6 +166,18 @@ type operation struct {
 	NoTransaction []int `json:"no_transaction,omitempty"`
 	// Rewrite is how the operation was rewritten into a safer sequence, absent where it runs as declared.
 	Rewrite *rewriteDoc `json:"rewrite,omitempty"`
+	// Lock is what the operation costs a live database as it would run, a rewrite's cost where it has one.
+	Lock capability.LockImpact `json:"lock"`
+	// Declared is what it would cost as declared, present only where a rewrite made it cheaper.
+	Declared capability.LockImpact `json:"declared_lock,omitempty"`
+	// RewritesTable reports an operation that writes every row of its table to new storage.
+	RewritesTable bool `json:"rewrites_table,omitempty"`
+	// Assessed reports a verdict the session read the table for, rather than one declared at its worst.
+	Assessed bool `json:"assessed,omitempty"`
+	// NewTable reports an operation on a table this migration creates, which blocks nobody whatever it takes.
+	NewTable bool `json:"new_table,omitempty"`
+	// OverCeiling reports an operation costing more than safety.max_lock_impact allows.
+	OverCeiling bool `json:"over_ceiling,omitempty"`
 }
 
 // rewriteDoc is one operation a run performs as a safer sequence, as a plan renders it.
@@ -158,6 +230,8 @@ type compiledMigration struct {
 	Resume *checkpoint `json:"resume,omitempty"`
 	// Parts is how many parts it runs as where a statement in it cannot run inside a transaction.
 	Parts int `json:"parts,omitempty"`
+	// Unassessed is why its verdicts stayed at their worst where a table they depend on could not be read.
+	Unassessed string `json:"unassessed,omitempty"`
 }
 
 // checkpoint is how far a chunked operation got, as the run that stopped committed it.
@@ -237,6 +311,10 @@ type compiledPlan struct {
 	Direct int `json:"direct_statements"`
 	// Chunked is how many operations run a keyed chunk at a time, whose statements are not counted.
 	Chunked int `json:"chunked_operations"`
+	// Ceiling is safety.max_lock_impact, which every operation's lock is judged against.
+	Ceiling capability.LockImpact `json:"max_lock_impact"`
+	// safety prints the lock axis in the text rendering, which a document always carries.
+	safety bool
 }
 
 // compiledOf renders what a direction would send, asking the session what it makes of each operation.
@@ -248,13 +326,13 @@ func compiledOf(s *session, previewed engine.Previewed) compiledPlan {
 		Batch:      previewed.Batch,
 		Migrations: make([]compiledMigration, 0, len(previewed.Steps)),
 		Skipped:    leftBehind(previewed.Skipped),
+		Ceiling:    s.ceiling,
 	}
 
-	caps := s.conn.Capabilities()
 	pace := paceOf(s.options)
 
 	for _, step := range previewed.Steps {
-		rendered.Migrations = append(rendered.Migrations, migrationOf(caps, s.options.Allow, pace,
+		rendered.Migrations = append(rendered.Migrations, migrationOf(s.ceiling, s.options.Allow, pace,
 			step))
 		rendered.Direct += len(step.Direct)
 
@@ -271,11 +349,14 @@ func compiledOf(s *session, previewed engine.Previewed) compiledPlan {
 }
 
 // migrationOf renders one migration's operations, each with the verdict this engine gives it.
-func migrationOf(caps capability.Set, allowed engine.Allowance, pace engine.Steady,
+func migrationOf(ceiling capability.LockImpact, allowed engine.Allowance, pace engine.Steady,
 	planned engine.Planned) compiledMigration {
+	over := breachedAt(engine.Exceeding(planned.Plan, ceiling))
+
 	ops := make([]operation, 0, len(planned.Plan.Steps))
 	for i, step := range planned.Plan.Steps {
-		op := operationOf(caps, allowed, step)
+		op := operationOf(allowed, step)
+		op.OverCeiling = over[step.Index]
 		chunked(&op, pace, planned, i)
 		ops = append(ops, op)
 	}
@@ -289,7 +370,27 @@ func migrationOf(caps capability.Set, allowed engine.Allowance, pace engine.Stea
 		Unrestorable: disagreementsOf(planned.Unrestorable),
 		Resume:       checkpointOf(planned.Resume),
 		Parts:        partsOf(planned.Plan),
+		Unassessed:   describeUnassessed(planned.Unassessed),
 	}
+}
+
+// breachedAt indexes the operations over the ceiling by their place in the migration.
+func breachedAt(found []engine.Breach) map[int32]bool {
+	over := make(map[int32]bool, len(found))
+	for _, b := range found {
+		over[b.Operation] = true
+	}
+
+	return over
+}
+
+// describeUnassessed renders why a migration's verdicts stayed at their worst, and nothing where none did.
+func describeUnassessed(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	return err.Error()
 }
 
 // partsOf counts the parts a migration runs as, and nothing for one that is one transaction.
@@ -383,8 +484,8 @@ func directOf(held []driver.Query) []direct {
 }
 
 // operationOf renders one operation, its verdict, and the statements the driver compiled it to.
-func operationOf(caps capability.Set, allowed engine.Allowance, step plan.Step) operation {
-	verdict := caps.Resolve(step.Op)
+func operationOf(allowed engine.Allowance, step plan.Step) operation {
+	verdict := step.Verdict
 
 	stmts := make([]string, 0, len(step.Statements))
 
@@ -411,7 +512,21 @@ func operationOf(caps capability.Set, allowed engine.Allowance, step plan.Step) 
 		Statements:    stmts,
 		NoTransaction: standalone,
 		Rewrite:       rewriteOf(step.Rewrite),
+		Lock:          step.Lock(),
+		Declared:      declaredOf(step),
+		RewritesTable: step.Lock() == capability.TableRewrite,
+		Assessed:      step.Assessed,
+		NewTable:      step.Fresh,
 	}
+}
+
+// declaredOf is what a rewritten operation would have cost as declared, and nothing where that is its cost.
+func declaredOf(step plan.Step) capability.LockImpact {
+	if step.Rewrite == nil || step.Fresh || step.Verdict.Lock() == step.Lock() {
+		return ""
+	}
+
+	return step.Verdict.Lock()
 }
 
 // rewriteOf renders how a step was rewritten, and nothing for one that runs as declared.
@@ -485,7 +600,7 @@ func (p compiledPlan) String() string {
 	}
 
 	for _, m := range p.Migrations {
-		m.write(&b)
+		m.write(&b, p.shown())
 	}
 
 	fmt.Fprintf(&b, "\n%s, %s, %s%s. nothing was executed and nothing was recorded.\n",
@@ -500,9 +615,70 @@ func (p compiledPlan) String() string {
 	p.writeUnsupportedNote(&b)
 	p.writeUnrestorableNote(&b)
 	p.writeRefusedNote(&b)
+	p.writeSafetyNote(&b)
 
 	return b.String()
 }
+
+// shown is the ceiling the text rendering marks operations against, and nothing where it prints no lock axis.
+func (p compiledPlan) shown() capability.LockImpact {
+	if !p.safety {
+		return ""
+	}
+
+	return p.Ceiling
+}
+
+// writeSafetyNote says where the lock verdicts came from and how many exceed the ceiling.
+func (p compiledPlan) writeSafetyNote(b *strings.Builder) {
+	if !p.safety {
+		return
+	}
+
+	fmt.Fprintf(b, "\nlock verdicts are what this server declares for each operation, at the cost a "+
+		"rewrite runs it at where one applies. The first migration's are read against its tables "+
+		"where this driver can; every later one's are declared at their worst, since a migration "+
+		"before it may change the table first. An operation on a table its own migration creates "+
+		"is lock_free, nothing being able to wait on it. unknown, which a raw statement is, counts "+
+		"as table_rewrite.\n")
+
+	over := p.countOverCeiling()
+	if over == 0 {
+		fmt.Fprintf(b, "no operation exceeds safety.max_lock_impact (%s).\n", p.Ceiling)
+
+		return
+	}
+
+	fmt.Fprintf(b, "marked %s above: %s safety.max_lock_impact (%s), so migr plan --require-safe "+
+		"exits 5 on this plan.\n", overCeilingMarker, describeExceeding(over), p.Ceiling)
+}
+
+// countOverCeiling counts the operations costing more than safety.max_lock_impact allows.
+func (p compiledPlan) countOverCeiling() int {
+	n := 0
+
+	for _, m := range p.Migrations {
+		for _, op := range m.Operations {
+			if op.OverCeiling {
+				n++
+			}
+		}
+	}
+
+	return n
+}
+
+// describeExceeding counts the operations over the ceiling with a verb that agrees.
+func describeExceeding(n int) string {
+	if n == 1 {
+		return "1 operation exceeds"
+	}
+
+	return fmt.Sprintf("%d operations exceed", n)
+}
+
+// overCeilingMarker sits beneath an operation that costs more than safety.max_lock_impact allows.
+const overCeilingMarker = "\u25b2"
 
 // describeCompiled counts the statements, saying so where that is not every statement a run sends.
 func (p compiledPlan) describeCompiled() string {
@@ -727,7 +903,7 @@ func (p compiledPlan) countOperations() int {
 }
 
 // write renders one migration's heading, what it runs itself, and every operation under it.
-func (m compiledMigration) write(b *strings.Builder) {
+func (m compiledMigration) write(b *strings.Builder, ceiling capability.LockImpact) {
 	fmt.Fprintf(b, "\n  %d  %s\n", m.Ordinal, m.File)
 
 	m.writeDirect(b)
@@ -736,7 +912,7 @@ func (m compiledMigration) write(b *strings.Builder) {
 	m.writeNothing(b)
 
 	for _, op := range m.Operations {
-		op.write(b)
+		op.write(b, ceiling)
 	}
 
 	m.writeUnrestorable(b)
@@ -838,9 +1014,11 @@ func describeArguments(n int) string {
 }
 
 // write renders one operation's heading, why this server refuses it, and what it compiled to.
-func (o operation) write(b *strings.Builder) {
-	fmt.Fprintf(b, "       %d  %s  %s%s\n", o.Index, o.Kind, describeVerdict(o), o.describeDestroys())
+func (o operation) write(b *strings.Builder, ceiling capability.LockImpact) {
+	fmt.Fprintf(b, "       %d  %s  %s%s%s\n", o.Index, o.Kind, describeVerdict(o), o.describeLock(ceiling),
+		o.describeDestroys())
 
+	o.writeOverCeiling(b, ceiling)
 	o.writeReason(b)
 	o.writeRewrite(b)
 	o.writeRows(b)
@@ -854,6 +1032,40 @@ func (o operation) write(b *strings.Builder) {
 
 		fmt.Fprintf(b, "%s\n", indented(stmt))
 	}
+}
+
+// describeLock renders what the operation costs a live database, where the lock axis is printed.
+func (o operation) describeLock(ceiling capability.LockImpact) string {
+	if ceiling == "" || o.Support == capability.SupportUnsupported {
+		return ""
+	}
+
+	described := "  " + o.Lock.String()
+
+	switch {
+	case o.NewTable:
+		described += " (on a table this migration creates)"
+	case o.Declared != "":
+		described += fmt.Sprintf(" (declared %s, rewritten)", o.Declared)
+	case o.Assessed:
+		described += " (read from the table)"
+	}
+
+	if o.RewritesTable {
+		described += " -- rewrites the table"
+	}
+
+	return described
+}
+
+// writeOverCeiling marks an operation that costs more than safety.max_lock_impact allows.
+func (o operation) writeOverCeiling(b *strings.Builder, ceiling capability.LockImpact) {
+	if ceiling == "" || !o.OverCeiling {
+		return
+	}
+
+	fmt.Fprintf(b, "%s\n", indented(fmt.Sprintf("%s over safety.max_lock_impact (%s)", overCeilingMarker,
+		ceiling)))
 }
 
 // writeRewrite says that one declared operation runs as a safer sequence, and which key switches it off.

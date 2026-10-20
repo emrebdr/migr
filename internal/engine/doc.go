@@ -511,6 +511,21 @@
 // second, took error 1674, and was recorded dirty -- which then refused both directions until migr
 // resolve. See ADR 0064.
 //
+// # What an operation costs against the ceiling
+//
+// Exceeding is the third gate of that shape and the only one no run reads: it reports every step
+// whose plan.Step.Lock is above safety.max_lock_impact, and migr plan and migr validate fail with
+// LockImpactError on it under --require-safe, which internal/cli resolves to exit 5 (ADR 0086). It
+// skips an operation the server refuses, which Unsupported already reports, and a step carrying no
+// verdict at all exceeds every ceiling, so a planner never handed the session's capabilities fails
+// closed rather than passing everything.
+//
+// A preview lowers the first queued migration's table-dependent verdicts through driver.Assessor
+// and no other's, judgedFirst's rule: a later migration's table is not yet what it will be. A
+// rewritten step, a step on a table its migration creates, and a verdict with no condition are never
+// assessed, and a read that fails keeps the worst and is carried as Planned.Unassessed rather than
+// failing a report that only asked in order to annotate.
+//
 // # An obligation the contract cannot express
 //
 // ADR 0013's record-before-commit rests on a driver's history store writing through the session's

@@ -61,6 +61,14 @@ type fake struct {
 	outsideTx string
 	// rewrites is the SQL this session performs as a safer two-statement sequence, empty for none.
 	rewrites string
+	// costly is the SQL this server declares rewrites its table unless the table is small, empty for none.
+	costly string
+	// assesses reports a session that reads the table and finds it small, lowering what costly costs.
+	assesses bool
+	// assessErr is what reading the table reports, nil where the read succeeds.
+	assessErr error
+	// assessed counts the operations this session was asked to read a table for.
+	assessed int
 	// lockErr is what acquiring the migration lock reports, nil when it succeeds.
 	lockErr error
 	// inTx reports whether a transaction is open, which is what a history write must be inside.
@@ -271,11 +279,42 @@ func (f *fake) verdict(op ir.Operation) capability.Verdict {
 		return capability.Unsupported(serverRefusalReason)
 	}
 
+	if costly, ok := f.costlyVerdict(op); ok {
+		return costly
+	}
+
 	if f.emulates != "" {
 		return capability.Emulated(f.emulates, capability.LockFree)
 	}
 
-	return capability.Native(capability.LockFree)
+	return capability.Native(f.lockOf(op))
+}
+
+// smallTable is the condition under which the costly statement costs this fake server only a moment.
+const smallTable = "the table is small enough to change in place"
+
+// lockOf is what an operation costs this fake server: costly rewrites its table, a rewritable one scans under a lock.
+func (f *fake) lockOf(op ir.Operation) capability.LockImpact {
+	raw, ok := op.(ir.Raw)
+
+	switch {
+	case !ok:
+		return capability.LockFree
+	case f.rewrites != "" && raw.SQL == f.rewrites:
+		return capability.LongExclusive
+	default:
+		return capability.LockFree
+	}
+}
+
+// costlyVerdict declares the costly statement a rewrite unless a session finds the table small.
+func (f *fake) costlyVerdict(op ir.Operation) (capability.Verdict, bool) {
+	raw, ok := op.(ir.Raw)
+	if !ok || f.costly == "" || raw.SQL != f.costly {
+		return capability.Verdict{}, false
+	}
+
+	return capability.Native(capability.TableRewrite).Unless(capability.BriefExclusive, smallTable), true
 }
 
 // refuses reports whether this driver will not compile an operation at all.
@@ -355,6 +394,21 @@ func (d *fakeDriver) Open(context.Context, string) (driver.Conn, error) {
 type fakeConn struct {
 	fake *fake
 	caps capability.Set
+}
+
+// Assess reads the table a costly statement changes, and finds it small where the test said it would.
+func (c *fakeConn) Assess(_ context.Context, _ ir.Operation, v capability.Verdict) (capability.Verdict, error) {
+	c.fake.assessed++
+
+	if c.fake.assessErr != nil {
+		return v, c.fake.assessErr
+	}
+
+	if !c.fake.assesses {
+		return v, nil
+	}
+
+	return v.Confirmed(), nil
 }
 
 // Rewrite performs the one raw statement a test named as itself NOT VALID and then a bare check.

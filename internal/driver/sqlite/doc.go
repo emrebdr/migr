@@ -430,7 +430,7 @@
 //
 // Status: complete for M8, plus M11-T2's Introspect. Connection handling, the compiler, the
 // capability declaration, the table rebuild, the file lock, the history store, and reading a
-// snapshot back. The lock axis in migr plan is M13-T6 (see TASKS.md).
+// snapshot back. migr plan --safety prints this driver's lock verdicts as declared (M13-T6).
 //
 // # What only the recorded CREATE TABLE holds
 //

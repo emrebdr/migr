@@ -3,6 +3,7 @@ package validate
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -32,6 +33,8 @@ type Options struct {
 	Schema *schema.Snapshot
 	// Rules are the lint rules this project runs, and nil is a run that performs no lint pass.
 	Rules *rule.Set
+	// Ceiling is safety.max_lock_impact for a run asked to gate on it, and empty runs no lock check.
+	Ceiling capability.LockImpact
 }
 
 // check reports what a validation run was not given, before it reports on anything else.
@@ -46,6 +49,10 @@ func (o Options) check() error {
 
 	if err := o.checkCapabilities(); err != nil {
 		return err
+	}
+
+	if o.Ceiling != "" && o.Capabilities == nil {
+		return ErrCeilingOffline
 	}
 
 	return o.checkRules()
@@ -128,6 +135,7 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 
 	r.destructive(m, up.Operations)
 	r.compile(m, ir.Up, up.Operations)
+	r.lock(m, up.Operations)
 
 	down := r.undo(ctx, m, up)
 
@@ -313,6 +321,59 @@ func (r *runner) capable(m migration.Migration, dir ir.Direction, index int32, o
 		Kind:      op.Kind(),
 		Detail:    verdict.Reason(),
 	})
+}
+
+// The lock check judges the up half alone, for invariant #7's reason: the inverse of every
+// create_table is a drop_table, so judging a down would flag every project that ever made a table.
+// It compiles the half as a run would -- the session's rewrites, and an operation on a table this
+// migration creates left as declared -- so an operation is judged at the cost it would run at. An
+// emulated operation is marked rather than expanded, being judged on its verdict alone, and a half
+// that does not compile is left to the compile check, which has already reported it.
+
+// lock reports every operation in a migration's up half that costs more than the ceiling allows.
+func (r *runner) lock(m migration.Migration, ops ir.Operations) {
+	if r.opts.Ceiling == "" {
+		return
+	}
+
+	planner := r.opts.Planner
+	planner.Capabilities, planner.Expander = r.opts.Capabilities, unexpanded{}
+
+	compiled, err := planner.Compile(m, ir.Up, ops)
+	if err != nil {
+		return
+	}
+
+	for _, found := range engine.Exceeding(compiled, r.opts.Ceiling) {
+		r.report.add(Problem{
+			Migration: m,
+			Check:     CheckLock,
+			Direction: ir.Up,
+			Operation: found.Operation,
+			Kind:      found.Kind,
+			Detail:    describeBreach(found, r.opts.Ceiling),
+		})
+	}
+}
+
+// describeBreach says what an operation costs a live database, against the ceiling it exceeds.
+func describeBreach(found engine.Breach, ceiling capability.LockImpact) string {
+	detail := fmt.Sprintf("costs a live database %s on %q, above safety.max_lock_impact (%s)",
+		found.Lock, found.Subject, ceiling)
+
+	if found.Rewrite != "" {
+		detail += fmt.Sprintf(" even as rewritten by safety.rewrites.%s", found.Rewrite)
+	}
+
+	return detail
+}
+
+// unexpanded marks an emulated operation deferred for the lock check, which reads its verdict and never expands it.
+type unexpanded struct{}
+
+// Expand refuses, since the lock check judges an emulation by what the server declares it costs.
+func (unexpanded) Expand(context.Context, ir.Operation) ([]driver.Statement, error) {
+	return nil, driver.ErrNeedsSession
 }
 
 // errorFrom compiles one operation and reports what stopped it, discarding the statements.

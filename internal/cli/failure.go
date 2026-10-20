@@ -7,6 +7,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
@@ -34,6 +36,36 @@ type failure struct {
 	Capability *refused `json:"capability,omitempty"`
 	// Unrestorable is what this database's schema contradicts, present only on that refusal.
 	Unrestorable *contradicted `json:"unrestorable,omitempty"`
+	// Lock is every operation over safety.max_lock_impact, present only where --require-safe failed on one.
+	Lock *overLimit `json:"lock,omitempty"`
+}
+
+// overLimit is the ceiling a gate held a plan to, and every operation that exceeded it.
+type overLimit struct {
+	// Ceiling is safety.max_lock_impact as migr.yaml sets it.
+	Ceiling capability.LockImpact `json:"max_lock_impact"`
+	// Operations is every operation over it, in the order they would run.
+	Operations []exceeding `json:"operations"`
+}
+
+// exceeding is one operation over the ceiling, and what it costs.
+type exceeding struct {
+	// File is the migration it is in.
+	File string `json:"file"`
+	// Direction is the half it is in.
+	Direction ir.Direction `json:"direction"`
+	// Index is its place in that half, counting from one.
+	Index int32 `json:"index"`
+	// Kind is the operation.
+	Kind ir.Kind `json:"kind"`
+	// Subject is the object it acts on.
+	Subject string `json:"subject"`
+	// Lock is what it costs a live database as it would run.
+	Lock capability.LockImpact `json:"lock"`
+	// Rewrite is the safer sequence it would run as, absent where it runs as declared.
+	Rewrite driver.RewriteName `json:"rewrite,omitempty"`
+	// Assessed reports a verdict a session read the table for.
+	Assessed bool `json:"assessed,omitempty"`
 }
 
 // contradicted is what a migration records about the schema that the live schema denies.
@@ -182,8 +214,33 @@ func failureOf(err error) failure {
 	found.describeDestructive(err)
 	found.describeCapability(err)
 	found.describeUnrestorable(err)
+	found.describeLock(err)
 
 	return found
+}
+
+// describeLock replaces the paragraph a gate failure renders with every operation over the ceiling.
+func (f *failure) describeLock(err error) {
+	var over *engine.LockImpactError
+	if !errors.As(err, &over) || len(over.Exceeded) == 0 {
+		return
+	}
+
+	f.Error = engine.ErrLockImpact.Error()
+	f.Migration = describeFile(over.Exceeded[0].Migration)
+	f.Lock = &overLimit{Ceiling: over.Ceiling}
+
+	for _, m := range over.Exceeded {
+		for _, b := range m.Found {
+			if f.Operation == "" {
+				f.Operation = b.Kind
+			}
+
+			f.Lock.Operations = append(f.Lock.Operations, exceeding{File: describeFile(m.Migration),
+				Direction: m.Direction, Index: b.Operation, Kind: b.Kind, Subject: b.Subject, Lock: b.Lock,
+				Rewrite: b.Rewrite, Assessed: b.Assessed})
+		}
+	}
 }
 
 // describeUnrestorable replaces the paragraph a contradicted record renders with what disagrees.

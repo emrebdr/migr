@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/emrebdr/migr/internal/driver"
@@ -39,6 +40,8 @@ type Planned struct {
 	Chunks []Chunking
 	// Resume is the checkpoint a stopped chunked run committed, which this one would carry on after.
 	Resume *history.Checkpoint
+	// Unassessed is why the session could not read a table its verdicts depend on, nil where it could.
+	Unassessed error
 }
 
 // Chunking is one operation a run would perform a keyed chunk at a time, as a preview can render it.
@@ -177,6 +180,39 @@ func (e *executor) expandExact(ctx context.Context, at int, ready *prepared) {
 	ready.compiled.Steps[0] = expanded
 }
 
+// A verdict whose cost depends on the table is declared at its worst, and a session that reads the
+// table may lower it (ADR 0081). The first queued migration is the only one whose tables are what
+// they will be when it runs -- judgedFirst's rule -- so it is the only one assessed, and every later
+// verdict stays the declaration. A rewritten step is never assessed, its rewrite's cost being the one
+// it runs at, and nor is one on a table the migration creates, which costs nothing whatever it reads. A failed read keeps the worst and is reported rather than failing the preview.
+
+// assessFirst lowers the first queued migration's verdicts where a session reads its tables as cheaper.
+func (e *executor) assessFirst(ctx context.Context, at int, compiled plan.Plan) error {
+	assessor, assesses := e.conn.(driver.Assessor)
+	if at > 0 || !assesses {
+		return nil
+	}
+
+	var failed []error
+
+	for i, step := range compiled.Steps {
+		if step.Rewrite != nil || step.Fresh || step.Verdict.Condition() == "" {
+			continue
+		}
+
+		assessed, err := assessor.Assess(ctx, step.Op, step.Verdict)
+		if err != nil {
+			failed = append(failed, fmt.Errorf("operation %d (%s): %w", step.Index, step.Op.Kind(), err))
+
+			continue
+		}
+
+		compiled.Steps[i].Verdict, compiled.Steps[i].Assessed = assessed, true
+	}
+
+	return errors.Join(failed...)
+}
+
 // chunkShapes renders one chunk of every chunked operation, keyed as the database holds the table now.
 func (e *executor) chunkShapes(ctx context.Context, compiled plan.Plan) []Chunking {
 	if compiled.Chunked() == 0 {
@@ -277,6 +313,7 @@ func (e *executor) compileAll(ctx context.Context, queue []queued, dir ir.Direct
 			Ordinal: item.ordinal, Plan: ready.compiled, Direct: ready.direct,
 			Unrestorable: e.judgedFirst(ctx, len(steps), ready),
 			Chunks:       e.chunkShapes(ctx, ready.compiled), Resume: item.resume,
+			Unassessed: e.assessFirst(ctx, len(steps), ready.compiled),
 		})
 	}
 

@@ -130,3 +130,91 @@ func TestARewriteIsTheSameForEitherDirectionAndEveryCompile(t *testing.T) {
 		t.Error("a down's add_index was not rewritten, so undoing a drop would block writes")
 	}
 }
+
+// declaring is a capability set answering every operation at one cost, as a session would.
+func declaring(t *testing.T, lock capability.LockImpact) *capability.Set {
+	t.Helper()
+
+	rules := make(map[ir.Kind]capability.Rule, len(ir.Kinds()))
+	for _, kind := range ir.Kinds() {
+		rules[kind] = capability.Fixed(capability.Native(lock))
+	}
+
+	set, err := capability.NewSet(capability.Facts{Driver: "fake", Server: "1.0"}, rules)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+
+	return &set
+}
+
+func TestEveryStepCarriesTheVerdictItsSessionDeclares(t *testing.T) {
+	p := rewriting()
+	p.Capabilities = declaring(t, capability.LongExclusive)
+
+	compiled, err := p.Compile(added(t), ir.Up, ir.Operations{index("users")})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+
+	if step := compiled.Steps[0]; !step.Verdict.Allowed() || step.Lock() != capability.LongExclusive {
+		t.Errorf("the step carries %v, want the session's long_exclusive", step.Verdict)
+	}
+
+	compiled, err = rewriting().Compile(added(t), ir.Up, ir.Operations{index("users")})
+	if err != nil {
+		t.Fatalf("Compile without a session: %v", err)
+	}
+
+	if step := compiled.Steps[0]; step.Verdict.Support() != "" || step.Lock() != "" {
+		t.Errorf("a planner given no capabilities resolved %v", step.Verdict)
+	}
+}
+
+func TestARewrittenStepCostsWhatItsRewriteCosts(t *testing.T) {
+	p := rewriting(driver.RewriteConcurrentIndex)
+	p.Capabilities = declaring(t, capability.LongExclusive)
+
+	compiled, err := p.Compile(added(t), ir.Up, ir.Operations{index("users")})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+
+	step := compiled.Steps[0]
+
+	if step.Lock() != capability.LockFree || step.Verdict.Lock() != capability.LongExclusive {
+		t.Errorf("the rewritten step costs %s and was declared %s, want lock_free over long_exclusive",
+			step.Lock(), step.Verdict.Lock())
+	}
+
+	t.Log("The verdict stays the declaration, so a plan can say what the rewrite saved; Lock is")
+	t.Log("what the step runs at, and the one thing a gate reads.")
+}
+
+func TestAnOperationOnATableThisMigrationCreatesCostsNothing(t *testing.T) {
+	p := rewriting()
+	p.Capabilities = declaring(t, capability.LongExclusive)
+
+	compiled, err := p.Compile(added(t), ir.Up, ir.Operations{
+		ir.CreateTable{Table: "fresh", Columns: []ir.Column{{Name: "id", Type: fill(t).Type}}},
+		index("fresh"),
+		ir.RenameTable{From: "fresh", To: "renamed"},
+		index("renamed"),
+		index("users"),
+	})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+
+	for i, want := range []capability.LockImpact{capability.LongExclusive, capability.LockFree,
+		capability.LongExclusive, capability.LockFree, capability.LongExclusive} {
+		if got := compiled.Steps[i].Lock(); got != want {
+			t.Errorf("operation %d costs %s, want %s", i+1, got, want)
+		}
+	}
+
+	t.Log("An index on a table its own migration created blocks nobody, the table having had no")
+	t.Log("readers or writers when the migration began -- ADR 0085's created-here rule, read for")
+	t.Log("cost rather than for a rewrite, which is what keeps --require-safe from failing every")
+	t.Log("migration that creates a table and indexes it.")
+}

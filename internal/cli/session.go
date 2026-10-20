@@ -68,6 +68,8 @@ type session struct {
 	database string
 	// options is what the engine was given beyond that connection, bare for a command that runs nothing.
 	options engine.Options
+	// ceiling is safety.max_lock_impact, the most a preview lets an operation cost a live database.
+	ceiling capability.LockImpact
 }
 
 // resolve loads the config and names the one database this invocation targets, connecting to nothing.
@@ -341,6 +343,8 @@ type asked struct {
 	caps *capability.Set
 	// live is the schema that database holds now, which the reference check projects from (M10-T3).
 	live *schema.Snapshot
+	// rewriter is the session's safer sequences, which are pure and so outlive it (ADR 0085, 0086).
+	rewriter driver.Rewriter
 }
 
 // Both reads happen on one session and it closes straight after, which is ADR 0064's rule unchanged:
@@ -392,7 +396,7 @@ func (t *target) declared(ctx context.Context, opts *options) (asked, error) {
 		return asked{}, fmt.Errorf("closing the session the database was read from: %w", err)
 	}
 
-	return asked{caps: &caps, live: live}, nil
+	return asked{caps: &caps, live: live, rewriter: rewriterOf(conn)}, nil
 }
 
 // offlineSource returns what reads this project's migrations over sessions that open no database.
@@ -490,12 +494,15 @@ func (t *target) connect(ctx context.Context, opts *options) (*session, error) {
 	opts.log.Info("connected", "database", t.name, "driver", t.db.Driver,
 		"server", conn.ServerVersion())
 
+	caps := conn.Capabilities()
+
 	options := t.paced(engine.Options{
 		Planner: plan.Planner{Compiler: d, Expander: expanderOf(conn), Rewriter: rewriterOf(conn),
-			Rewrites: t.cfg.Safety.Enabled()},
+			Rewrites: t.cfg.Safety.Enabled(), Capabilities: &caps},
 	}, conn, opts.log)
 
-	return &session{conn: conn, database: t.name, options: t.retrying(options, opts.log)}, nil
+	return &session{conn: conn, database: t.name, options: t.retrying(options, opts.log),
+		ceiling: t.cfg.Safety.MaxLockImpact}, nil
 }
 
 // open resolves the target, discovers the migrations, and opens a session ready to run a direction.

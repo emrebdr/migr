@@ -25,6 +25,8 @@ type Planner struct {
 	Rewriter driver.Rewriter
 	// Rewrites are the rewrites safety.rewrites leaves on, which is none where auto_rewrite is off.
 	Rewrites []driver.RewriteName
+	// Capabilities is what the session declares about each operation, and nil where none was read.
+	Capabilities *capability.Set
 }
 
 // Plan is one migration compiled to statements, in the order they must run.
@@ -51,6 +53,24 @@ type Step struct {
 	Chunked bool
 	// Rewrite is how this operation was rewritten into a safer sequence, and nil where it was not.
 	Rewrite *Rewritten
+	// Verdict is what the session declares about the operation as declared, zero where none was read.
+	Verdict capability.Verdict
+	// Assessed reports a verdict a session has read the table for, rather than declared at its worst.
+	Assessed bool
+	// Fresh reports an operation on a table this migration creates, which nothing can be waiting on.
+	Fresh bool
+}
+
+// Lock returns what the step costs a live database: nothing on a fresh table, else its rewrite's or verdict's cost.
+func (s Step) Lock() capability.LockImpact {
+	switch {
+	case s.Fresh && s.Verdict.Allowed():
+		return capability.LockFree
+	case s.Rewrite != nil:
+		return s.Rewrite.Lock
+	default:
+		return s.Verdict.Lock()
+	}
 }
 
 // Rewritten is what a rewrite did to one operation, so a plan can say so beside the statements.
@@ -91,6 +111,7 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction,
 			return Plan{}, err
 		}
 
+		step.Fresh = created[tableOf(op)]
 		steps = append(steps, p.rewrite(step, created))
 		noteCreated(created, op)
 	}
@@ -154,16 +175,44 @@ func (p Planner) rewrite(step Step, created map[string]bool) Step {
 	return step
 }
 
-// tableOf names the existing table an operation a driver may rewrite changes, and nothing for any other.
+// tableOf names the existing table an operation changes the shape of, and nothing for any other.
 func tableOf(op ir.Operation) string {
 	switch o := op.(type) {
-	case ir.AddCheck:
+	case ir.AddColumn:
 		return o.Table
-	case ir.AddForeignKey:
+	case ir.DropColumn:
+		return o.Table
+	case ir.RenameColumn:
 		return o.Table
 	case ir.AlterColumn:
 		return o.Table
+	default:
+		return constrainedTable(op)
+	}
+}
+
+// constrainedTable names the table an index or constraint operation changes, and nothing for any other.
+func constrainedTable(op ir.Operation) string {
+	switch o := op.(type) {
 	case ir.AddIndex:
+		return o.Table
+	case ir.DropIndex:
+		return o.Table
+	case ir.AddForeignKey:
+		return o.Table
+	case ir.DropForeignKey:
+		return o.Table
+	case ir.AddUnique:
+		return o.Table
+	case ir.DropUnique:
+		return o.Table
+	case ir.AddCheck:
+		return o.Table
+	case ir.DropCheck:
+		return o.Table
+	case ir.AddPrimaryKey:
+		return o.Table
+	case ir.DropPrimaryKey:
 		return o.Table
 	default:
 		return ""
@@ -214,7 +263,16 @@ func (p Planner) Step(m migration.Migration, index int32, op ir.Operation) (Step
 		return Step{}, &CompileError{Migration: m, Index: index, Kind: op.Kind(), Err: err}
 	}
 
-	return Step{Index: index, Op: op, Statements: stmts, Deferred: deferred}, nil
+	return Step{Index: index, Op: op, Statements: stmts, Deferred: deferred, Verdict: p.verdict(op)}, nil
+}
+
+// verdict resolves what the session declares about an operation, and nothing where no session was read.
+func (p Planner) verdict(op ir.Operation) capability.Verdict {
+	if p.Capabilities == nil {
+		return capability.Verdict{}
+	}
+
+	return p.Capabilities.Resolve(op)
 }
 
 // statements compiles one operation, reporting the ones this planner must come back for.
@@ -243,7 +301,8 @@ func (p Planner) Expand(ctx context.Context, m migration.Migration, step Step) (
 		return Step{}, &CompileError{Migration: m, Index: step.Index, Kind: step.Op.Kind(), Err: err}
 	}
 
-	return Step{Index: step.Index, Op: step.Op, Statements: stmts}, nil
+	return Step{Index: step.Index, Op: step.Op, Statements: stmts, Verdict: step.Verdict,
+		Assessed: step.Assessed, Fresh: step.Fresh}, nil
 }
 
 // CompileChunk renders the statements one chunk of a step is, keyed by the given columns.

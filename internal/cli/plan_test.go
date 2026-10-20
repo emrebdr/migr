@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
@@ -240,24 +239,6 @@ func TestPlanLabelsAnOperationTheEnginePerformsDirectly(t *testing.T) {
 		t.Errorf("plan answered %q for the operations, want native", got)
 		t.Log("The verdict is printed for every operation rather than only the emulated ones: a")
 		t.Log("label that appears only when something is unusual is one nobody learns to read.")
-	}
-}
-
-func TestPlanReportsNoLockImpactUntilItMeansSomething(t *testing.T) {
-	dir, _, drivers := project(t, twoTables()[:1]...)
-
-	stdout, _, err := runWith(t, dir, noon, drivers, "--json", "plan")
-	if err != nil {
-		t.Fatalf("plan: %v", err)
-	}
-
-	for _, impact := range capability.Impacts() {
-		if strings.Contains(stdout, impact.String()) {
-			t.Errorf("plan reports lock impact %q before M13-T1 resolves one:\n%s", impact, stdout)
-			t.Log("Every .sql migration compiles to ir.Raw, which PostgreSQL declares LockUnknown,")
-			t.Log("so every line of every plan M5 can produce would read `unknown`. The lock axis")
-			t.Log("and --safety are M13-T6's, and internal/plan/doc.go already says so.")
-		}
 	}
 }
 

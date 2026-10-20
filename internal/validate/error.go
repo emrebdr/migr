@@ -25,3 +25,6 @@ var ErrUnbuiltRules = errors.New("the lint rules given here were never built")
 // A source raises it for a migration whose answer cannot be trusted -- one reaching a database a
 // check deliberately did not open. It is reported rather than counted either way (ADR 0040).
 var ErrNotCheckable = errors.New("this half could not be checked")
+
+// ErrCeilingOffline refuses a lock check with no capability declaration to read an operation's cost from.
+var ErrCeilingOffline = errors.New("a lock ceiling was given to a run that read no capability declaration")

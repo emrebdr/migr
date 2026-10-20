@@ -4,10 +4,23 @@
 // Status: complete (M10). The framework and the three checks knowable with no database (M5-T5); a
 // third outcome for the halves nothing could judge (M6-T10); destructive-operation detection
 // (M10-T1); capability preflight (M10-T2); a pluggable lint rule set (M10-T4); reference integrity
-// (M10-T3) -- each of which adds a Check rather than a second report. See
+// (M10-T3); and the lock ceiling (M13-T6) -- each of which adds a Check rather than a second
+// report. See
 // docs/adr/0028-validation-report.md, docs/adr/0040-running-a-go-migration.md,
 // docs/adr/0063-destructive-operations.md, docs/adr/0064-capability-preflight.md,
-// docs/adr/0066-the-lint-rule-contract.md and docs/adr/0075-reference-integrity.md.
+// docs/adr/0066-the-lint-rule-contract.md, docs/adr/0075-reference-integrity.md and
+// docs/adr/0086-lock-impact-gate.md.
+//
+// # The lock check runs only where a ceiling was asked for
+//
+// Options.Ceiling is safety.max_lock_impact under --require-safe, and empty runs no lock check; a
+// ceiling with no capability declaration is refused as ErrCeilingOffline, since every cost would
+// then be zero and exceed it. It judges the up half alone, for the destructive check's reason, and
+// compiles that half as a run would -- with the session's rewrites, an operation on a table the
+// migration creates costing nothing, and an emulated operation judged on its verdict and never
+// expanded -- so an operation is judged at the cost migr up would pay. It runs no driver.Assessor,
+// because this package reads no table state. A half that does not compile is left to the compile
+// check, which has already reported it.
 //
 // # The destructive check is the one that reads something other than the migrations
 //

@@ -11,6 +11,8 @@ import (
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/config"
+	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
 	"github.com/emrebdr/migr/internal/rule"
@@ -33,6 +35,8 @@ const missedCheck = "Neither what this server refuses nor the references the mig
 
 // newValidateCmd builds the `migr validate` subcommand.
 func newValidateCmd(opts *options) *cobra.Command {
+	var required bool
+
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Check every migration without connecting to anything",
@@ -41,18 +45,21 @@ func newValidateCmd(opts *options) *cobra.Command {
 			"the first. It opens no database, so it runs anywhere the migrations do.",
 		Args: argsOf(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runValidate(cmd, opts)
+			return runValidate(cmd, opts, required)
 		},
 	}
 
 	registerAllowDestructive(cmd, opts)
 	registerConnect(cmd, opts)
+	registerRequireSafe(cmd, &required)
 
 	return cmd
 }
 
 // runValidate checks every migration and reports what is wrong with them, connecting only if asked.
-func runValidate(cmd *cobra.Command, opts *options) (err error) {
+func runValidate(cmd *cobra.Command, opts *options, required bool) (err error) {
+	opts.connect = opts.connect || required
+
 	t, err := resolve(opts)
 	if err != nil {
 		return err
@@ -95,11 +102,12 @@ func runValidate(cmd *cobra.Command, opts *options) (err error) {
 	report, err := validate.Run(cmd.Context(), validate.Options{
 		Migrations:   ordered,
 		Source:       read.source,
-		Planner:      plan.Planner{Compiler: d},
+		Planner:      t.validating(d, answered, required),
 		Allow:        allowanceFor(t, opts),
 		Capabilities: answered.caps,
 		Schema:       answered.live,
 		Rules:        rules,
+		Ceiling:      ceilingFor(t, required),
 	})
 	if err != nil {
 		return err
@@ -118,7 +126,47 @@ func finish(cmd *cobra.Command, opts *options, result validation) error {
 		return nil
 	}
 
+	if over := overCeiling(result.Problems); over == len(result.Problems) {
+		return fmt.Errorf("%w: %s safety.max_lock_impact, each listed above", engine.ErrLockImpact,
+			describeExceeding(over))
+	}
+
 	return NewExitError(ExitValidation, errValidationFailed)
+}
+
+// A broken migration is the argument being wrong, so it is fixed first and exits 2 whatever else the
+// report holds; exit 5 is reserved for a report whose only problems are operations over the ceiling,
+// which is the one thing a CI job gating on lock impact needs to tell from a validation failure.
+
+// overCeiling counts the problems the lock check found.
+func overCeiling(problems []fault) int {
+	n := 0
+
+	for _, p := range problems {
+		if p.Check == validate.CheckLock {
+			n++
+		}
+	}
+
+	return n
+}
+
+// validating compiles for a validation run, rewriting as the session would where the lock check reads it.
+func (t *target) validating(d driver.Compiler, answered asked, required bool) plan.Planner {
+	if !required {
+		return plan.Planner{Compiler: d}
+	}
+
+	return plan.Planner{Compiler: d, Rewriter: answered.rewriter, Rewrites: t.cfg.Safety.Enabled()}
+}
+
+// ceilingFor is the ceiling a run gates on, and nothing for one that was not asked to.
+func ceilingFor(t *target, required bool) capability.LockImpact {
+	if !required {
+		return ""
+	}
+
+	return t.cfg.Safety.MaxLockImpact
 }
 
 // fault is one problem a validation run found, in the form --json reports it.

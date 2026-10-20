@@ -276,13 +276,18 @@
 //
 // Each operation carries the verdict this engine gives it, printed whether it is
 // native or emulated: a label that appears only when something is unusual is one
-// nobody learns to read. The verdict is resolved here rather than on
-// plan.Planner, which internal/plan/doc.go reserves for M13-T6.
+// nobody learns to read. The verdict is the step's own, resolved by the planner
+// from the session's declaration (M13-T6, ADR 0086).
 //
-// It does not print lock impact, and that is not an omission. Every .sql
-// migration compiles to ir.Raw, which PostgreSQL declares LockUnknown, so every
-// line of every plan M5 can produce would read `unknown`. The lock axis and
-// --safety are M13-T6, by name.
+// --safety prints each operation's lock cost beside it: the rewrite's where one
+// applies, nothing on a table the migration creates, and the first queued
+// migration's read from its tables where the driver can; it marks with ▲ what
+// exceeds safety.max_lock_impact and closes with where the verdicts came from.
+// --json always carries the same fields. --require-safe implies --safety and
+// exits 5 after printing, through engine.ErrLockImpact, on a plan holding an
+// operation over the ceiling. migr validate --require-safe implies --connect and
+// judges every migration's up half with the session's rewrites and no assessment;
+// a report whose only problems are those exits 5, and any other problem keeps it 2.
 //
 // It marks an operation the session performs as a safer sequence with a ↳ rewritten
 // line naming its safety.rewrites key, how many statements it became and why, and

@@ -9,7 +9,7 @@
 // Status: compilation complete (M4-T5), and compiling a rollback's inverses in M4-T6 — a Plan
 // carries the direction it was compiled in, which is what a history row records rather than a
 // parameter traveling beside it. Decomposing unsafe operations into safe sequences landed in
-// M13-T5 (ADR 0085), and annotating a plan with lock verdicts is M13-T6.
+// M13-T5 (ADR 0085), and every step carries its lock verdict since M13-T6 (ADR 0086).
 //
 // # A rewrite replaces a step's statements and keeps its operation
 //
@@ -74,16 +74,17 @@
 // # A Planner is a value with a method
 //
 // The shape matches drivertest.Suite and the driver conformance suite: configuration is fields, and
-// the entry point takes only what varies per call. M13-T5 adds rewrites and M13-T6 adds a
-// capability set as fields, so neither changes a signature and neither can be passed at one call
-// site and forgotten at another.
+// the entry point takes only what varies per call. M13-T5 added rewrites and M13-T6 a capability
+// set as fields, so neither changed a signature and neither can be passed at one call site and
+// forgotten at another.
 //
-// Capability verdicts are deliberately not here yet. Compile lives on driver.Compiler and needs no
-// session; a capability.Set is built inside Open and needs one. A Verdict field would be zero at
-// every call site today, which is the stub shape ADR 0011 and the conformance suite both reject.
+// # Every step carries what it costs
 //
-// M5-T4 built `migr plan` without changing that. It resolves a verdict per operation at the render
-// site, from the session it already holds, purely to label an emulation -- so nothing was added
-// here that engine.Apply would carry and never read. M13-T6 is still where a set becomes a Planner
-// field, because rewriting an operation is planning and labeling one is not.
+// Planner.Capabilities is the session's declaration, and Compile resolves each operation against it
+// into Step.Verdict -- nil leaves the verdict zero, which is what migr validate offline compiles
+// with. Step.Lock is the one answer a gate and a plan read (ADR 0086): nothing for an operation on a
+// table this migration creates, since nothing can be waiting on it; else the rewrite's cost where
+// the step was rewritten; else the verdict's. The verdict itself stays the declaration, so a plan
+// can say what a rewrite saved, and an expansion keeps it. Assessing a verdict against the table is
+// I/O, so it is the preview's (internal/engine) and never Compile's.
 package plan

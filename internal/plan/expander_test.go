@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
 )
@@ -201,4 +202,23 @@ func TestAnExpansionThatProducesNothingIsRefused(t *testing.T) {
 // pointerTo returns a pointer to a value, for the operation fields that are tri-state.
 func pointerTo[T any](v T) *T {
 	return &v
+}
+
+func TestAnExpandedStepKeepsTheVerdictItWasCompiledWith(t *testing.T) {
+	p, _ := emulating([]driver.Statement{{SQL: "-- rebuilt"}}, nil)
+	p.Capabilities = declaring(t, capability.TableRewrite)
+
+	compiled, err := p.Compile(added(t), ir.Up, twoOperations())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+
+	expanded, err := p.Expand(t.Context(), added(t), compiled.Steps[1])
+	if err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+
+	if expanded.Lock() != capability.TableRewrite {
+		t.Errorf("the expanded step costs %q, and a rebuild is the table_rewrite it was declared", expanded.Lock())
+	}
 }

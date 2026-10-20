@@ -12,14 +12,17 @@ import (
 // Exit codes, as documented in CLAUDE.md §5.
 //
 // ExitCode resolves an explicit ExitError first, so a command may always classify a failure
-// itself. Below that it reads four sentinels, because recognizing them in one place is what saves
+// itself. Below that it reads five sentinels, because recognizing them in one place is what saves
 // every command from having to remember them: driver.ErrLockTimeout, since giving up on the
 // migration lock is contention rather than a runtime error, and driver.ErrStatementLockTimeout for
 // the same reason about a table lock, once every retry safety.lock_retries allows is spent (ADR
 // 0082) -- the same command succeeds once whoever holds it lets go; engine.ErrDrifted, since an
 // applied migration that was edited is the one failure invariant #6 gives a code of its own; and
 // engine.ErrDestructive, which is the rule for exit 2 exactly -- the operator retypes the command
-// with --allow-destructive, or names the kind in migr.yaml, and the same command then runs.
+// with --allow-destructive, or names the kind in migr.yaml, and the same command then runs; and
+// engine.ErrLockImpact, which --require-safe returns where an operation costs more than
+// safety.max_lock_impact allows, so a CI job can tell a plan that would block production from one
+// that failed (M13-T6, ADR 0086).
 //
 // Nothing else resolves itself here, and the boundary is deliberate. A history row this build
 // cannot read reports history.ErrCorrupt and a row written under a future checksum scheme reports
@@ -30,8 +33,8 @@ import (
 // rather than added here, for the same reason: a sentinel resolved in this function is one every
 // command inherits, and engine.ErrNoSteps belongs to the two that register --step (ADR 0029, E).
 //
-// ExitLockImpact has no producer yet. --require-safe and safety.max_lock_impact are M13-T6's, and
-// every .sql migration compiles to ir.Raw, which every driver declares LockUnknown.
+// ExitLockImpact is produced by --require-safe on migr plan and migr validate and by nothing else:
+// migr up is not gated, so the code means "a preview found this too costly" and never "a run stopped".
 const (
 	ExitOK         = 0
 	ExitRuntime    = 1
@@ -98,6 +101,10 @@ func ExitCode(err error) int {
 
 	if errors.Is(err, engine.ErrDestructive) {
 		return ExitValidation
+	}
+
+	if errors.Is(err, engine.ErrLockImpact) {
+		return ExitLockImpact
 	}
 
 	return ExitRuntime

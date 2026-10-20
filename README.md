@@ -256,7 +256,8 @@ suite is what holds that true as both SDKs evolve.
 | `migr status` | applied, pending, missing, drifted, dirty | **works today** |
 | `migr history` | the execution log, rollbacks and failures included | **works today** |
 | `migr plan` | compiled statements per migration, either direction | **works today** |
-| `migr plan --safety` | the same, annotated with lock impact | planned |
+| `migr plan --safety` | the same, annotated with each operation's lock cost and what exceeds `safety.max_lock_impact` | **works today** |
+| `migr plan --require-safe` | exit `5` where an operation exceeds `safety.max_lock_impact`, for a CI job to block a merge on; `migr validate --require-safe` judges every migration's up half the same way | **works today** |
 | `migr validate` | read, compile, and reverse every migration, connecting to nothing | **works today** |
 | `migr validate --connect` | the same, plus what the target server declares it cannot perform | **works today** |
 | `migr resolve` | settle the migration a stopped run left between states | **works today** |
@@ -442,6 +443,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0083](docs/adr/0083-server-side-cancellation.md) | A statement whose context ends is stopped on the server, and two bounds end it |
 | [0084](docs/adr/0084-transaction-opt-out.md) | A statement may declare it runs outside a transaction, and the migration runs in parts around it |
 | [0085](docs/adr/0085-rewriting-unsafe-operations.md) | A session performs an operation more safely than its plain compile, and the plan says so |
+| [0086](docs/adr/0086-lock-impact-gate.md) | A plan shows each operation's lock cost, and `--require-safe` fails one above the ceiling |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

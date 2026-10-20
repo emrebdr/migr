@@ -76,7 +76,8 @@
 // would widen a varchar in place, because telling a widening from a narrowing needs the column's
 // current type and the operation carries that only as `from` -- what an author recorded rather than
 // what the column is. The expansion does read the real type, and Resolve performs no I/O, so the
-// precise answer lives on a path a verdict cannot reach from here; M13-T6 is where that could change.
+// precise answer lives on a path a verdict cannot reach from here. M13-T6 put the verdict on the
+// planner's step (ADR 0086), which is where it could be refined, and left it declared.
 //
 // drop_table is the one verdict reasoned rather than measured. InnoDB evicts the table's buffer-pool
 // pages and unlinks the tablespace under the metadata lock, and the attempt to measure the scaling

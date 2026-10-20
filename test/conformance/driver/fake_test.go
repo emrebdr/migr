@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/capture"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
@@ -71,6 +72,11 @@ func (d *fakeDriver) refuseForeignRaw(op ir.Operation) error {
 // Open reports that this fake has no database behind it.
 func (d *fakeDriver) Open(context.Context, string) (driver.Conn, error) {
 	return nil, errors.New("the fake driver has no database")
+}
+
+// Capture reports that this fake has no replication log behind it.
+func (d *fakeDriver) Capture(context.Context, string, capture.Request) (capture.Stream, error) {
+	return nil, capture.ErrUnsupported
 }
 
 // fakeConn is a session with no database, carrying the capability set a driver builds at Open.

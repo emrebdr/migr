@@ -63,7 +63,7 @@ import type {
   WirePhase,
 } from "./wire/payload.ts";
 import { readCancel, readExecute, readInitialize, readValidate } from "./wire/payload.ts";
-import { dependencies, phase } from "./migration.ts";
+import { dependencies, online, phase } from "./migration.ts";
 
 /** EXIT_OK is what a runtime exits with after answering shutdown, and after losing its engine. */
 export const EXIT_OK = 0;
@@ -467,6 +467,7 @@ function listed(registry: Registry): Discovered[] {
       file: entry.file,
       dependencies: [...dependencies(entry.migration)],
       ...wirePhase(entry.migration),
+      ...wireOnline(entry.migration),
     }));
   } catch (thrown) {
     throw unloadable(thrown);
@@ -488,6 +489,13 @@ function wirePhase(m: Migration): { phase?: WirePhase } {
       ...(declared.after === undefined || declared.after === "" ? {} : { after: declared.after }),
     },
   };
+}
+
+/** wireOnline renders how a migration runs online as the wire carries it, and nothing where it declares none. */
+function wireOnline(m: Migration): { online?: string } {
+  const declared = online(m);
+
+  return declared === undefined ? {} : { online: declared };
 }
 
 /** unloadable reports migrations that could not be read, with the code sdk/go's discover uses. */

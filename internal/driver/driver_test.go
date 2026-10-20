@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/capture"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
@@ -38,6 +39,11 @@ func (d *fakeDriver) Compile(op ir.Operation) ([]Statement, error) {
 // Open reports that this fake has no database behind it.
 func (d *fakeDriver) Open(_ context.Context, _ string) (Conn, error) {
 	return nil, errors.New("the fake driver has no database")
+}
+
+// Capture reports that this fake has no replication log behind it.
+func (d *fakeDriver) Capture(context.Context, string, capture.Request) (capture.Stream, error) {
+	return nil, capture.ErrUnsupported
 }
 
 // constructor returns a Constructor that hands back this fake.

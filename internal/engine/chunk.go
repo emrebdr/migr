@@ -54,9 +54,15 @@ type chunkRun struct {
 	written int64
 	// tried is how often a chunk was tried again after giving up on a lock, across every chunk.
 	tried attempts
-	// holds is how often a pacer held a chunk back, every poll counted.
+	// held is how often and how long a pacer held its chunks back.
+	held
+}
+
+// held is how often a pacer held a chunk back, every poll counted, and how long those holds waited.
+type held struct {
+	// holds is how many polls a pacer held.
 	holds int
-	// waited is how long those holds waited together.
+	// waited is how long they waited together.
 	waited time.Duration
 }
 
@@ -210,7 +216,7 @@ func (e *executor) runOperation(ctx context.Context, run *chunkRun, chunker driv
 	done := run.progressFrom(at, step, key)
 
 	for {
-		pace, err := e.paced(ctx, done, run)
+		pace, err := e.paced(ctx, done, &run.held)
 		if err != nil {
 			return &ChunkError{Index: step.Index, Op: step.Op, Chunk: done.Chunks + 1, Err: err}
 		}

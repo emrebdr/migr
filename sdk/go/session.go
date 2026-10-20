@@ -266,6 +266,7 @@ func (s *session) discover(id int64) *wire.Message {
 			Version: entry.Version, File: entry.File,
 			Dependencies: dependencies(entry.Migration),
 			Phase:        wirePhase(entry.Migration),
+			Online:       wireOnline(entry.Migration),
 		})
 	}
 

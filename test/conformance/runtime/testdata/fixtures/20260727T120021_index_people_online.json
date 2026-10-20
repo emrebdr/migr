@@ -1,0 +1,9 @@
+{
+  "up": [
+    {"op":"add_index","table":"people","name":"idx_people_region","columns":["region"]}
+  ],
+  "down": [
+    {"op":"drop_index","table":"people","name":"idx_people_region","from":{"columns":["region"]}}
+  ],
+  "online": "shadow_table"
+}

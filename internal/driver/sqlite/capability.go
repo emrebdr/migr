@@ -19,12 +19,16 @@ const (
 	dropColumnMinor = 35
 )
 
+// noReplicationLog is what SQLite lacks for log-based change capture, which no setting supplies.
+const noReplicationLog = "a replication log, which SQLite does not have"
+
 // facts renders what this session is, for a capability set that reports itself.
 func facts(version serverVersion) capability.Facts {
 	return capability.Facts{
 		Driver:           Name,
 		Server:           version.String(),
 		TransactionalDDL: transactionalDDL,
+		Capture:          capability.Lacks(noReplicationLog),
 	}
 }
 

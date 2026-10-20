@@ -198,15 +198,32 @@ func validateSeeds(v *validator, cfg *Config, source string) {
 	}
 }
 
-// validateProgressNames refuses a history or seed table named as the other's checkpoint table.
+// validateProgressNames refuses a history or seed table named as a table migr keeps beside the other.
 func validateProgressNames(v *validator, migrations, seeds string) {
-	if seeds != "" && seeds == history.ProgressTable(migrations) {
-		v.add("seeds.table", "%q is where history.table's checkpoints are kept", seeds)
-	}
+	for _, beside := range besides {
+		if seeds != "" && seeds == beside.name(migrations) {
+			v.add("seeds.table", "%q is where history.table's %s are kept", seeds, beside.holds)
+		}
 
-	if migrations != "" && migrations == history.ProgressTable(seeds) {
-		v.add("history.table", "%q is where seeds.table's checkpoints are kept", migrations)
+		if migrations != "" && migrations == beside.name(seeds) {
+			v.add("history.table", "%q is where seeds.table's %s are kept", migrations, beside.holds)
+		}
 	}
+}
+
+// beside is one table migr keeps next to a history table, and what it holds.
+type beside struct {
+	// name derives the table's name from the history table's.
+	name func(table string) string
+	// holds says what the table keeps, as a refusal names it.
+	holds string
+}
+
+// besides are the tables migr keeps next to every history table.
+var besides = []beside{
+	{name: history.ProgressTable, holds: "checkpoints"},
+	{name: history.ReleaseTable, holds: "releases"},
+	{name: history.ShadowTable, holds: "shadow-table migrations"},
 }
 
 // validateDeclaredEnvironments checks the declared environments, which every database must be one of.

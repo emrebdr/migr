@@ -18,6 +18,9 @@
 # so replica-lag pacing is measured against real lag rather than a fake, and every other suite
 # ignores them.
 #
+# postgres17 runs wal_level=logical and postgres16 does not (M13-T16), so each driver's capture fact is
+# read from a server that permits log-based change capture and from one that refuses it by name.
+#
 # Ports are non-default so this never collides with a server an operator is already running.
 # The DSNs matching these are the defaults in internal/driver/postgres and internal/driver/mysql;
 # override with MIGR_TEST_PG16_DSN, MIGR_TEST_PG17_DSN, MIGR_TEST_MYSQL80_DSN and
@@ -62,8 +65,12 @@ services:
       timeout: 3s
       retries: 60
 
+  # wal_level=logical on this major alone, so one PostgreSQL in compose permits log-based change
+  # capture and the other refuses it for wal_level -- each driver's capture fact is read from the
+  # server, and a fact only ever read as one answer has not been tested (M13-T16).
   postgres17:
     image: postgres:17-alpine
+    command: ["postgres", "-c", "wal_level=logical"]
     environment:
       POSTGRES_USER: migr
       POSTGRES_PASSWORD: migr

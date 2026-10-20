@@ -446,6 +446,8 @@ The reasoning behind each contract — including the options that were rejected 
 | [0086](docs/adr/0086-lock-impact-gate.md) | A plan shows each operation's lock cost, and `--require-safe` fails one above the ceiling |
 | [0087](docs/adr/0087-release-gated-phases.md) | A step of a change across deploys runs under a release after its prior step's |
 | [0088](docs/adr/0088-replica-lag-pacing.md) | A chunk waits while a replica trails, and a replica migr cannot read counts as trailing |
+| [0089](docs/adr/0089-shadow-table-lifecycle.md) | A shadow-table migration is four recorded stages, and the hold between copy and cutover has no end of its own |
+| [0090](docs/adr/0090-capture-capability.md) | Whether a server permits log-based capture is read from it at Open, and an unread answer permits nothing |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

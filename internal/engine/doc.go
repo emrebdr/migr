@@ -603,4 +603,19 @@
 // like any other -- rolled back where the engine allows, recorded on the session that ran it, never
 // retried, the lock released by the ordinary path. A migration bound that cuts a backoff short
 // reports the lock wait it was backing off from, and not retries spent.
+//
+// # A shadow-table migration is four recorded stages, and the hold has no end of its own
+//
+// A migration declaring Online's ShadowTable runs through shadow.go, shadow_run.go and
+// shadow_settle.go rather than as statements (M13-T9, ADR 0089). It is refused before anything is
+// created where the server does not permit capture, the session is no driver.Shadower, or an
+// operation is not a change to one existing keyed table. The stream opens before the copy reads a
+// row, and each stage -- copying, syncing, cut_over -- is recorded in <history table>_shadows in the
+// transaction of the work it reports, so a run stopped anywhere leaves exactly what committed. The
+// copy is an insert-ignore and every captured change an upsert or delete by key, so any interleaving
+// is correct and a replay from the recorded position is harmless. The hold reads the log, applies
+// with its position, and reads a confirmation the engine never writes; migration_timeout bounds the
+// copy and never the hold, and a cancel detaches with the capture resource kept. Resolve's
+// RepairRolledBack is the abort, by the names the state row recorded; Retire drops the retained
+// original. Only an up runs through the shadow: a rollback is the ordinary inverse.
 package engine

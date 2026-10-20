@@ -154,6 +154,17 @@ test("a phase no deploy could carry out is refused, and a declared one is kept",
   assert.deepEqual(fromModule(FILE, { up() {}, phase: declared }).migration.phase, declared);
 });
 
+test("an online strategy migr does not know is refused, and a shadow table is kept", () => {
+  for (const online of ["triggers", "", 1, { strategy: "shadow_table" }]) {
+    assert.equal(refusal({ up() {}, online }).code, "bad_member", JSON.stringify(online));
+  }
+
+  assert.equal(
+    fromModule(FILE, { up() {}, online: "shadow_table" }).migration.online,
+    "shadow_table",
+  );
+});
+
 test("a migration that both authors a down and declares it has none is refused", () => {
   const refused = refusal({ up() {}, down() {}, irreversible: "the rows are gone" });
 

@@ -15,6 +15,7 @@ func (f serverFacts) facts() capability.Facts {
 		Driver:           Name,
 		Server:           f.version.String(),
 		TransactionalDDL: transactionalDDL,
+		Capture:          f.capture,
 	}
 }
 

@@ -167,7 +167,8 @@ func TestARuntimeReportsWhatItCanRun(t *testing.T) {
 func TestWhatEachMigrationDeclaredComesBackWithWhatWasLoaded(t *testing.T) {
 	s, _ := start(t, actNormal)
 
-	loaded, declared, _, err := s.Loaded(t.Context())
+	loaded, declarations, err := s.Loaded(t.Context())
+	declared := declarations.Dependencies
 	if err != nil {
 		t.Fatalf("Loaded: %v", err)
 	}

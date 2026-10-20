@@ -112,6 +112,8 @@ func runValidate(cmd *cobra.Command, opts *options, required bool) (err error) {
 		Schema:       answered.live,
 		Rules:        rules,
 		Ceiling:      ceilingFor(t, required),
+		Online:       read.online,
+		Shadows:      answered.shadows,
 	})
 	if err != nil {
 		return err

@@ -362,6 +362,20 @@ member, which [§10.2](#102-what-is-a-breaking-change) makes no break: an engine
 ignores it, and an SDK that does not send it declares no step. See
 [ADR 0087](adr/0087-release-gated-phases.md).
 
+A migration that runs against a live table **through a shadow table** rather than as a plain `ALTER`
+reports `online`, naming the strategy, and a migration that does not omits the member. The one
+strategy is `shadow_table`: the table is copied into a shadow kept current from the server's
+replication log, and swapped in only once someone confirms the cutover:
+
+```json
+{"jsonrpc":"2.0","id":2,"result":{"migrations":[{"version":"20260727T160400","file":"20260727T160400_retype_amount.go","dependencies":[],"online":"shadow_table"}]}}
+```
+
+The engine refuses a strategy it does not know at discovery, naming the migration, and a server that
+cannot read its own log is refused before anything is created. Like `phase` it is an optional result
+member, read from the migration and never computed. See
+[ADR 0089](adr/0089-shadow-table-lifecycle.md).
+
 ### `migration.execute`
 
 Runs one migration in one direction. This is where a migration's own code runs.

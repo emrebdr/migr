@@ -304,6 +304,20 @@ test("a step waiting on nothing sends no after, and a migration declaring none s
   assert.equal(await ended(session), EXIT_OK);
 });
 
+test("discovery reports a migration declaring a shadow table, and omits online where none is", async () => {
+  const session = await handshaken([FILE, { default: { ...creating, online: "shadow_table" } }]);
+
+  session.send(request(2, "migration.discover", {}));
+
+  const result = (await session.take()).result as { migrations: Record<string, unknown>[] };
+
+  assert.deepEqual(result.migrations, [
+    { version: VERSION, file: FILE, dependencies: [], online: "shadow_table" },
+  ]);
+
+  assert.equal(await ended(session), EXIT_OK);
+});
+
 test("executing a migration emits through the callback and reports what it emitted", async () => {
   const session = await handshaken([FILE, { default: creating }]);
 

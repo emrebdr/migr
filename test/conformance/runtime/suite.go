@@ -127,7 +127,32 @@ func (s Suite) reconcile(ctx context.Context, session *runtime.Session,
 
 	problems = append(problems, matchDeclared(loaded, fixtures)...)
 
-	return files, append(problems, matchPhases(loaded, fixtures)...)
+	problems = append(problems, matchPhases(loaded, fixtures)...)
+
+	return files, append(problems, matchOnline(loaded, fixtures)...)
+}
+
+// matchOnline holds how each migration declared it runs to what its fixture defines.
+func matchOnline(loaded []protocol.Discovered, fixtures []Fixture) []string {
+	declared := make(map[string]string, len(loaded))
+	for _, d := range loaded {
+		declared[d.Version] = d.Online
+	}
+
+	var problems []string
+
+	for _, f := range fixtures {
+		got, reported := declared[f.Version]
+		if !reported || got == f.Online {
+			continue
+		}
+
+		problems = append(problems, fmt.Sprintf("%s: this runtime declared it runs online as %q and the "+
+			"fixture declares %q -- the strategy is read from the migration, so every language reports "+
+			"the same one (ADR 0089)", f.Stem(), got, f.Online))
+	}
+
+	return problems
 }
 
 // matchPhases holds the step each migration declared itself to what its fixture defines.

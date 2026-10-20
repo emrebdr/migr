@@ -47,8 +47,7 @@ func checkHistoryTable(table string) error {
 		return &HistoryError{Table: table, Detail: problem}
 	}
 
-	for _, op := range append(append(history.Schema(table), history.ProgressSchema(table)...),
-		history.ReleaseSchema(table)...) {
+	for _, op := range history.OwnedSchema(table) {
 		if err := op.Validate(); err != nil {
 			return &HistoryError{Table: table, Detail: err.Error(), Err: err}
 		}
@@ -68,7 +67,7 @@ func describeDerived(table string, err error) string {
 		"usable length is shorter than an identifier's", table, err)
 }
 
-// Ensure creates the history table, its checkpoint table and its release table where they are missing.
+// Ensure creates the history table, and the checkpoint, release and shadow-state tables beside it where missing.
 func (h pgHistory) Ensure(ctx context.Context) error {
 	if err := h.ensureHistory(ctx); err != nil {
 		return err
@@ -78,7 +77,11 @@ func (h pgHistory) Ensure(ctx context.Context) error {
 		return err
 	}
 
-	return h.ensureReleases(ctx)
+	if err := h.ensureReleases(ctx); err != nil {
+		return err
+	}
+
+	return h.ensureShadows(ctx)
 }
 
 // ensureHistory creates the history table, or checks the one already there is one this build can write.

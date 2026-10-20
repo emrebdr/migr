@@ -35,6 +35,10 @@ type Options struct {
 	Rules *rule.Set
 	// Ceiling is safety.max_lock_impact for a run asked to gate on it, and empty runs no lock check.
 	Ceiling capability.LockImpact
+	// Online is how each migration declares it runs against a live table, keyed by version.
+	Online migration.Online
+	// Shadows reports a connected session that performs shadow-table migration.
+	Shadows bool
 }
 
 // check reports what a validation run was not given, before it reports on anything else.
@@ -136,6 +140,7 @@ func (r *runner) migration(ctx context.Context, m migration.Migration) {
 	r.destructive(m, up.Operations)
 	r.compile(m, ir.Up, up.Operations)
 	r.lock(m, up.Operations)
+	r.shadowable(m)
 
 	down := r.undo(ctx, m, up)
 
@@ -321,6 +326,26 @@ func (r *runner) capable(m migration.Migration, dir ir.Direction, index int32, o
 		Kind:      op.Kind(),
 		Detail:    verdict.Reason(),
 	})
+}
+
+// shadowable reports a migration declaring a shadow table that the connected server cannot run as one.
+func (r *runner) shadowable(m migration.Migration) {
+	if r.opts.Capabilities == nil || r.opts.Online[m.Version] != migration.ShadowTable {
+		return
+	}
+
+	reason := r.opts.Capabilities.Capture().Reason()
+	if reason == "" && !r.opts.Shadows {
+		reason = fmt.Sprintf("the %s driver does not perform shadow-table migration",
+			r.opts.Capabilities.Driver())
+	}
+
+	if reason == "" {
+		return
+	}
+
+	r.report.add(Problem{Migration: m, Check: CheckCapability, Direction: ir.Up,
+		Detail: "it declares it runs through a shadow table, and " + reason})
 }
 
 // The lock check judges the up half alone, for invariant #7's reason: the inverse of every

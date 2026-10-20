@@ -32,6 +32,16 @@ type queued struct {
 	ordinal int32
 	// resume is the checkpoint a chunked run that stopped committed, and nil for every other run.
 	resume *history.Checkpoint
+	// shadow is where a shadow-table migration that stopped stands, and nil for every other run.
+	shadow *history.ShadowState
+}
+
+// leftover is what a stopped up run left for the next one to carry on from.
+type leftover struct {
+	// cps are the checkpoints chunked runs committed.
+	cps []history.Checkpoint
+	// shadows are where shadow-table migrations stand.
+	shadows []history.ShadowState
 }
 
 // resolved reads a report's statuses, refusing one over a database that turned out to have no history.
@@ -83,18 +93,18 @@ func selected(statuses []history.Status, queues func(history.Status) (bool, erro
 }
 
 // classify splits a reconciliation report into what an apply run will apply and what it will not.
-func classify(report history.Report, scope Scope, cps []history.Checkpoint) ([]queued, []Skipped, error) {
+func classify(report history.Report, scope Scope, left leftover) ([]queued, []Skipped, error) {
 	statuses, err := resolved(report)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	queue, skipped, err := selected(statuses, runnable(cps))
+	queue, skipped, err := selected(statuses, runnable(left))
 	if err != nil {
 		return nil, nil, err
 	}
 
-	queue = resuming(queue, cps)
+	queue = resuming(queue, left)
 
 	queue, dropped, err := scope.narrowUp(queue, statuses)
 	if err != nil {
@@ -125,7 +135,7 @@ func classifyDown(report history.Report, scope Scope, cps []history.Checkpoint) 
 }
 
 // runnable reports whether a reconciled migration should run, refusing the states nothing can.
-func runnable(cps []history.Checkpoint) func(history.Status) (bool, error) {
+func runnable(left leftover) func(history.Status) (bool, error) {
 	return func(st history.Status) (bool, error) {
 		switch st.State {
 		case history.StatePending:
@@ -135,15 +145,33 @@ func runnable(cps []history.Checkpoint) func(history.Status) (bool, error) {
 		case history.StateDrifted:
 			return false, driftedError(st, ir.Up, false)
 		case history.StateDirty:
-			if _, carries := resumableFrom(st, cps); carries {
+			if _, carries := resumableFrom(st, left.cps); carries {
 				return true, nil
 			}
 
-			return false, dirtyError(st, cps)
+			if _, carries := shadowFrom(st, left.shadows); carries {
+				return true, nil
+			}
+
+			return false, dirtyError(st, left.cps)
 		}
 
 		return false, unknownStateError(st)
 	}
+}
+
+// shadowFrom returns where a stopped shadow-table migration stands, where a run can carry it on.
+func shadowFrom(st history.Status, shadows []history.ShadowState) (history.ShadowState, bool) {
+	if st.State != history.StateDirty || st.Recorded.Direction != ir.Up {
+		return history.ShadowState{}, false
+	}
+
+	state, found := history.FindShadow(shadows, st.Version)
+	if !found || state.Stage == history.StageCutOver {
+		return history.ShadowState{}, false
+	}
+
+	return state, true
 }
 
 // reversible reports whether a reconciled migration should be undone, refusing the states nothing can.
@@ -175,15 +203,19 @@ func resumableFrom(st history.Status, cps []history.Checkpoint) (history.Checkpo
 	return history.Find(cps, st.Version, ir.Up)
 }
 
-// resuming attaches its checkpoint to every queued migration that carries on from one.
-func resuming(queue []queued, cps []history.Checkpoint) []queued {
+// resuming attaches what it carries on from to every queued migration that carries on from something.
+func resuming(queue []queued, left leftover) []queued {
 	for i, item := range queue {
 		if item.state != history.StateDirty {
 			continue
 		}
 
-		if cp, found := history.Find(cps, item.migration.Version, ir.Up); found {
+		if cp, found := history.Find(left.cps, item.migration.Version, ir.Up); found {
 			queue[i].resume = &cp
+		}
+
+		if state, found := history.FindShadow(left.shadows, item.migration.Version); found {
+			queue[i].shadow = &state
 		}
 	}
 

@@ -9,6 +9,7 @@
 // keeping that out means all of this is testable with no import, no process, and no toolchain.
 
 import { MigrationError } from "./error.ts";
+import { SHADOW_TABLE } from "./migration.ts";
 import type { Migration } from "./migration.ts";
 import { parseName } from "./name.ts";
 
@@ -25,7 +26,15 @@ export interface Loaded {
 }
 
 /** NAMED are the members a module may export one by one, which is the second of the two styles. */
-const NAMED = ["up", "down", "validate", "dependencies", "irreversible", "phase"] as const;
+const NAMED = [
+  "up",
+  "down",
+  "validate",
+  "dependencies",
+  "irreversible",
+  "phase",
+  "online",
+] as const;
 
 /** fromModule reads one imported module as the migration its filename names. */
 export function fromModule(file: string, namespace: unknown): Loaded {
@@ -128,6 +137,7 @@ function checked(file: string, source: Record<string, unknown>): Migration {
   checkOptionalFunction(file, source["validate"], "validate");
   checkDependencies(file, source["dependencies"]);
   checkPhase(file, source["phase"]);
+  checkOnline(file, source["online"]);
   checkIrreversible(file, source["irreversible"]);
   checkDirections(file, source["down"], source["irreversible"]);
 
@@ -216,6 +226,20 @@ function checkPhase(file: string, value: unknown): void {
         "another step, never on itself",
     );
   }
+}
+
+/** checkOnline refuses a declared strategy this SDK does not know, which is anything but a shadow table. */
+function checkOnline(file: string, value: unknown): void {
+  if (value === undefined || value === SHADOW_TABLE) {
+    return;
+  }
+
+  throw new MigrationError(
+    "bad_member",
+    file,
+    `${file} exports online as ${describeType(value)}, and the one strategy migr knows is ` +
+      JSON.stringify(SHADOW_TABLE),
+  );
 }
 
 /** checkIrreversible refuses a declaration that is not a reason, a blank one included. */

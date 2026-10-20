@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/emrebdr/migr/internal/capability"
 )
 
 // uuidFunction is the SQL this driver emits for the neutral uuid default function.
@@ -35,6 +37,7 @@ const transactionalDDL = true
 type serverFacts struct {
 	version     serverVersion
 	uuidDefault defaultFunction
+	capture     capability.Capture
 }
 
 // defaultFunction is what a server reports about a function this driver emits as a column default.
@@ -55,7 +58,7 @@ func gatherFacts(ctx context.Context, conn *pgx.Conn) (serverFacts, error) {
 		return serverFacts{}, err
 	}
 
-	return serverFacts{version: version, uuidDefault: uuidDefault}, nil
+	return serverFacts{version: version, uuidDefault: uuidDefault, capture: readCapture(ctx, conn)}, nil
 }
 
 // describeFunction reports whether the server has a function and whether it is volatile.

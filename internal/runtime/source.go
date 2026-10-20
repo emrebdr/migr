@@ -24,38 +24,43 @@ func (s *Session) Discovered(ctx context.Context) ([]protocol.Discovered, error)
 	return found.Migrations, nil
 }
 
-// Loaded reports what a runtime loaded, what each one declared it must follow, and what it is a step of.
-func (s *Session) Loaded(ctx context.Context) ([]migration.Migration, migration.Declared,
-	migration.Phases, error) {
+// Loaded reports what a runtime loaded, and what each migration declared about itself.
+func (s *Session) Loaded(ctx context.Context) ([]migration.Migration, migration.Declarations, error) {
 	found, err := s.Discovered(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, migration.Declarations{}, err
 	}
 
 	loaded := make([]migration.Migration, 0, len(found))
-	declared := make(migration.Declared, len(found))
-	phases := make(migration.Phases)
+	declared := migration.NewDeclarations()
 
 	for _, d := range found {
 		parsed, err := migration.Parse(d.File)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("the %s runtime loaded %q, which discovery would refuse: %w",
-				s.opts.Runtime.Name(), d.File, err)
+			return nil, migration.Declarations{}, fmt.Errorf("the %s runtime loaded %q, which "+
+				"discovery would refuse: %w", s.opts.Runtime.Name(), d.File, err)
 		}
 
 		loaded = append(loaded, parsed)
-
-		if len(d.Dependencies) > 0 {
-			declared[parsed.Version] = d.Dependencies
-		}
-
-		if d.Phase != nil {
-			phases[parsed.Version] = migration.Phase{Change: d.Phase.Change, Name: d.Phase.Name,
-				After: d.Phase.After}
-		}
+		declaredBy(declared, parsed.Version, d)
 	}
 
-	return loaded, declared, phases, nil
+	return loaded, declared, nil
+}
+
+// declaredBy records what one discovered migration declared, leaving out what it did not.
+func declaredBy(into migration.Declarations, version string, d protocol.Discovered) {
+	if len(d.Dependencies) > 0 {
+		into.Dependencies[version] = d.Dependencies
+	}
+
+	if d.Phase != nil {
+		into.Phases[version] = migration.Phase{Change: d.Phase.Change, Name: d.Phase.Name, After: d.Phase.After}
+	}
+
+	if d.Online != "" {
+		into.Online[version] = migration.Strategy(d.Online)
+	}
 }
 
 // Check runs one migration's own Validate, which emits nothing and reaches no database.

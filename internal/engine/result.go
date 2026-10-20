@@ -47,6 +47,8 @@ type Run struct {
 	Retries int
 	// Rewritten is how many of its operations ran as a safer sequence (ADR 0085).
 	Rewritten int
+	// Shadow is what a shadow-table migration's cutover left, and nil for every other run (ADR 0089).
+	Shadow *ShadowRun
 }
 
 // Rewrote is one operation a run is about to perform as a safer sequence than it was declared as.

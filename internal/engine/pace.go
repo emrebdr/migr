@@ -176,7 +176,7 @@ func (e *executor) sleeper() Sleeper {
 }
 
 // paced asks the pacer for the next chunk, waiting out every hold, and refuses a chunk of no rows.
-func (e *executor) paced(ctx context.Context, done Progress, run *chunkRun) (Pace, error) {
+func (e *executor) paced(ctx context.Context, done Progress, run *held) (Pace, error) {
 	for {
 		next, err := e.pacer().Pace(ctx, done)
 		if err != nil {
@@ -195,7 +195,7 @@ func (e *executor) paced(ctx context.Context, done Progress, run *chunkRun) (Pac
 }
 
 // holdBack reports a chunk held back and waits as the pacer said, before the pacer is asked again.
-func (e *executor) holdBack(ctx context.Context, done Progress, next Pace, run *chunkRun) error {
+func (e *executor) holdBack(ctx context.Context, done Progress, next Pace, run *held) error {
 	waiting := done
 	waiting.Waiting, waiting.Throttle = true, next.Throttle
 	e.report(waiting)

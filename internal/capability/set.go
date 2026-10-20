@@ -24,6 +24,8 @@ type Facts struct {
 	Server string
 	// TransactionalDDL reports whether a failed migration leaves the schema untouched.
 	TransactionalDDL bool
+	// Capture is whether the server permits log-based change capture, and the zero value permits none.
+	Capture Capture
 }
 
 // Set is one driver's capabilities, already resolved against one connected server.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/emrebdr/migr/internal/capability"
+	"github.com/emrebdr/migr/internal/capture"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
@@ -78,6 +79,8 @@ type Driver interface {
 	Name() string
 	// Open connects to a database and returns a session that owns the connection.
 	Open(ctx context.Context, dsn string) (Conn, error)
+	// Capture opens a stream of a table's changes from the replication log, on a connection of its own.
+	Capture(ctx context.Context, dsn string, req capture.Request) (capture.Stream, error)
 }
 
 // Unlock releases a migration lock, and is safe to call more than once.

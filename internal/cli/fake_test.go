@@ -97,6 +97,8 @@ type fake struct {
 	sliced []driver.Sliced
 	// chunkFails is the chunk, counting from one, this session refuses; zero refuses none.
 	chunkFails int
+	// shadowing is what a shadow-table migration reaches.
+	shadowing
 
 	// mu guards the two fields below, which are the only ones a second goroutine could reach.
 	mu sync.Mutex
@@ -269,6 +271,7 @@ func (f *fake) capabilities(t *testing.T) capability.Set {
 		Driver:           fakeName,
 		Server:           "0.0-fake",
 		TransactionalDDL: !f.autoCommits,
+		Capture:          f.captureFact(),
 	}, rules)
 	if err != nil {
 		t.Fatalf("NewSet: %v", err)
@@ -395,7 +398,12 @@ func (d *fakeDriver) Open(context.Context, string) (driver.Conn, error) {
 		return nil, d.fake.openErr
 	}
 
-	return &fakeConn{fake: d.fake, caps: d.caps}, nil
+	conn := &fakeConn{fake: d.fake, caps: d.caps}
+	if d.fake.shadows {
+		return &shadowConn{fakeConn: conn}, nil
+	}
+
+	return conn, nil
 }
 
 // fakeConn is one pinned session over a fake database.

@@ -110,6 +110,15 @@
 // trim -- is irreversible, since the values it drops cannot be rebuilt from the new
 // column; after a copy its Down copies them back.
 //
+// # Running through a shadow table
+//
+// A migration implementing Online and returning ShadowTable is performed through a copy of
+// the one table it changes rather than as a plain ALTER (M13-T9, ADR 0089): the copy is
+// filled in chunks while the table's writes are read from the server's replication log,
+// held in sync until someone confirms the cutover, then swapped in, the original kept under
+// a derived name. A server that cannot read its own log is refused before anything is
+// created, naming what it lacks. Any other strategy is a registration error, ErrInvalidOnline.
+//
 // # Registration
 //
 // Register reads its caller's filename and parses it with the migration grammar, so

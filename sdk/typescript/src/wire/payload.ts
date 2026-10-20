@@ -77,6 +77,8 @@ export interface Discovered {
   dependencies: string[];
   /** The step of a change across deploys this migration declares itself, absent where it declares none. */
   phase?: WirePhase;
+  /** How this migration runs against a live table, absent where it runs as a plain ALTER. */
+  online?: string;
 }
 
 /** WirePhase is one step of a change across deploys, as migration.discover carries it. */

@@ -180,6 +180,8 @@ type operation struct {
 	NewTable bool `json:"new_table,omitempty"`
 	// OverCeiling reports an operation costing more than safety.max_lock_impact allows.
 	OverCeiling bool `json:"over_ceiling,omitempty"`
+	// Shadowed reports an operation performed through a shadow table, whose statements are not what runs.
+	Shadowed bool `json:"shadowed,omitempty"`
 }
 
 // rewriteDoc is one operation a run performs as a safer sequence, as a plan renders it.
@@ -236,6 +238,8 @@ type compiledMigration struct {
 	Parts int `json:"parts,omitempty"`
 	// Unassessed is why its verdicts stayed at their worst where a table they depend on could not be read.
 	Unassessed string `json:"unassessed,omitempty"`
+	// Shadow is how it would run through a shadow table, absent for a migration that declares none.
+	Shadow *shadowDoc `json:"shadow,omitempty"`
 }
 
 // checkpoint is how far a chunked operation got, as the run that stopped committed it.
@@ -381,6 +385,7 @@ func migrationOf(ceiling capability.LockImpact, allowed engine.Allowance, pace e
 		Resume:       checkpointOf(planned.Resume),
 		Parts:        partsOf(planned.Plan),
 		Unassessed:   describeUnassessed(planned.Unassessed),
+		Shadow:       shadowDocOf(planned.Shadow),
 	}
 }
 
@@ -528,7 +533,7 @@ func operationOf(allowed engine.Allowance, step plan.Step) operation {
 
 	var standalone []int
 
-	for i, stmt := range step.Statements {
+	for i, stmt := range shownStatements(step) {
 		stmts = append(stmts, stmt.SQL)
 
 		if stmt.NoTransaction {
@@ -554,7 +559,17 @@ func operationOf(allowed engine.Allowance, step plan.Step) operation {
 		RewritesTable: step.Lock() == capability.TableRewrite,
 		Assessed:      step.Assessed,
 		NewTable:      step.Fresh,
+		Shadowed:      step.Shadowed,
 	}
+}
+
+// shownStatements are what an operation runs as, which for one performed through a shadow table is none of its own.
+func shownStatements(step plan.Step) []driver.Statement {
+	if step.Shadowed {
+		return nil
+	}
+
+	return step.Statements
 }
 
 // declaredOf is what a rewritten operation would have cost as declared, and nothing where that is its cost.
@@ -948,6 +963,7 @@ func (m compiledMigration) write(b *strings.Builder, ceiling capability.LockImpa
 	fmt.Fprintf(b, "\n  %d  %s\n", m.Ordinal, m.File)
 
 	m.writeDirect(b)
+	m.writeShadow(b)
 	m.writeResume(b)
 	m.writeParts(b)
 	m.writeNothing(b)
@@ -1084,6 +1100,8 @@ func (o operation) describeLock(ceiling capability.LockImpact) string {
 	described := "  " + o.Lock.String()
 
 	switch {
+	case o.Shadowed:
+		described += " (through a shadow table: the rename at cutover)"
 	case o.NewTable:
 		described += " (on a table this migration creates)"
 	case o.Declared != "":

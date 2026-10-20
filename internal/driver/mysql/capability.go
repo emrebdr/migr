@@ -82,6 +82,8 @@ type serverFacts struct {
 	version serverVersion
 	// logBin is whether the server writes a binary log, which decides one support-axis refusal.
 	logBin bool
+	// capture is whether the server permits a binlog reader, and what it lacks where it does not.
+	capture capability.Capture
 }
 
 // readBinaryLogging asks whether this server writes a binary log, refusing an answer it cannot read.
@@ -101,6 +103,7 @@ func (f serverFacts) facts() capability.Facts {
 		Driver:           Name,
 		Server:           f.version.String(),
 		TransactionalDDL: transactionalDDL,
+		Capture:          f.capture,
 	}
 }
 

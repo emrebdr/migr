@@ -92,6 +92,14 @@ type Options struct {
 	Gates map[string]migration.Gate
 	// Release names the deploy this run belongs to, which a step waiting on an earlier one is judged by.
 	Release string
+	// Online is how each migration declares it runs against a live table, keyed by version, nil where none does.
+	Online migration.Online
+	// Shadower is the session a shadow-table migration changes its table through, nil where none is.
+	Shadower driver.Shadower
+	// Capture opens the change stream a shadow-table migration keeps its copy current from, nil where none can.
+	Capture Capturer
+	// Shadowed is told about every moment of a shadow-table migration, and an unset one tells nobody.
+	Shadowed func(ShadowProgress)
 }
 
 // check reports what an apply run was not given, before it takes a lock it could not use.

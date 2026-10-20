@@ -59,11 +59,15 @@ type Step struct {
 	Assessed bool
 	// Fresh reports an operation on a table this migration creates, which nothing can be waiting on.
 	Fresh bool
+	// Shadowed reports an operation performed through a shadow table, whose one lock is the cutover's rename.
+	Shadowed bool
 }
 
-// Lock returns what the step costs a live database: nothing on a fresh table, else its rewrite's or verdict's cost.
+// Lock returns what the step costs a live database: a shadow's rename, nothing on a fresh table, else its rewrite's or verdict's.
 func (s Step) Lock() capability.LockImpact {
 	switch {
+	case s.Shadowed:
+		return capability.BriefExclusive
 	case s.Fresh && s.Verdict.Allowed():
 		return capability.LockFree
 	case s.Rewrite != nil:
@@ -111,7 +115,7 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction,
 			return Plan{}, err
 		}
 
-		step.Fresh = created[tableOf(op)]
+		step.Fresh = created[TableOf(op)]
 		steps = append(steps, p.rewrite(step, created))
 		noteCreated(created, op)
 	}
@@ -159,7 +163,7 @@ func DataOnly(steps []Step) bool {
 
 // rewrite gives a step the safer sequence its session performs it as, where one is on and worth taking.
 func (p Planner) rewrite(step Step, created map[string]bool) Step {
-	if p.Rewriter == nil || step.Deferred || created[tableOf(step.Op)] {
+	if p.Rewriter == nil || step.Deferred || created[TableOf(step.Op)] {
 		return step
 	}
 
@@ -175,8 +179,8 @@ func (p Planner) rewrite(step Step, created map[string]bool) Step {
 	return step
 }
 
-// tableOf names the existing table an operation changes the shape of, and nothing for any other.
-func tableOf(op ir.Operation) string {
+// TableOf names the existing table an operation changes the shape of, and nothing for any other.
+func TableOf(op ir.Operation) string {
 	switch o := op.(type) {
 	case ir.AddColumn:
 		return o.Table
@@ -399,4 +403,17 @@ func (p Plan) At(position int32) (ir.Operation, bool) {
 	}
 
 	return nil, false
+}
+
+// Shadow returns the plan performed through a shadow table: every step marked, none rewritten or chunked.
+func (p Plan) Shadow() Plan {
+	steps := make([]Step, len(p.Steps))
+	for i, step := range p.Steps {
+		step.Shadowed, step.Rewrite, step.Chunked = true, nil, false
+		steps[i] = step
+	}
+
+	p.Steps = steps
+
+	return p
 }

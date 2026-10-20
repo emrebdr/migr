@@ -515,4 +515,11 @@
 // replay_lag trails the writes it measures, climbing a second a second while they go on, so a burst
 // shorter than the threshold is never held. databases.<name>.replicas is refused: the primary
 // already reports every standby, and a list an operator keeps would miss the one they forgot.
+//
+// # Whether this server permits log-based capture
+//
+// Open reads wal_level, whether the role is a superuser or has REPLICATION, and how many replication
+// slots max_replication_slots leaves free, into capability.Facts.Capture (M13-T16, ADR 0090). A
+// failed read is read as not permitted. Capture itself, logical decoding through a slot, is
+// M13-T15's: until then it refuses with capture.ErrUnsupported, and the session is no driver.Shadower.
 package postgres

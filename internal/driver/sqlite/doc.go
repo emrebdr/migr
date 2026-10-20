@@ -447,4 +447,10 @@
 // generated column entirely, so the columns come from table_xinfo. And a table-level PRIMARY KEY
 // over an integer column creates no index and no pragma_index_list row at all, because it is the
 // rowid -- so the key is read from table_xinfo's own pk ordering rather than from an index.
+//
+// # No replication log
+//
+// SQLite declares capability.Facts.Capture as never permitted, lacking a replication log, and its
+// Capture refuses with capture.ErrUnsupported for good (M13-T16, ADR 0090): a shadow-table migration
+// is refused here before anything is created.
 package sqlite

@@ -46,6 +46,24 @@ type Planned struct {
 	Resume *history.Checkpoint
 	// Unassessed is why the session could not read a table its verdicts depend on, nil where it could.
 	Unassessed error
+	// Shadow is how a migration declaring a shadow table would run, and nil for every other one.
+	Shadow *ShadowPlan
+}
+
+// ShadowPlan is how a shadow-table migration would run: what it creates, what it keeps, and whether it can.
+type ShadowPlan struct {
+	// Table is the table it changes, empty where the refusal came before one was named.
+	Table string
+	// Shadow is the copy it changes instead.
+	Shadow string
+	// Retired is the name the original keeps after the cutover.
+	Retired string
+	// Capture is the server-side resource its change stream reads through.
+	Capture string
+	// Resume is where a stopped run stands, which this one would carry on from.
+	Resume *history.ShadowState
+	// Refused is why the run would refuse it before creating anything, nil where it would not.
+	Refused error
 }
 
 // Chunking is one operation a run would perform a keyed chunk at a time, as a preview can render it.
@@ -103,7 +121,12 @@ func (e *executor) previewAll(ctx context.Context, dir ir.Direction) (Previewed,
 		return Previewed{}, err
 	}
 
-	queue, skipped, err := classifyFor(dir, report, e.opts.Scope, cps)
+	shadows, err := e.shadowStates(ctx)
+	if err != nil {
+		return Previewed{}, err
+	}
+
+	queue, skipped, err := classifyFor(dir, report, e.opts.Scope, leftover{cps: cps, shadows: shadows})
 	if err != nil {
 		return Previewed{}, err
 	}
@@ -324,13 +347,13 @@ func (e *executor) plannedBatch(ctx context.Context, recorded bool) (int64, erro
 
 // classifyFor splits a reconciliation report the way the direction being previewed needs it split.
 func classifyFor(dir ir.Direction, report history.Report, scope Scope,
-	cps []history.Checkpoint,
+	left leftover,
 ) ([]queued, []Skipped, error) {
 	switch dir {
 	case ir.Up:
-		return classify(report, scope, cps)
+		return classify(report, scope, left)
 	case ir.Down:
-		return classifyDown(report, scope, cps)
+		return classifyDown(report, scope, left.cps)
 	}
 
 	return nil, nil, unknownDirectionError(dir)
@@ -346,9 +369,13 @@ func (e *executor) compileAll(ctx context.Context, queue []queued, dir ir.Direct
 			return steps, err
 		}
 
-		e.expandExact(ctx, len(steps), &ready)
+		shadow := e.planShadow(ctx, item, dir, &ready)
+		if shadow == nil {
+			e.expandExact(ctx, len(steps), &ready)
+		}
 
 		steps = append(steps, Planned{
+			Shadow:  shadow,
 			Ordinal: item.ordinal, Plan: ready.compiled, Direct: ready.direct,
 			Unrestorable: e.judgedFirst(ctx, len(steps), ready),
 			Chunks:       e.chunkShapes(ctx, ready.compiled), Resume: item.resume,

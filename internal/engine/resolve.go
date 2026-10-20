@@ -112,6 +112,8 @@ type Resolution struct {
 	Run *Run
 	// Checkpoint is how far a migration running in chunks got, which a resume carries on after.
 	Checkpoint *history.Checkpoint
+	// Abandons is the shadow-table migration a rollback drops the copy of and releases the capture of.
+	Abandons *history.ShadowState
 }
 
 // Pending reports how many statements a resume has left to run, which is zero where all of them ran.
@@ -164,8 +166,17 @@ func (e *executor) resolveOne(ctx context.Context, ask Repair) (Resolution, erro
 		return Resolution{}, err
 	}
 
+	shadow, err := e.stoppedShadow(ctx, st)
+	if err != nil {
+		return Resolution{}, err
+	}
+
+	if err := checkShadowRepair(ask.Mode, shadow); err != nil {
+		return Resolution{}, err
+	}
+
 	if ask.Mode.Asserts() {
-		return e.assert(ctx, st, ask)
+		return e.assert(ctx, st, ask, shadow)
 	}
 
 	return e.resume(ctx, st, ask)
@@ -205,7 +216,8 @@ func noHistoryError() error {
 }
 
 // assert records what an operator did by hand, compiling nothing and asking no migration anything.
-func (e *executor) assert(ctx context.Context, st history.Status, ask Repair) (Resolution, error) {
+func (e *executor) assert(ctx context.Context, st history.Status, ask Repair,
+	shadow *history.ShadowState) (Resolution, error) {
 	settled := Resolution{
 		Mode:      ask.Mode,
 		Migration: st.Migration,
@@ -214,10 +226,17 @@ func (e *executor) assert(ctx context.Context, st history.Status, ask Repair) (R
 		Stopped:   st.Recorded,
 		Batch:     e.batch,
 		Reason:    ask.Reason,
+		Abandons:  shadow,
 	}
 
 	if ask.DryRun {
 		return settled, nil
+	}
+
+	if shadow != nil {
+		if err := e.abandonShadow(ctx, *shadow); err != nil {
+			return settled, fmt.Errorf("abandoning %s: %w", describeVersion(st), err)
+		}
 	}
 
 	rec := e.assertedRecord(st, settled)
@@ -231,7 +250,7 @@ func (e *executor) assert(ctx context.Context, st history.Status, ask Repair) (R
 	return settled, nil
 }
 
-// settle appends the resolution and clears any checkpoint, so nothing later carries on from it.
+// settle appends the resolution and clears any checkpoint or shadow state, so nothing carries on from it.
 func (e *executor) settle(ctx context.Context, st history.Status, rec history.Record, reason string) error {
 	store, remembers := e.store.(history.Checkpointer)
 	if !remembers {
@@ -240,6 +259,10 @@ func (e *executor) settle(ctx context.Context, st history.Status, rec history.Re
 
 	return e.conn.Transact(ctx, func(ctx context.Context) error {
 		if err := store.ClearCheckpoint(ctx, st.Version, st.Recorded.Direction); err != nil {
+			return err
+		}
+
+		if err := e.clearShadow(ctx, st.Version); err != nil {
 			return err
 		}
 

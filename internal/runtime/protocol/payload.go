@@ -107,6 +107,7 @@ type Discovered struct {
 	File         string   `json:"file"`
 	Dependencies []string `json:"dependencies"`
 	Phase        *Phase   `json:"phase,omitempty"`
+	Online       string   `json:"online,omitempty"`
 }
 
 // Phase is the step of a change across deploys a migration declares itself, absent where it declares none.

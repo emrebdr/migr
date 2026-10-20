@@ -155,6 +155,33 @@ than failing. A hand-written migration declares the same with a `phase` property
 `{ change, name, after }`. The backfill's `data_transform` and the contract's `drop_column` are
 destructive by kind, so a project permits both in `validation.allow_destructive`.
 
+### Running through a shadow table
+
+A migration changing one large table declares `online: SHADOW_TABLE`, and migr then performs it
+through a copy of the table rather than as a plain `ALTER`:
+
+1. it copies the rows in chunks while reading the table's writes from the server's replication log;
+2. it holds the copy in sync until someone confirms the cutover;
+3. it swaps the copy in, keeping the original under a derived name.
+
+The wait is indefinite by design. A server that cannot read its own log is refused before anything
+is created, naming what it lacks. No driver reads a log yet: MySQL's binlog reader and PostgreSQL's
+logical decoding are still to come. Any other value of `online` is refused when the file is loaded.
+
+```ts
+import { columns, defineMigration, SHADOW_TABLE } from "@migr/sdk";
+
+export default defineMigration({
+  online: SHADOW_TABLE,
+  async up(s) {
+    await s.table("people").addIndex("idx_people_region", "region").apply();
+  },
+  async down(s) {
+    await s.table("people").dropIndex("idx_people_region").was(columns("region")).apply();
+  },
+});
+```
+
 ### Logical types
 
 `t` holds the eighteen types [`docs/ir.md` §5.2](../../docs/ir.md) defines, and a type **is** its

@@ -215,6 +215,8 @@ type resolution struct {
 	Resuming []resuming `json:"resuming,omitempty"`
 	// Checkpoint is where a resume of a migration running in chunks carries on from.
 	Checkpoint *checkpoint `json:"checkpoint,omitempty"`
+	// Abandons is the shadow-table migration a rollback drops the copy of and releases the capture of.
+	Abandons *shadowDoc `json:"abandons,omitempty"`
 	// Reason is the operator's account, on an asserted repair.
 	Reason string `json:"reason,omitempty"`
 	// Batch is the batch this repair's own row is recorded under.
@@ -245,6 +247,7 @@ func resolutionOf(database string, repair engine.Repair, settled engine.Resoluti
 		Statements: settled.Statements,
 		Resuming:   resumingStatements(settled),
 		Checkpoint: checkpointOf(settled.Checkpoint),
+		Abandons:   abandonsOf(settled.Abandons),
 		Reason:     settled.Reason,
 		Batch:      settled.Batch,
 		Outcome:    writtenOutcome(settled),
@@ -319,6 +322,14 @@ func describeResolved(r resolution) string {
 
 // writeIntent says what this repair is about to change, which is the half an operator reads first.
 func (r resolution) writeIntent(b *strings.Builder) {
+	if r.Abandons != nil {
+		fmt.Fprintf(b, "\n  will release the change stream %s and drop the shadow table %s, leaving %s as "+
+			"it is,\n  then record it as %s in batch %d: %s\n", r.Abandons.Capture, r.Abandons.Shadow,
+			r.Abandons.Table, describeRecorded(r.Repair), r.Batch, r.Reason)
+
+		return
+	}
+
 	if r.Repair.Asserts() {
 		fmt.Fprintf(b, "\n  will record it as %s in batch %d, running nothing: %s\n",
 			describeRecorded(r.Repair), r.Batch, r.Reason)

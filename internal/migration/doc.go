@@ -135,4 +135,11 @@
 // computed; unlike one it does not order anything, the timestamps and dependencies having done that,
 // and what it adds is the release a step waits for -- which internal/engine judges, since only a run
 // knows the history and the release it is under.
+//
+// # How a migration runs against a live table
+//
+// Online is what each migration declares about running online, keyed by version, read from a
+// runtime's migration.discover alongside its dependencies and its phase (M13-T9, ADR 0089).
+// ShadowTable is the one Strategy; Check refuses any other, naming the file, and Declarations bundles
+// the three things a started runtime reports so they travel as one value.
 package migration

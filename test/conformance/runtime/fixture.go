@@ -83,6 +83,8 @@ type Fixture struct {
 	Dependencies []string
 	// Phase is the step of a change across deploys it declares itself, nil where it declares none.
 	Phase *protocol.Phase
+	// Online is how it declares it runs against a live table, empty where it declares nothing.
+	Online string
 
 	// up is the manifest's own bytes for Up, compacted, which is what an SDK is compared against.
 	up []byte
@@ -122,6 +124,7 @@ type manifest struct {
 	Writes       []Write         `json:"writes,omitempty"`
 	Dependencies []string        `json:"dependencies,omitempty"`
 	Phase        *protocol.Phase `json:"phase,omitempty"`
+	Online       string          `json:"online,omitempty"`
 }
 
 // ErrNoFixtures marks a fixture directory with nothing in it, which every SDK would pass.
@@ -229,7 +232,7 @@ func build(f Fixture, m manifest) (Fixture, error) {
 	var err error
 
 	f.Refusal, f.Reads, f.Writes, f.Dependencies = m.DownRefusal, m.Reads, m.Writes, m.Dependencies
-	f.Phase = m.Phase
+	f.Phase, f.Online = m.Phase, m.Online
 
 	if f.Up, f.up, err = canonical("up", m.Up); err != nil {
 		return Fixture{}, err

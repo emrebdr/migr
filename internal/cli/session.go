@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -178,6 +177,8 @@ type reading struct {
 	declared migration.Declared
 	// phases is what each migration says it is a step of, which only a started runtime reports either.
 	phases migration.Phases
+	// online is how each migration says it runs against a live table, which only a runtime reports too.
+	online migration.Online
 }
 
 // sources returns what reads every language this directory holds, what ends them, and what they declared.
@@ -185,8 +186,7 @@ func (t *target) sources(ctx context.Context, opts *options, conn driver.Conn,
 	found []migration.Migration) (reading, error) {
 	routed := routedByLanguage(found)
 	built := mux{byExt: make(map[string]engine.Source, len(routed))}
-	declared := make(migration.Declared, len(found))
-	phases := make(migration.Phases)
+	declared := migration.NewDeclarations()
 
 	var stops []closer
 
@@ -209,11 +209,16 @@ func (t *target) sources(ctx context.Context, opts *options, conn driver.Conn,
 			built.byExt[ext] = read.source
 		}
 
-		merge(declared, read.declared)
-		maps.Copy(phases, read.phases)
+		declared.Merge(migration.Declarations{Dependencies: read.declared, Phases: read.phases,
+			Online: read.online})
 	}
 
-	return reading{source: built, stop: allEnding(stops), declared: declared, phases: phases}, nil
+	if err := declared.Online.Check(found); err != nil {
+		return reading{}, errors.Join(NewExitError(ExitValidation, err), closeAll(ctx, stops))
+	}
+
+	return reading{source: built, stop: allEnding(stops), declared: declared.Dependencies,
+		phases: declared.Phases, online: declared.Online}, nil
 }
 
 // merge folds one language's declarations into the run's, which the routes keep from colliding.
@@ -240,12 +245,13 @@ func (t *target) sourceFor(ctx context.Context, opts *options, conn driver.Conn,
 		return reading{}, err
 	}
 
-	declared, phases, err := checkLoaded(ctx, started, lang, mine)
+	declared, err := checkLoaded(ctx, started, lang, mine)
 	if err != nil {
 		return reading{}, errors.Join(err, stop(context.WithoutCancel(ctx)))
 	}
 
-	return reading{source: started, stop: stop, declared: declared, phases: phases}, nil
+	return reading{source: started, stop: stop, declared: declared.Dependencies,
+		phases: declared.Phases, online: declared.Online}, nil
 }
 
 // needsRuntime reports whether a language is read by a process rather than by reading a file here.
@@ -268,20 +274,20 @@ func routedByLanguage(found []migration.Migration) map[config.Language][]migrati
 
 // checkLoaded holds what a runtime loaded to what was routed to it, and returns what it declared.
 func checkLoaded(ctx context.Context, started *runtime.Session, lang config.Language,
-	routed []migration.Migration) (migration.Declared, migration.Phases, error) {
-	loaded, declared, phases, err := started.Loaded(ctx)
+	routed []migration.Migration) (migration.Declarations, error) {
+	loaded, declared, err := started.Loaded(ctx)
 	if err != nil {
-		return nil, nil, err
+		return migration.Declarations{}, err
 	}
 
 	if err := errors.Join(
 		missingFrom(lang, routed, loaded),
 		surplusIn(lang, routed, loaded),
 	); err != nil {
-		return nil, nil, err
+		return migration.Declarations{}, err
 	}
 
-	return declared, phases, nil
+	return declared, nil
 }
 
 // missingFrom reports a migration routed to a runtime that the runtime did not load.
@@ -350,6 +356,8 @@ type asked struct {
 	live *schema.Snapshot
 	// rewriter is the session's safer sequences, which are pure and so outlive it (ADR 0085, 0086).
 	rewriter driver.Rewriter
+	// shadows reports a session that performs shadow-table migration, which a report states (ADR 0089).
+	shadows bool
 }
 
 // Both reads happen on one session and it closes straight after, which is ADR 0064's rule unchanged:
@@ -401,7 +409,7 @@ func (t *target) declared(ctx context.Context, opts *options) (asked, error) {
 		return asked{}, fmt.Errorf("closing the session the database was read from: %w", err)
 	}
 
-	return asked{caps: &caps, live: live, rewriter: rewriterOf(conn)}, nil
+	return asked{caps: &caps, live: live, rewriter: rewriterOf(conn), shadows: shadowsOf(conn)}, nil
 }
 
 // offlineSource returns what reads this project's migrations over sessions that open no database.
@@ -505,6 +513,7 @@ func (t *target) connect(ctx context.Context, opts *options) (*session, error) {
 		Planner: plan.Planner{Compiler: d, Expander: expanderOf(conn), Rewriter: rewriterOf(conn),
 			Rewrites: t.cfg.Safety.Enabled(), Capabilities: &caps},
 	}, conn, opts.log)
+	options = t.shadowing(options, d, conn, opts.log)
 
 	return &session{conn: conn, database: t.name, options: t.retrying(options, opts.log),
 		ceiling: t.cfg.Safety.MaxLockImpact}, nil
@@ -560,6 +569,7 @@ func (s *session) attach(ctx context.Context, t *target, opts *options,
 	}
 
 	s.options.Phases, s.options.Gates, s.options.Release = read.phases, gates, releaseOf(opts)
+	s.options.Online = read.online
 
 	s.options.Source = read.source
 	s.options.Migrations = files

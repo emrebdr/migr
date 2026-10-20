@@ -35,6 +35,12 @@ export interface Phase {
   readonly after?: string;
 }
 
+/** Strategy is how a migration runs against a live table rather than as a plain ALTER. */
+export type Strategy = "shadow_table";
+
+/** SHADOW_TABLE changes one table through a copy kept current from the replication log, swapped in once confirmed. */
+export const SHADOW_TABLE: Strategy = "shadow_table";
+
 /** Change is what every migration has, however it is undone. */
 interface Change {
   /** up performs the change, and is the only member a migration must have. */
@@ -45,6 +51,8 @@ interface Change {
   dependencies?: readonly string[];
   /** phase is the step of a change across deploys this migration is, which migr runs a release apart. */
   phase?: Phase;
+  /** online is how this migration runs against a live table, which only a shadow table is today. */
+  online?: Strategy;
 }
 
 /** UndoShape is the three honest answers to how a migration is undone, written as three shapes. */
@@ -105,6 +113,11 @@ export function dependencies(m: Migration): readonly string[] {
 /** phase returns the step a migration declares itself, if it declares one. */
 export function phase(m: Migration): Phase | undefined {
   return m.phase;
+}
+
+/** online returns how a migration declares it runs against a live table, if it declares that at all. */
+export function online(m: Migration): Strategy | undefined {
+  return m.online;
 }
 
 /** check runs a migration's own validation, which a migration that has none passes. */

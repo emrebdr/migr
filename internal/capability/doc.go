@@ -121,14 +121,15 @@
 //
 // # Not built, and why
 //
-// Two further facts belong here and are recorded rather than stubbed, following what ADR 0011 did
+// One further fact belongs here and is recorded rather than stubbed, following what ADR 0011 did
 // with history.Store:
 //
-//	Facts.Capture                M13-T16: whether this server permits log-based change capture
 //	engine limits on a logical type (PG precision 1000, MySQL 65)   deferred from M1-T1
 //
-// Both are fields on a struct rather than methods on an interface, so adding either reopens no
-// driver. That is ADR 0004's retrofit-cost argument applied to the model that argument created,
+// It is a field on a struct rather than a method on an interface, so adding it reopens no driver.
+// Facts.Capture was the other, and arrived in M13-T16 (ADR 0090): Capture names every setting and
+// privilege a server lacks for log-based change capture, its zero value permits nothing, and each
+// driver reads it at Open, an answer it cannot read being read as not permitted. That is ADR 0004's retrofit-cost argument applied to the model that argument created,
 // and it is why Set is a struct. Facts.TransactionalDDL was the third and arrived in M3-T3, so
 // M4-T9 read a field rather than adding one — and then found that the field answers only one of the
 // three ways a failure leaves statements behind, so the engine asks what survived and consults this

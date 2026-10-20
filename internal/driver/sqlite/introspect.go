@@ -19,7 +19,7 @@ import (
 // dropping. tbl_name is what excludes a table and everything attached to it in one predicate.
 const (
 	objectsQuery = `SELECT type, name, coalesce(sql, '') FROM sqlite_schema ` +
-		`WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND tbl_name NOT IN (?, ?, ?, ?, ?, ?) ` +
+		`WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND tbl_name NOT IN (?, ?, ?, ?, ?, ?, ?, ?) ` +
 		`ORDER BY name`
 
 	tableColumnsQuery = `SELECT name, type, "notnull", coalesce(dflt_value, ''), pk, hidden ` +
@@ -83,8 +83,7 @@ type object struct {
 
 // readObjects lists the tables and views this database holds, in the order names sort.
 func (c *sqliteConn) readObjects(ctx context.Context) ([]object, error) {
-	rows, err := c.read(ctx, objectsQuery, c.table, c.seeds, history.ProgressTable(c.table),
-		history.ProgressTable(c.seeds), history.ReleaseTable(c.table), history.ReleaseTable(c.seeds))
+	rows, err := c.read(ctx, objectsQuery, c.owned()...)
 	if err != nil {
 		return nil, err
 	}
@@ -403,4 +402,14 @@ func pragmaNumber(value *string, column string) (int, error) {
 	}
 
 	return parsed, nil
+}
+
+// owned is every table migr keeps for this session's migrations and seeds, which Introspect never reports.
+func (c *sqliteConn) owned() []any {
+	var names []any
+	for _, name := range slices.Concat(history.Owned(c.table), history.Owned(c.seeds)) {
+		names = append(names, name)
+	}
+
+	return names
 }

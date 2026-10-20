@@ -99,6 +99,10 @@ func accept(m Migration, file string) (*Registered, error) {
 		return nil, err
 	}
 
+	if err := checkOnline(m, parsed.file); err != nil {
+		return nil, err
+	}
+
 	return &Registered{
 		Version: parsed.version, Name: parsed.name, File: parsed.file, Migration: m,
 	}, nil

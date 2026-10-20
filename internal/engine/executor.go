@@ -161,6 +161,10 @@ func (e *executor) compileFor(_ context.Context, item queued, dir ir.Direction,
 
 // perform runs one prepared migration, recording it inside the transaction it runs in.
 func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
+	if ready.compiled.Direction == ir.Up && e.shadows(ready.item.migration) {
+		return e.performShadow(ctx, ready, nil)
+	}
+
 	if ready.compiled.Chunked() > 0 {
 		return e.performChunked(ctx, ready, nil)
 	}

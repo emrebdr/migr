@@ -35,7 +35,7 @@ const historyColumnQuery = "SELECT TABLE_NAME, COLUMN_NAME FROM information_sche
 // ordinaryTable is the TABLE_TYPE of a plain table, which is the only kind this store uses.
 const ordinaryTable = "BASE TABLE"
 
-// Ensure creates the history table, or finishes a partial one, and the checkpoint and release tables.
+// Ensure creates the history table, or finishes a partial one, and the checkpoint, release and shadow-state tables.
 func (h mysqlHistory) Ensure(ctx context.Context) error {
 	if err := h.ensureHistory(ctx); err != nil {
 		return err
@@ -45,7 +45,11 @@ func (h mysqlHistory) Ensure(ctx context.Context) error {
 		return err
 	}
 
-	return h.ensureReleases(ctx)
+	if err := h.ensureReleases(ctx); err != nil {
+		return err
+	}
+
+	return h.ensureShadows(ctx)
 }
 
 // ensureHistory creates the history table, or checks and finishes the one already there.

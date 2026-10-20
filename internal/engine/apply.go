@@ -38,7 +38,12 @@ func (e *executor) applyAll(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 
-	queue, skipped, err := classify(report, e.opts.Scope, cps)
+	shadows, err := e.shadowStates(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+
+	queue, skipped, err := classify(report, e.opts.Scope, leftover{cps: cps, shadows: shadows})
 	if err != nil {
 		return Result{}, err
 	}
@@ -121,6 +126,10 @@ func (e *executor) applyQueue(ctx context.Context, queue []queued, skipped []Ski
 func (e *executor) applyOne(ctx context.Context, item queued) (Run, error) {
 	if item.resume != nil {
 		return e.resumeChunks(ctx, item)
+	}
+
+	if item.shadow != nil {
+		return e.resumeShadow(ctx, item)
 	}
 
 	ready, err := e.forward(ctx, item)

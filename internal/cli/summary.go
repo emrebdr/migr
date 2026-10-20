@@ -56,6 +56,29 @@ type ran struct {
 	Held elapsed `json:"lag_held_ms,omitempty"`
 	// Duration is how long the run took.
 	Duration elapsed `json:"duration_ms"`
+	// Shadow is what a shadow-table migration's cutover left, absent for every other run.
+	Shadow *cutOver `json:"shadow,omitempty"`
+}
+
+// cutOver is what a shadow-table migration's cutover left, as a summary reports it.
+type cutOver struct {
+	// Table is the table it changed.
+	Table string `json:"table"`
+	// Retired is the name the original keeps until something retires it.
+	Retired string `json:"retired"`
+	// Copied is how many rows the copy wrote.
+	Copied int64 `json:"copied"`
+	// Applied is how many captured changes were written to the copy.
+	Applied int64 `json:"applied"`
+}
+
+// cutOverOf renders what a cutover left, and nothing for a run that was not one.
+func cutOverOf(run *engine.ShadowRun) *cutOver {
+	if run == nil {
+		return nil
+	}
+
+	return &cutOver{Table: run.Table, Retired: run.Retired, Copied: run.Copied, Applied: run.Applied}
 }
 
 // ranOf renders one run an invocation performed.
@@ -73,6 +96,7 @@ func ranOf(run engine.Run) ran {
 		Holds:      run.Holds,
 		Held:       elapsed(run.Held),
 		Duration:   elapsed(run.Duration),
+		Shadow:     cutOverOf(run.Shadow),
 	}
 }
 
@@ -108,6 +132,10 @@ func describeRewritten(n int) string {
 
 // describeExecuted says what a run executed: its statements, or the chunks a data-only one ran in.
 func describeExecuted(run ran) string {
+	if run.Shadow != nil {
+		return describeCutOver(run)
+	}
+
 	if run.Chunks == 0 {
 		return describeStatements(int(run.Statements))
 	}
@@ -119,6 +147,27 @@ func describeExecuted(run ran) string {
 	}
 
 	return described
+}
+
+// describeCutOver says what a shadow-table migration did: the copy, the replay, and what it kept.
+func describeCutOver(run ran) string {
+	described := fmt.Sprintf("cut over through a shadow table: %s copied and %s replayed from the "+
+		"log, the original kept as %s", describeRows(int(run.Shadow.Copied)), describeChanges(run.Shadow.Applied),
+		run.Shadow.Retired)
+	if run.Resumed {
+		described += ", resumed"
+	}
+
+	return described
+}
+
+// describeChanges counts captured changes with the right noun.
+func describeChanges(n int64) string {
+	if n == 1 {
+		return "1 change"
+	}
+
+	return fmt.Sprintf("%d changes", n)
 }
 
 // describeRetries says how often a run was tried again after giving up on a lock, and nothing if never.

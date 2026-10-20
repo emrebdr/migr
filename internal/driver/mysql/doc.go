@@ -583,4 +583,12 @@
 // spelling of its columns, since MariaDB keeps the old ones under the new statement (M13-T8, ADR
 // 0088). A stopped IO or SQL thread, a NULL lag, no row, error 1227 and an unreachable replica are
 // each unknown with a reason of their own; a replica is named by host:port, never by its DSN.
+//
+// # Whether this server permits log-based capture
+//
+// Open reads log_bin, binlog_format and binlog_row_image, and the session's own global privileges
+// from information_schema.USER_PRIVILEGES -- never SHOW GRANTS, which prints a password hash on
+// MariaDB -- into capability.Facts.Capture (M13-T16, ADR 0090). REPLICATION CLIENT is accepted under
+// MariaDB's 10.5 name, BINLOG MONITOR, too. A failed read is read as not permitted. Capture itself,
+// a row-format binlog reader, is M13-T10's: until then it refuses with capture.ErrUnsupported.
 package mysql

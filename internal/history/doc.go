@@ -300,4 +300,14 @@
 // applied nothing names none. Like the checkpoint table it is beside the log rather than in it -- the
 // history table has no schema evolution, and adding a column to every history ever created is the
 // cost a table of its own avoids. A database without it reads as having recorded no releases.
+//
+// # Where a shadow-table migration stands
+//
+// Shadows is a store's fourth table, <history table>_shadows, created from ShadowSchema by Ensure
+// (M13-T9, ADR 0089): one row per shadow-table migration naming its table, its copy, the name the
+// original retires under, its capture resource, its stage, how far the copy got and the log position
+// every change before it was applied from. Like the checkpoint table it says where a run is and the
+// fold never reads it. Its confirmed column is the one the engine reads and never writes -- SaveShadow
+// leaves it as it is -- so a confirmation written from another process survives every save. Owned
+// and OwnedSchema list all four tables, which every Introspect excludes.
 package history

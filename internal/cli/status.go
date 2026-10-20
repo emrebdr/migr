@@ -63,7 +63,13 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	return writeResult(cmd.OutOrStdout(), opts, statusOf(s.database, found, report, cps))
+	states, err := shadowStatesOf(cmd.Context(), s.conn.History())
+	if err != nil {
+		return err
+	}
+
+	return writeResult(cmd.OutOrStdout(), opts, statusOf(s.database, found, report, cps).
+		withShadows(states))
 }
 
 // checkpointsOf reads how far every chunked migration got, where the history remembers it at all.
@@ -117,6 +123,8 @@ type statusRow struct {
 	CurrentSource string `json:"current_source,omitempty"`
 	// Checkpoint is how far a dirty migration running in chunks got, absent for every other one.
 	Checkpoint *checkpoint `json:"checkpoint,omitempty"`
+	// Shadow is where a dirty shadow-table migration stands, absent for every other one.
+	Shadow *shadowDoc `json:"shadow,omitempty"`
 }
 
 // orderBasis names what decided a report's sequence, since a report resolves only what needs no runtime.
@@ -371,6 +379,10 @@ func describeState(row statusRow, about subject) string {
 		return fmt.Sprintf("edited since it was applied (recorded %s, now %s)",
 			shortDigest(row.RecordedSource), shortDigest(row.CurrentSource))
 	case history.StateDirty:
+		if row.Shadow != nil {
+			return describeShadowStopped(row.Shadow)
+		}
+
 		return describeDirty(row.Run, row.Checkpoint, about)
 	}
 

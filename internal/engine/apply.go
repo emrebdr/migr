@@ -23,7 +23,12 @@ func Apply(ctx context.Context, conn driver.Conn, opts Options) (Result, error) 
 		return Result{}, err
 	}
 
-	return locked(ctx, e, e.applyAll)
+	return locked(ctx, e, func(ctx context.Context) (Result, error) {
+		result, err := e.applyAll(ctx)
+		result.Released = e.freed
+
+		return result, err
+	})
 }
 
 // applyAll reconciles against the history and applies whatever is pending, one migration at a time.
@@ -40,6 +45,10 @@ func (e *executor) applyAll(ctx context.Context) (Result, error) {
 
 	shadows, err := e.shadowStates(ctx)
 	if err != nil {
+		return Result{}, err
+	}
+
+	if e.freed, err = e.releaseOrphans(ctx, report, shadows); err != nil {
 		return Result{}, err
 	}
 

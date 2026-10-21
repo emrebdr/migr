@@ -108,6 +108,10 @@ func report(cmd *cobra.Command, opts *options, s *session, dir ir.Direction, saf
 
 	rendered.InvalidIndexes = invalid
 
+	if rendered.OrphanedSlots, err = s.orphans(cmd.Context()); err != nil {
+		return errors.Join(planErr, err)
+	}
+
 	written := writeResult(cmd.OutOrStdout(), opts, rendered)
 	if planErr != nil || written != nil || !safe.required {
 		return errors.Join(planErr, written)
@@ -334,6 +338,8 @@ type compiledPlan struct {
 	Unreleased string `json:"unreleased,omitempty"`
 	// InvalidIndexes are the indexes a failed concurrent build or drop left INVALID, absent where there are none.
 	InvalidIndexes []invalidIndex `json:"invalid_indexes,omitempty"`
+	// OrphanedSlots are the replication slots no live shadow-table migration owns, absent where there are none.
+	OrphanedSlots []orphanedSlot `json:"orphaned_slots,omitempty"`
 	// safety prints the lock axis in the text rendering, which a document always carries.
 	safety bool
 }
@@ -649,6 +655,7 @@ func (p compiledPlan) String() string {
 
 	b.WriteString(p.body())
 	writeInvalidIndexes(&b, p.InvalidIndexes)
+	writeOrphans(&b, p.OrphanedSlots)
 
 	return b.String()
 }

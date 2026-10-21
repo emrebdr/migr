@@ -638,4 +638,13 @@
 // and marked Unread. And while the stream trails by more than Options.CaptureLag, the copy reads the
 // log again instead of copying on, each read reported as a held chunk, so a copy cannot outrun the
 // replay into a cutover that never catches up.
+//
+// Since M13-T15 (ADR 0094) three more. A read whose record committed is acknowledged to the stream,
+// and nothing is acknowledged inside a transaction, since a PostgreSQL slot advanced there stays
+// advanced through a rollback. A cutover attempt that rolled back resets the job to what the store
+// recorded and reopens the stream from that position, because its catch-up's writes were undone while
+// the stream read on past them. And an apply, under the lock and before anything runs, releases every
+// change-stream resource the session's driver.CaptureKeeper lists that Orphans calls this project's
+// own -- a cut-over state's, or one named for a version this project carries with no state -- through
+// Options.Released and Result.Released; one in use is left and said so, and anyone else's is left.
 package engine

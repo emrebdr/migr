@@ -89,6 +89,25 @@ func (c *shadowConn) Cutover(ctx context.Context, _ driver.Shadow, catchUp drive
 	return nil
 }
 
+// CaptureResources lists every slot the fake server holds.
+func (c *shadowConn) CaptureResources(context.Context) ([]driver.CaptureResource, error) {
+	var found []driver.CaptureResource
+
+	for _, name := range slices.Sorted(maps.Keys(c.fake.slots)) {
+		found = append(found, driver.CaptureResource{Name: name, Retained: 3 << 20, Status: "reserved"})
+	}
+
+	return found, nil
+}
+
+// ReleaseCapture drops one slot.
+func (c *shadowConn) ReleaseCapture(_ context.Context, name string) error {
+	c.fake.note("release " + name)
+	delete(c.fake.slots, name)
+
+	return nil
+}
+
 // DropShadow compiles dropping the copy.
 func (c *shadowConn) DropShadow(s driver.Shadow) ([]driver.Statement, error) {
 	return []driver.Statement{{SQL: "-- drop " + s.Shadow}}, nil
@@ -168,6 +187,9 @@ func (s *fakeStream) held() bool {
 	return false
 }
 
+// Acknowledge records nothing, the fake server keeping its log for nobody.
+func (s *fakeStream) Acknowledge(context.Context, capture.Position) error { return nil }
+
 // Close keeps the resource.
 func (s *fakeStream) Close(context.Context) error {
 	s.fake.note("detach " + s.name)
@@ -236,8 +258,9 @@ func (s *fakeStore) ClearShadow(_ context.Context, version string) error {
 
 // compile-time proof that the fake can carry a shadow-table migration.
 var (
-	_ driver.Shadower = (*shadowConn)(nil)
-	_ history.Shadows = (*fakeStore)(nil)
+	_ driver.Shadower      = (*shadowConn)(nil)
+	_ driver.CaptureKeeper = (*shadowConn)(nil)
+	_ history.Shadows      = (*fakeStore)(nil)
 )
 
 // fakeRetention is how long the fake server says it keeps its log.

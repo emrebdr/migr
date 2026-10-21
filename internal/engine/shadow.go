@@ -137,6 +137,8 @@ type shadowJob struct {
 	shadow driver.Shadow
 	// request is the change stream it reads.
 	request capture.Request
+	// stream is the change stream open now, which a cutover that rolled back reopens.
+	stream capture.Stream
 	// shadower performs the copy, the replay, and the swap.
 	shadower driver.Shadower
 	// store remembers where it stands.

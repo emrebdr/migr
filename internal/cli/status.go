@@ -73,8 +73,13 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
+	orphans, err := orphansOf(cmd.Context(), s.conn, found, states)
+	if err != nil {
+		return err
+	}
+
 	status := statusOf(s.database, found, report, cps).withShadows(states, opts.clock())
-	status.InvalidIndexes = invalid
+	status.InvalidIndexes, status.OrphanedSlots = invalid, orphans
 
 	return writeResult(cmd.OutOrStdout(), opts, status)
 }
@@ -165,6 +170,8 @@ type statusReport struct {
 	Environment string `json:"environment,omitempty"`
 	// InvalidIndexes are the indexes a failed concurrent build or drop left INVALID, absent where there are none.
 	InvalidIndexes []invalidIndex `json:"invalid_indexes,omitempty"`
+	// OrphanedSlots are the replication slots no live shadow-table migration owns, absent where there are none.
+	OrphanedSlots []orphanedSlot `json:"orphaned_slots,omitempty"`
 	// about is what the rows are, which the zero value reads as migrations.
 	about subject
 }
@@ -281,6 +288,7 @@ func (s statusReport) String() string {
 
 	b.WriteString(s.body())
 	writeInvalidIndexes(&b, s.InvalidIndexes)
+	writeOrphans(&b, s.OrphanedSlots)
 
 	return b.String()
 }

@@ -123,8 +123,6 @@ func TestAShadowTableMigrationIsRefusedBeforeAnythingIsCreatedNamingWhatEachServ
 	}{
 		{name: "postgres16", driver: "postgres", dsn: strings.Replace(defaultDSN, ":55417/", ":55416/", 1),
 			lacks: "wal_level = logical (it is replica"},
-		{name: "postgres17", driver: "postgres", dsn: defaultDSN,
-			lacks: "the postgres driver does not perform shadow-table migration"},
 		{name: "mysql80 without the replication grants", driver: "mysql",
 			dsn: "migr_plain:migr_plain@tcp(127.0.0.1:55480)/migr", lacks: "the REPLICATION SLAVE privilege"},
 	} {
@@ -157,8 +155,8 @@ func TestAShadowTableMigrationIsRefusedBeforeAnythingIsCreatedNamingWhatEachServ
 		})
 	}
 
-	t.Log("Every server in compose refuses for its own reason: one for a setting, one because migr's")
-	t.Log("driver reads no log yet, one for a privilege -- and each before a copy or a stream exists.")
+	t.Log("Each server that cannot capture refuses for its own reason: one for a setting, one for a")
+	t.Log("privilege -- and each before a copy or a stream exists. postgres17 runs one (M13-T15).")
 }
 
 // shadowRunTable keeps the run that cuts over apart from the refusals, whose state it would otherwise meet.

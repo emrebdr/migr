@@ -256,6 +256,8 @@ type runSummary struct {
 	Duration elapsed `json:"duration_ms"`
 	// Held is the step this invocation stopped at because it waits for a later release.
 	Held *heldDoc `json:"held,omitempty"`
+	// Released are the orphaned replication slots this invocation dropped before running anything.
+	Released []orphanedSlot `json:"released_slots,omitempty"`
 }
 
 // heldDoc is a step a run stopped at to wait for a later release, as a report renders it.
@@ -358,6 +360,7 @@ func summaryOf(database string, dir ir.Direction, result engine.Result) runSumma
 		Runs:      make([]ran, 0, len(result.Runs)),
 		Skipped:   leftBehind(result.Skipped),
 		Held:      heldOf(result.Held),
+		Released:  releasedSlots(result.Released),
 	}
 
 	var total time.Duration
@@ -463,6 +466,11 @@ func (s runSummary) String() string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "%s — database %q%s\n", s.Direction, s.Database, describeBatch(s.Batch))
+
+	for _, slot := range s.Released {
+		fmt.Fprintf(&b, "\nreleased the orphaned replication slot %s, which held %s: %s\n", slot.Name,
+			describeBytes(slot.Retained), slot.Why)
+	}
 
 	if len(s.Runs) == 0 {
 		fmt.Fprintf(&b, "\nnothing to do%s\n", describeSkipped(s.Skipped))

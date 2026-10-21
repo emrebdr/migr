@@ -538,6 +538,18 @@
 //
 // Open reads wal_level, whether the role is a superuser or has REPLICATION, and how many replication
 // slots max_replication_slots leaves free, into capability.Facts.Capture (M13-T16, ADR 0090). A
-// failed read is read as not permitted. Capture itself, logical decoding through a slot, is
-// M13-T15's: until then it refuses with capture.ErrUnsupported, and the session is no driver.Shadower.
+// failed read is read as not permitted. The fact's Retention reads max_slot_wal_keep_size, since that
+// is what bounds carrying a stopped migration on.
+//
+// # A shadow table, through a replication slot
+//
+// Capture opens a stream on a connection of its own: pgoutput through a publication of the one
+// table and a logical slot of the same name, read by polling pg_logical_slot_peek_binary_changes up
+// to where the WAL ended as the read began and parsed with pglogrepl (M13-T15, ADR 0094). The slot
+// is advanced only on Acknowledge, after the engine's record commits; a fresh start drops a slot and
+// publication of its derived name first, which is how a start killed before its record is cleaned.
+// The session is a driver.Shadower -- LIKE ... EXCLUDING INDEXES with every index recreated under a
+// derived name, a FOR SHARE copy, an idempotent replay, and a cutover in one transaction that swaps
+// the index names and the tables -- and a driver.CaptureKeeper, listing the migr_ slots and the WAL
+// each retains. shadow.go, shadow_catalog.go, stream.go, pgoutput.go and slots.go hold it.
 package postgres

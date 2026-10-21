@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/migration"
 )
@@ -73,6 +74,8 @@ type cutoverReport struct {
 	Shadows []cutoverRow `json:"shadows"`
 	// Confirmed is the confirmation recorded, absent where none was asked for.
 	Confirmed *confirmedCutover `json:"confirmed,omitempty"`
+	// OrphanedSlots are the replication slots no live shadow-table migration owns, absent where there are none.
+	OrphanedSlots []orphanedSlot `json:"orphaned_slots,omitempty"`
 }
 
 // runCutover lists what waits for a cutover, and records a confirmation where one is asked for.
@@ -129,8 +132,13 @@ func (s *session) cutovers(ctx context.Context, files []history.File, now time.T
 		return cutoverReport{}, err
 	}
 
+	orphans, err := orphansOf(ctx, s.conn, engine.Carried(reconciled), states)
+	if err != nil {
+		return cutoverReport{}, err
+	}
+
 	statuses, _ := reconciled.Resolved()
-	report := cutoverReport{Database: s.database, Shadows: []cutoverRow{}}
+	report := cutoverReport{Database: s.database, Shadows: []cutoverRow{}, OrphanedSlots: orphans}
 
 	for _, want := range []history.State{history.StateWaiting, history.StateDirty} {
 		for _, st := range statuses {
@@ -270,6 +278,7 @@ func (r cutoverReport) String() string {
 
 	if len(r.Shadows) == 0 {
 		b.WriteString("\nnothing is waiting for a cutover: no shadow-table migration is held in sync or copying.\n")
+		writeOrphans(&b, r.OrphanedSlots)
 
 		return b.String()
 	}
@@ -289,6 +298,7 @@ func (r cutoverReport) String() string {
 
 	fmt.Fprintf(&b, "\n%d waiting for a cutover confirmation, %d still copying\n", waiting,
 		len(r.Shadows)-waiting)
+	writeOrphans(&b, r.OrphanedSlots)
 
 	return b.String()
 }

@@ -64,6 +64,10 @@ type Change struct {
 	Columns []string
 	// Row is every column's value after an insert or update and the key's before a delete, nil for NULL.
 	Row []*string
+	// Partial reports an update whose Row leaves out columns the write did not change, so it updates an existing row and inserts none.
+	Partial bool
+	// From is the key a partial update moved the row from, as a delete carries it, and nil where the key stayed.
+	From *Change
 }
 
 // Batch is the changes a stream read in one call, and where the log stands after them.
@@ -82,6 +86,8 @@ type Stream interface {
 	Start() Position
 	// Next returns the changes committed since the last call, and none only once it has read to where the log ended as it began.
 	Next(ctx context.Context) (Batch, error)
+	// Acknowledge says every change before a position is recorded as applied, so the server may discard the log before it.
+	Acknowledge(ctx context.Context, through Position) error
 	// Close stops reading and keeps the server-side resource, so a later stream resumes from a position.
 	Close(ctx context.Context) error
 	// Drop stops reading and releases the server-side resource, and is nothing where it is already gone.

@@ -23,6 +23,8 @@ type executor struct {
 	store history.Store
 	// opts is what this run was given beyond the session.
 	opts Options
+	// freed are the orphaned change-stream resources this run released before running anything.
+	freed []ReleasedCapture
 	// mode is how this invocation asks a migration what it does: a run, or a question.
 	mode Mode
 	// batch is what every run in this invocation is recorded under.

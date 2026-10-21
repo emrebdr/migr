@@ -58,7 +58,9 @@ func (e *executor) runShadow(ctx context.Context, job *shadowJob) (err error) {
 		return fmt.Errorf("opening the change stream %s: %w", job.request.Name, err)
 	}
 
-	defer func() { err = errors.Join(err, e.endStream(ctx, job, stream)) }()
+	job.stream = stream
+
+	defer func() { err = errors.Join(err, e.endStream(ctx, job, job.stream)) }()
 
 	if !job.marked {
 		if err := e.startShadow(ctx, job, stream); err != nil {
@@ -76,7 +78,7 @@ func (e *executor) runShadow(ctx context.Context, job *shadowJob) (err error) {
 		return err
 	}
 
-	return e.cutOver(ctx, job, stream)
+	return e.cutOver(ctx, job)
 }
 
 // endStream releases the capture where nothing is left to resume, and keeps it where something is.
@@ -274,6 +276,12 @@ func (e *executor) replayOnce(ctx context.Context, job *shadowJob, stream captur
 		}
 
 		job.saved = next
+
+		if err := stream.Acknowledge(ctx, capture.Position(next.Position)); err != nil {
+			return capture.Batch{}, fmt.Errorf("telling the server the change stream %s has applied "+
+				"everything before %s, so it may let go of the log before it: %w", job.request.Name,
+				next.Position, err)
+		}
 	}
 
 	job.state = next
@@ -383,9 +391,17 @@ func (e *executor) confirmed(ctx context.Context, job *shadowJob) (bool, error) 
 }
 
 // cutOver swaps the copy in under the driver's brief lock, catching up on the log first, and records it.
-func (e *executor) cutOver(ctx context.Context, job *shadowJob, stream capture.Stream) error {
+func (e *executor) cutOver(ctx context.Context, job *shadowJob) error {
+	attempts := 0
+
 	err := e.shadowTransact(ctx, job, func(ctx context.Context) error {
-		if err := job.shadower.Cutover(ctx, job.shadow, e.catchUp(job, stream)); err != nil {
+		if attempts++; attempts > 1 {
+			if err := e.reread(ctx, job); err != nil {
+				return err
+			}
+		}
+
+		if err := job.shadower.Cutover(ctx, job.shadow, e.catchUp(job)); err != nil {
 			return fmt.Errorf("swapping %s in for %s: %w", job.shadow.Shadow, job.shadow.Table, err)
 		}
 
@@ -401,11 +417,30 @@ func (e *executor) cutOver(ctx context.Context, job *shadowJob, stream capture.S
 	return nil
 }
 
+// reread puts a job back where the store last recorded it, since a rolled-back cutover undid its catch-up.
+func (e *executor) reread(ctx context.Context, job *shadowJob) error {
+	if err := job.stream.Close(context.WithoutCancel(ctx)); err != nil {
+		return fmt.Errorf("detaching from the change stream %s to read it again: %w", job.request.Name, err)
+	}
+
+	request := job.request
+	request.From = capture.Position(job.saved.Position)
+
+	stream, err := e.opts.Capture(ctx, request)
+	if err != nil {
+		return fmt.Errorf("reopening the change stream %s at %s: %w", job.request.Name, job.saved.Position, err)
+	}
+
+	job.stream, job.state = stream, job.saved
+
+	return nil
+}
+
 // catchUp applies every change the log holds up to now, inside the cutover's own transaction.
-func (e *executor) catchUp(job *shadowJob, stream capture.Stream) driver.CatchUp {
+func (e *executor) catchUp(job *shadowJob) driver.CatchUp {
 	return func(ctx context.Context) error {
 		for {
-			batch, err := stream.Next(ctx)
+			batch, err := job.stream.Next(ctx)
 			if err != nil {
 				return fmt.Errorf("reading the change stream %s: %w", job.request.Name, err)
 			}

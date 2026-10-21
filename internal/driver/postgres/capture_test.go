@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -37,9 +36,30 @@ func TestEveryMissingPrerequisiteIsNamedAtOnce(t *testing.T) {
 	}
 }
 
-func TestThePostgresDriverOpensNoChangeStreamYet(t *testing.T) {
-	_, err := (&pgDriver{}).Capture(context.Background(), "", capture.Request{})
-	if !errors.Is(err, capture.ErrUnsupported) || !strings.Contains(err.Error(), "logical decoding") {
-		t.Errorf("Capture returned %v", err)
+func TestAPermittedServerSaysHowLongASlotKeepsItsWAL(t *testing.T) {
+	unbounded := (captureAnswer{level: logicalLevel, replicates: true, free: 3, keep: "-1"}).capture()
+	if !strings.Contains(unbounded.Retention, "max_slot_wal_keep_size = -1") ||
+		!strings.Contains(unbounded.Retention, "fills it") {
+		t.Errorf("an unbounded slot is described as %q", unbounded.Retention)
+		t.Log("A slot nobody reads keeps WAL until the disk fills, and migr plan prints this line")
+		t.Log("beside a shadow-table migration so the operator knows what a stopped one costs.")
+	}
+
+	bounded := (captureAnswer{level: logicalLevel, replicates: true, free: 3, keep: "10GB"}).capture()
+	if !strings.Contains(bounded.Retention, "at most 10GB") || !strings.Contains(bounded.Retention, "invalidates") {
+		t.Errorf("a bounded slot is described as %q", bounded.Retention)
+	}
+}
+
+func TestAChangeStreamIsRefusedARequestItCannotCarry(t *testing.T) {
+	for name, req := range map[string]capture.Request{
+		"no name":    {Tables: []string{"people"}},
+		"two tables": {Name: "migr_x", Tables: []string{"people", "teams"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := (&pgDriver{}).Capture(context.Background(), "", req); err == nil {
+				t.Errorf("Capture accepted %+v", req)
+			}
+		})
 	}
 }

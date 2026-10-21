@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/emrebdr/migr/internal/driver"
+	"github.com/emrebdr/migr/internal/driver/postgres"
 )
 
 // cutoverTable keeps the runs a restarted hold leaves apart from every other shadow suite's.
@@ -218,5 +222,79 @@ func TestUnattendedCutsOverOnMySQLWithNothingConfirmed(t *testing.T) {
 
 	if state := stateOf(t, migrOut(t, config, "status"), "index_e2e_shadow_people"); state != "applied" {
 		t.Errorf("the unattended migration is %q, want applied", state)
+	}
+}
+
+// pgCutoverTable keeps the PostgreSQL run apart from every other suite's.
+const pgCutoverTable = "migr_e2e_pg_cutover_migrations"
+
+// pgSession opens a session on postgres17 bound to a history table, which is what an operator's tool would hold.
+func pgSession(t *testing.T, historyTable string) driver.Conn {
+	t.Helper()
+
+	d, err := postgres.New(driver.Options{HistoryTable: historyTable})
+	if err != nil {
+		t.Fatalf("building the postgres driver: %v", err)
+	}
+
+	conn, err := d.Open(t.Context(), defaultDSN)
+	if err != nil {
+		t.Fatalf("opening a session on postgres17: %v", err)
+	}
+
+	t.Cleanup(func() { _ = conn.Close(context.WithoutCancel(t.Context())) })
+
+	return conn
+}
+
+func TestAShadowTableMigrationOnPostgresHoldsThroughASlotUntilMigrCutoverConfirmsIt(t *testing.T) {
+	config := shadowProjectIn(t, "postgres", defaultDSN, pgCutoverTable)
+	conn := pgSession(t, pgCutoverTable)
+
+	t.Cleanup(func() {
+		if err := migr(t, config, "resolve", "--rolled-back", "--reason", "a failed e2e case"); err != nil {
+			t.Errorf("abandoning what a failed case left waiting: %v", err)
+		}
+
+		if err := migr(t, config, "down", "--step", "2"); err != nil {
+			t.Errorf("leaving the server as this suite found it: %v", err)
+		}
+
+		retireLeft(t, conn)
+	})
+
+	planned := migrOut(t, config, "plan")
+	for _, want := range []string{"⧉  through a shadow table: copies e2e_shadow_people", "max_slot_wal_keep_size"} {
+		if !strings.Contains(planned, want) {
+			t.Errorf("the plan does not say %q:\n%s", want, planned)
+		}
+	}
+
+	held := startHolder(t, config)
+	awaitReading(t, config, true, time.Time{}, 3*time.Minute)
+
+	slots, err := conn.(driver.CaptureKeeper).CaptureResources(t.Context())
+	if err != nil || len(slots) == 0 {
+		t.Fatalf("the hold reads through no replication slot: %v (%v)", slots, err)
+	}
+
+	confirmed := migrOut(t, config, "cutover", "--confirm", shadowVersion)
+	if !strings.Contains(confirmed, "confirmed the cutover of "+shadowVersion) {
+		t.Errorf("the confirmation says:\n%s", confirmed)
+	}
+
+	if code, out := held.exited(t, 2*time.Minute); code != 0 || !strings.Contains(out, "cut over through a shadow table") {
+		t.Fatalf("the confirmed hold exited %d:\n%s", code, out)
+	}
+
+	if state := stateOf(t, migrOut(t, config, "status"), "index_e2e_shadow_people"); state != "applied" {
+		t.Errorf("the cut-over migration is %q, want applied", state)
+	}
+
+	after, err := conn.(driver.CaptureKeeper).CaptureResources(t.Context())
+	for _, slot := range after {
+		if strings.HasPrefix(slot.Name, "migr_"+strings.ToLower(shadowVersion)) {
+			t.Errorf("the slot %s outlived the cutover (%v)", slot.Name, err)
+		}
 	}
 }

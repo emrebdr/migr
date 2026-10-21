@@ -41,6 +41,12 @@
 //
 // MySQL's binlog reader implements this (M13-T10, ADR 0091): a transaction is handed over once its
 // commit is read, so a batch never ends inside one, and a position is a GTID set where the server
-// records GTIDs and a file and offset where it does not. PostgreSQL's logical decoding is M13-T15;
-// until then that driver's Capture refuses with ErrUnsupported, and SQLite's always will.
+// records GTIDs and a file and offset where it does not. PostgreSQL's reads pgoutput through a
+// replication slot (M13-T15, ADR 0094), and SQLite's Capture always refuses with ErrUnsupported.
+//
+// Acknowledge is how a server lets its log go: the engine calls it once the transaction recording a
+// position has committed, never inside one, because a PostgreSQL slot advanced inside a transaction
+// that rolls back stays advanced -- measured -- and would forget the changes that transaction undid.
+// A Change may be Partial, an update that left a TOASTed column out, which updates a row and inserts
+// none; and a partial update that moved its key carries the old one in From.
 package capture

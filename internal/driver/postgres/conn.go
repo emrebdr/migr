@@ -22,6 +22,8 @@ type pgConn struct {
 	key     lockKey
 	// lockWait bounds an acquire, and is rendered by lockTimeoutSetting before it reaches the server.
 	lockWait time.Duration
+	// statementWait is safety.lock_timeout, which also bounds a shadow's catch-up under the cutover's lock.
+	statementWait time.Duration
 	// locked is session state, not shared state: a Conn is used by one goroutine, as pgx is.
 	locked bool
 	// tx is the transaction Transact opened, and is nil whenever this session is not inside one.

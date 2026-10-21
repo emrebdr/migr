@@ -19,6 +19,8 @@ type Result struct {
 	Skipped []Skipped
 	// Held is the step this invocation stopped at because it waits for a later release, nil where none did.
 	Held *Held
+	// Released are the orphaned change-stream resources this invocation released before running anything.
+	Released []ReleasedCapture
 }
 
 // Run is one migration this invocation applied, and what it cost.

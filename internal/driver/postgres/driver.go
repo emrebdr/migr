@@ -147,6 +147,8 @@ func (d *pgDriver) establish(ctx context.Context, conn *pgx.Conn) (*pgConn, erro
 		caps:     caps,
 		key:      d.key,
 		lockWait: d.lockWait,
+
+		statementWait: d.statementLockWait,
 	}
 	session.history = pgHistory{session: session, table: d.table}
 	session.seeds = pgHistory{session: session, table: d.seeds}

@@ -27,6 +27,7 @@ func (t *target) shadowing(options engine.Options, d driver.Driver, conn driver.
 	options.CaptureLag = t.cfg.Safety.ReplicaLagThreshold.Duration()
 	options.Shadowed = logShadow(opts.log, opts.unattended)
 	options.Unattended = opts.unattended
+	options.Released = logReleased(opts.log)
 
 	return options
 }

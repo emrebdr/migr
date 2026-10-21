@@ -701,6 +701,21 @@ func (s *session) reconcile(ctx context.Context, files []history.File) (history.
 	return history.Reconcile(files, log), nil
 }
 
+// orphans reads the replication slots no live shadow-table migration of this project owns, taking no lock.
+func (s *session) orphans(ctx context.Context) ([]orphanedSlot, error) {
+	report, err := s.reconcile(ctx, s.options.Migrations)
+	if err != nil {
+		return nil, err
+	}
+
+	states, err := history.ReadShadows(ctx, s.conn.History())
+	if err != nil {
+		return nil, err
+	}
+
+	return orphansOf(ctx, s.conn, engine.Carried(report), states)
+}
+
 // reader narrows a session's store to the half a report may use, so no report can write or Ensure.
 func reader(conn driver.Conn) history.Reader {
 	return conn.History()

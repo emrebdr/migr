@@ -272,8 +272,10 @@
 //
 // Driver.Capture opens a change stream on a connection of its own, which ADR 0014 B2 put on the
 // Driver because a stream outlives statements and fails apart from the pinned session. It is
-// mandatory; MySQL implements it from M13-T10 (ADR 0091), PostgreSQL refuses with
-// capture.ErrUnsupported until M13-T15, and SQLite always will. Shadower is optional on a Conn, as
+// mandatory; MySQL implements it from M13-T10 (ADR 0091), PostgreSQL from M13-T15 through a
+// replication slot (ADR 0094), and SQLite always refuses. CaptureKeeper is optional on a Conn and
+// PostgreSQL's alone: it lists the migr_ slots on the database and releases one, which is how an
+// orphaned slot is reported and dropped. Shadower is optional on a Conn, as
 // Chunker is (M13-T9, ADR 0089): its absence is named by the preflight rather than discovered at a
 // call. Admits reads the table and refuses what that engine cannot carry through a shadow, before
 // the stream opens; CreateShadow takes a context because an emulated change is expanded from the

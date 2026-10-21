@@ -61,6 +61,12 @@ type world struct {
 	refuses error
 	// cause is what a killed process's calls fail with, errKilled where nothing else is named.
 	cause error
+	// cutoverFails is how many cutovers give up on their lock after catching up, before one swaps.
+	cutoverFails int
+	// acks are the positions the stream was told the store recorded, in order.
+	acks []string
+	// acksInTx counts acknowledgements made while a transaction was still open.
+	acksInTx int
 }
 
 // newWorld returns a server holding people with the given number of rows, permitting capture.
@@ -385,6 +391,12 @@ func (c *worldConn) Cutover(ctx context.Context, s driver.Shadow, catchUp driver
 		return err
 	}
 
+	if c.w.cutoverFails > 0 {
+		c.w.cutoverFails--
+
+		return fmt.Errorf("%w: the cutover's lock wait ran out", driver.ErrStatementLockTimeout)
+	}
+
 	if err := c.w.reach("swap"); err != nil {
 		return err
 	}
@@ -460,6 +472,17 @@ func (s *worldStream) Next(context.Context) (capture.Batch, error) {
 	s.w.read = end
 
 	return batch, nil
+}
+
+// Acknowledge records the position, and whether a transaction was open when it was given.
+func (s *worldStream) Acknowledge(_ context.Context, through capture.Position) error {
+	s.w.acks = append(s.w.acks, string(through))
+
+	if s.w.inTx {
+		s.w.acksInTx++
+	}
+
+	return nil
 }
 
 // Close keeps the resource.

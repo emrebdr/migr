@@ -531,6 +531,11 @@ func (s *binlogStream) readFailure(err error) error {
 	return fmt.Errorf("reading the binary log after %s: %w", s.through(), err)
 }
 
+// Acknowledge is nothing on MySQL, whose server keeps its log for binlog_expire_logs_seconds and for no reader.
+func (s *binlogStream) Acknowledge(context.Context, capture.Position) error {
+	return nil
+}
+
 // Close stops reading, which on MySQL holds nothing on the server to keep.
 func (s *binlogStream) Close(context.Context) error {
 	s.syncer.Close()

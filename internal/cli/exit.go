@@ -36,6 +36,10 @@ import (
 //
 // ExitLockImpact is produced by --require-safe on migr plan and migr validate and by nothing else:
 // migr up is not gated, so the code means "a preview found this too costly" and never "a run stopped".
+//
+// ExitAwaiting is a migr up that stopped holding a shadow-table migration in sync, which stays waiting for
+// its cutover: the schema did not change, and nothing failed (M13-T14, ADR 0093). engine.ErrAwaitingCutover
+// is read here for the reason the lock sentinels are, so a deploy script can tell "changed" from "not yet".
 const (
 	ExitOK         = 0
 	ExitRuntime    = 1
@@ -43,6 +47,7 @@ const (
 	ExitLock       = 3
 	ExitDrift      = 4
 	ExitLockImpact = 5
+	ExitAwaiting   = 6
 )
 
 // errValidationFailed marks a validation run that found something, which is a failure of the project.
@@ -106,6 +111,10 @@ func ExitCode(err error) int {
 
 	if errors.Is(err, engine.ErrLockImpact) {
 		return ExitLockImpact
+	}
+
+	if errors.Is(err, engine.ErrAwaitingCutover) {
+		return ExitAwaiting
 	}
 
 	return ExitRuntime

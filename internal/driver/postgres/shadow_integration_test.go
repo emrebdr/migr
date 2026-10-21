@@ -31,6 +31,7 @@ func TestAShadowStateIsRecordedBesideTheHistoryAndASaveKeepsItsConfirmation(t *t
 			UpdatedAt: time.Date(2026, 10, 20, 9, 30, 0, 123456000, time.UTC)}
 		saved := begun
 		saved.Stage, saved.Position, saved.Copied, saved.Cursor = history.StageSyncing, "0/16B3790", 7, []string{"7"}
+		saved.Behind = 1500 * time.Millisecond
 
 		if err := session.Transact(t.Context(), func(ctx context.Context) error {
 			if err := store.BeginShadow(ctx, begun); err != nil {
@@ -48,7 +49,7 @@ func TestAShadowStateIsRecordedBesideTheHistoryAndASaveKeepsItsConfirmation(t *t
 
 		got, err := store.ShadowStates(t.Context())
 		if err != nil || len(got) != 1 || got[0].Stage != history.StageSyncing || got[0].Position != "0/16B3790" ||
-			!got[0].Confirmed || got[0].Copied != 7 || !got[0].UpdatedAt.Equal(begun.UpdatedAt) {
+			!got[0].Confirmed || got[0].Copied != 7 || got[0].Behind != saved.Behind || !got[0].UpdatedAt.Equal(begun.UpdatedAt) {
 			t.Errorf("the state read back as %+v, %v", got, err)
 		}
 

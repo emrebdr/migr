@@ -478,6 +478,15 @@
 // Status: init, create, up, down, status, history, plan, validate, version, and
 // config -- which is M5 complete. diff is M11-T5, seed is M12-T1 (applying) and M12-T5
 // (status, history, down and resolve, each its migration twin given the seed history), and
-// cutover is M13-T10. TestEveryCommandIsInTheExitCodeMatrix is what makes each of them say
-// which of the five endings it can reach before it ships.
+// cutover is M13-T14. TestEveryCommandIsInTheExitCodeMatrix is what makes each of them say
+// which of the seven endings it can reach before it ships.
+//
+// # Cutover
+//
+// migr cutover lists every shadow-table migration that has not cut over, with the lag the run
+// holding it last recorded and how old that reading is -- older than six heartbeats is shown as no
+// run holding it, never as current. --confirm VERSION writes the one column the holder reads, and
+// takes no migration lock, since that run holds it for the whole hold. A migr up that stops
+// holding one exits 6, and --unattended or MIGR_UNATTENDED cuts over at the first caught-up read
+// with no confirmation (M13-T14, ADR 0093).
 package cli

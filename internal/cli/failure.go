@@ -38,6 +38,8 @@ type failure struct {
 	Unrestorable *contradicted `json:"unrestorable,omitempty"`
 	// Lock is every operation over safety.max_lock_impact, present only where --require-safe failed on one.
 	Lock *overLimit `json:"lock,omitempty"`
+	// Waiting is where a shadow-table migration a run stopped holding stands, present only on exit 6.
+	Waiting *shadowDoc `json:"waiting,omitempty"`
 }
 
 // overLimit is the ceiling a gate held a plan to, and every operation that exceeded it.
@@ -215,8 +217,21 @@ func failureOf(err error) failure {
 	found.describeCapability(err)
 	found.describeUnrestorable(err)
 	found.describeLock(err)
+	found.describeWaiting(err)
 
 	return found
+}
+
+// describeWaiting replaces the paragraph a detached hold renders with where its shadow table stands.
+func (f *failure) describeWaiting(err error) {
+	var waiting *engine.WaitingError
+	if !errors.As(err, &waiting) {
+		return
+	}
+
+	f.Error = engine.ErrAwaitingCutover.Error()
+	f.Migration = describeFile(waiting.Migration)
+	f.Waiting = waitingOf(waiting.State, waiting.State.UpdatedAt)
 }
 
 // describeLock replaces the paragraph a gate failure renders with every operation over the ceiling.

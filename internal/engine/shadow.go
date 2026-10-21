@@ -21,12 +21,18 @@ import (
 // ErrCannotShadow marks a shadow-table migration refused before anything was created, naming what is missing.
 var ErrCannotShadow = errors.New("this migration cannot run through a shadow table here")
 
+// ErrAwaitingCutover marks a run that ended with a shadow-table migration held in sync, waiting for its cutover.
+var ErrAwaitingCutover = errors.New("a shadow-table migration is waiting for its cutover to be confirmed")
+
+// ErrWaiting marks a command refused because a shadow-table migration is waiting for its cutover.
+var ErrWaiting = errors.New("a shadow-table migration is waiting for its cutover")
+
 // ErrNotCutOver marks a retirement asked of a shadow-table migration whose original has not been swapped out.
 var ErrNotCutOver = errors.New("this shadow-table migration has not cut over")
 
 // errShadowing is what the row a shadow-table migration writes at its start records, until it cuts over.
 var errShadowing = errors.New("running through a shadow table: the copy is kept current from the " +
-	"replication log until someone confirms the cutover -- the next migr up carries it on from the " +
+	"replication log until migr cutover --confirm confirms it -- the next migr up carries it on from the " +
 	"recorded log position, and migr resolve --rolled-back abandons it, dropping the shadow and " +
 	"releasing the capture")
 
@@ -38,6 +44,9 @@ const hashWidth = 8
 
 // shadowPoll is how long a hold waits after reading no change, before reading the log again.
 const shadowPoll = time.Second
+
+// ShadowHeartbeat is the longest a hold goes without recording its lag, so a reader can tell a held copy from an abandoned one.
+const ShadowHeartbeat = 5 * time.Second
 
 // Capturer opens the change stream a shadow-table migration keeps its copy current from.
 type Capturer func(ctx context.Context, req capture.Request) (capture.Stream, error)
@@ -78,6 +87,8 @@ type ShadowRun struct {
 	Copied int64
 	// Applied is how many captured changes were written to the copy.
 	Applied int64
+	// Unattended reports a cutover made without a confirmation, because the run was told not to wait for one.
+	Unattended bool
 }
 
 // ShadowName derives the copy a migration changes a table through, unique to the migration.
@@ -134,12 +145,16 @@ type shadowJob struct {
 	rec history.Record
 	// state is where it stands, and its zero value before it has started.
 	state history.ShadowState
+	// saved is the state as the store last recorded it, which a hold's heartbeat is measured from.
+	saved history.ShadowState
 	// marked reports that the database holds the row and the state saying it is in progress.
 	marked bool
 	// markedHere reports that this run wrote them, and so writes everything after one ordinal on.
 	markedHere bool
 	// cut reports a cutover this run recorded.
 	cut bool
+	// unattended reports a cutover this run made without reading a confirmation.
+	unattended bool
 	// resumed reports a run carrying on from a recorded stage.
 	resumed bool
 	// paused is how often and how long a pacer held its copy back.
@@ -227,7 +242,7 @@ func (e *executor) prepareShadow(ctx context.Context, ready prepared, from *hist
 	}
 
 	if from != nil {
-		job.state, job.marked, job.resumed = *from, true, true
+		job.state, job.saved, job.marked, job.resumed = *from, *from, true, true
 		job.request.From = capture.Position(from.Position)
 	}
 

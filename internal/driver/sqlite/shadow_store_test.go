@@ -32,7 +32,10 @@ func TestAShadowStateSurvivesTheRoundTripAndASaveLeavesItsConfirmationAlone(t *t
 		t.Fatalf("ConfirmShadow: %v", err)
 	}
 
-	if err := held.SaveShadow(ctx, stateAt(history.StageSyncing, "12")); err != nil {
+	synced := stateAt(history.StageSyncing, "12")
+	synced.Behind = 1500 * time.Millisecond
+
+	if err := held.SaveShadow(ctx, synced); err != nil {
 		t.Fatalf("SaveShadow: %v", err)
 	}
 
@@ -41,7 +44,7 @@ func TestAShadowStateSurvivesTheRoundTripAndASaveLeavesItsConfirmationAlone(t *t
 		t.Fatalf("ShadowStates: %v, %v", got, err)
 	}
 
-	if s := got[0]; s.Stage != history.StageSyncing || s.Position != "12" || !s.Confirmed ||
+	if s := got[0]; s.Stage != history.StageSyncing || s.Position != "12" || !s.Confirmed || s.Behind != synced.Behind ||
 		len(s.Cursor) != 1 || s.Cursor[0] != "7" || s.UpdatedAt.Location() != time.UTC {
 		t.Errorf("the state read back as %+v, want it saved with its confirmation kept", s)
 	}

@@ -30,7 +30,7 @@ func TestAValueNamingNoStateIsNotAState(t *testing.T) {
 }
 
 func TestEveryStateRendersItsWireName(t *testing.T) {
-	want := []string{"applied", "pending", "missing", "drifted", "dirty"}
+	want := []string{"applied", "pending", "missing", "drifted", "dirty", "waiting"}
 
 	rendered := make([]string, 0, len(States()))
 	for _, state := range States() {

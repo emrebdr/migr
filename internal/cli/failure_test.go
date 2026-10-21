@@ -202,6 +202,13 @@ var codes = []coded{
 		args: []string{"--resume"}, stage: stagedSeeded, want: ExitOK},
 	{name: "seed resolve over migrations still to run", command: "seed resolve",
 		args: []string{"--resume"}, stage: seededProject, want: ExitRuntime},
+	{name: "cutover with nothing waiting", command: "cutover", stage: stagedApplied, want: ExitOK},
+	{name: "a cutover confirmed of a version nothing carries", command: "cutover",
+		args: []string{"--confirm", "20990101T000000"}, stage: stagedApplied, want: ExitValidation},
+	{name: "a cutover confirmed of a migration with no shadow table held", command: "cutover",
+		args: []string{"--confirm", versionAt(0)}, stage: stagedApplied, want: ExitRuntime},
+	{name: "a cutover over a database that will not answer", command: "cutover",
+		stage: stagedUnreachable, want: ExitRuntime},
 }
 
 // A row says whether a runtime answers for its migrations, because two rows turn on the answer:
@@ -249,7 +256,7 @@ func TestEveryCommandIsInTheExitCodeMatrix(t *testing.T) {
 		if _, found := covered[path]; !found {
 			t.Errorf("migr %s produces no documented exit code in this matrix", path)
 			t.Log("An eleventh command is where a code stops meaning one thing across the CLI, so")
-			t.Log("adding one costs saying which of the five endings it can reach -- and a")
+			t.Log("adding one costs saying which of the seven endings it can reach -- and a")
 			t.Log("subcommand is a command, which a check reading only the top level would miss.")
 		}
 	}

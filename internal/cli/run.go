@@ -3,7 +3,9 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -45,8 +47,39 @@ func newUpCmd(opts *options) *cobra.Command {
 
 	registerAllowDestructive(cmd, opts)
 	registerRelease(cmd, opts)
+	registerUnattended(cmd, opts)
 
 	return cmd
+}
+
+// unattendedVariable is the environment variable a CI job may opt out of confirming a cutover in instead of the flag.
+const unattendedVariable = "MIGR_UNATTENDED"
+
+// registerUnattended binds the flag that cuts a shadow-table migration over without waiting for a confirmation.
+func registerUnattended(cmd *cobra.Command, opts *options) {
+	cmd.Flags().BoolVar(&opts.unattended, "unattended", false,
+		"cut a shadow-table migration over as soon as its copy is caught up, confirming nothing; "+
+			unattendedVariable+" when unset")
+}
+
+// unattendedOf reads whether this run waits for no cutover confirmation, by flag or else by environment.
+func unattendedOf(opts *options) (bool, error) {
+	if opts.unattended {
+		return true, nil
+	}
+
+	set := os.Getenv(unattendedVariable)
+	if set == "" {
+		return false, nil
+	}
+
+	unattended, err := strconv.ParseBool(set)
+	if err != nil {
+		return false, NewExitError(ExitValidation, fmt.Errorf("%s is %q, and it is read as true or "+
+			"false: %w", unattendedVariable, set, err))
+	}
+
+	return unattended, nil
 }
 
 // releaseVariable is the environment variable a deploy may name its release in instead of the flag.
@@ -159,6 +192,12 @@ func runDirection(cmd *cobra.Command, opts *options, narrow narrowing, dir ir.Di
 	scope, err := narrow.scope(dir)
 	if err != nil {
 		return NewExitError(ExitValidation, err)
+	}
+
+	if dir == ir.Up {
+		if opts.unattended, err = unattendedOf(opts); err != nil {
+			return err
+		}
 	}
 
 	s, err := open(cmd.Context(), opts, scope)

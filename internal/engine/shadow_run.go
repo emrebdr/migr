@@ -41,7 +41,7 @@ func (e *executor) performShadow(ctx context.Context, ready prepared, from *hist
 		Holds:     job.paused.holds,
 		Held:      job.paused.waited,
 		Shadow: &ShadowRun{Table: job.shadow.Table, Retired: job.shadow.Retired,
-			Copied: job.state.Copied, Applied: job.state.Applied},
+			Copied: job.state.Copied, Applied: job.state.Applied, Unattended: job.unattended},
 	}, nil
 }
 
@@ -124,7 +124,7 @@ func (e *executor) startShadow(ctx context.Context, job *shadowJob, stream captu
 		return err
 	}
 
-	job.marked, job.markedHere = true, true
+	job.marked, job.markedHere, job.saved = true, true, job.state
 	e.shift++
 	e.reportShadow(job.shadowProgress())
 
@@ -251,7 +251,7 @@ func (e *executor) copyOnce(ctx context.Context, job *shadowJob, rows int) error
 		return err
 	}
 
-	job.state = next
+	job.state, job.saved = next, next
 
 	return nil
 }
@@ -265,13 +265,15 @@ func (e *executor) replayOnce(ctx context.Context, job *shadowJob, stream captur
 
 	next := job.advanced(batch, e.opts.Clock())
 
-	if len(batch.Changes) > 0 || next.Position != job.state.Position {
+	if len(batch.Changes) > 0 || job.due(next) {
 		err = e.shadowTransact(ctx, job, func(ctx context.Context) error {
 			return e.applyBatch(ctx, job, batch, next)
 		})
 		if err != nil {
 			return capture.Batch{}, err
 		}
+
+		job.saved = next
 	}
 
 	job.state = next
@@ -288,13 +290,19 @@ func (e *executor) replayOnce(ctx context.Context, job *shadowJob, stream captur
 func (j *shadowJob) advanced(batch capture.Batch, at time.Time) history.ShadowState {
 	next := j.state
 	next.Applied += int64(len(batch.Changes))
-	next.UpdatedAt = at
+	next.Behind, next.UpdatedAt = batch.Behind, at
 
 	if batch.Through != "" {
 		next.Position = string(batch.Through)
 	}
 
 	return next
+}
+
+// due reports whether a read moved what the store records, or the store has gone a heartbeat without hearing.
+func (j *shadowJob) due(next history.ShadowState) bool {
+	return next.Position != j.saved.Position || next.Behind != j.saved.Behind ||
+		next.UpdatedAt.Sub(j.saved.UpdatedAt) >= ShadowHeartbeat
 }
 
 // applyBatch writes one batch to the copy and records the position after it, inside the open transaction.
@@ -339,6 +347,12 @@ func (e *executor) holdShadow(ctx context.Context, job *shadowJob, stream captur
 		batch, err := e.replayOnce(ctx, job, stream)
 		if err != nil {
 			return err
+		}
+
+		if e.opts.Unattended && len(batch.Changes) == 0 {
+			job.unattended = true
+
+			return nil
 		}
 
 		confirmed, err := e.confirmed(ctx, job)
@@ -474,9 +488,14 @@ func (e *executor) shadowFailure(ctx context.Context, job *shadowJob, cause erro
 		return errors.Join(cause, e.dropCopy(outliving, job), e.store.MarkFailed(outliving, rec, cause))
 	}
 
-	stopped := &ShadowError{Migration: job.ready.item.migration, State: job.state, Err: cause}
+	marked := e.store.MarkDirty(outliving, rec, 1, cause)
 
-	return errors.Join(stopped, e.store.MarkDirty(outliving, rec, 1, cause))
+	if job.state.Stage == history.StageSyncing && errors.Is(cause, context.Canceled) {
+		return errors.Join(&WaitingError{Migration: job.ready.item.migration, State: job.state, Err: cause},
+			marked)
+	}
+
+	return errors.Join(&ShadowError{Migration: job.ready.item.migration, State: job.state, Err: cause}, marked)
 }
 
 // dropCopy drops the copy a start that recorded nothing may have left behind.
@@ -515,6 +534,30 @@ func (e *ShadowError) Error() string {
 // Unwrap returns what stopped the migration.
 func (e *ShadowError) Unwrap() error {
 	return e.Err
+}
+
+// WaitingError is a run that stopped while a shadow-table migration was held in sync, which stays waiting for its cutover.
+type WaitingError struct {
+	// Migration is the migration waiting.
+	Migration migration.Migration
+	// State is where it stood when the run stopped holding it, as recorded.
+	State history.ShadowState
+	// Err is what stopped the run.
+	Err error
+}
+
+// Error says the migration is waiting, that nothing holds it now, and the two ways on.
+func (e *WaitingError) Error() string {
+	return fmt.Sprintf("%s is waiting for its cutover: the run holding the shadow table %s in sync "+
+		"stopped (%v), keeping the copy and the change stream %s with every change before log position "+
+		"%q applied. migr cutover --confirm %s confirms the swap, and the next migr up resumes the hold "+
+		"and performs it; migr resolve --rolled-back abandons it", e.Migration.Filename(), e.State.Shadow,
+		e.Err, e.State.Capture, e.State.Position, e.Migration.Version)
+}
+
+// Unwrap reports the sentinel and what stopped the run, so both errors.Is answers hold.
+func (e *WaitingError) Unwrap() []error {
+	return []error{ErrAwaitingCutover, e.Err}
 }
 
 // describeStage says what a migration at a stage was doing, as a sentence reads it.

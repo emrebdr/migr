@@ -154,6 +154,12 @@ func runnable(left leftover) func(history.Status) (bool, error) {
 			}
 
 			return false, dirtyError(st, left.cps)
+		case history.StateWaiting:
+			if _, carries := shadowFrom(st, left.shadows); carries {
+				return true, nil
+			}
+
+			return false, dirtyError(st, left.cps)
 		}
 
 		return false, unknownStateError(st)
@@ -162,7 +168,7 @@ func runnable(left leftover) func(history.Status) (bool, error) {
 
 // shadowFrom returns where a stopped shadow-table migration stands, where a run can carry it on.
 func shadowFrom(st history.Status, shadows []history.ShadowState) (history.ShadowState, bool) {
-	if st.State != history.StateDirty || st.Recorded.Direction != ir.Up {
+	if !stopped(st.State) || st.Recorded.Direction != ir.Up {
 		return history.ShadowState{}, false
 	}
 
@@ -172,6 +178,11 @@ func shadowFrom(st history.Status, shadows []history.ShadowState) (history.Shado
 	}
 
 	return state, true
+}
+
+// stopped reports a state a run left partway and a later run may carry on: dirty, or waiting for a cutover.
+func stopped(state history.State) bool {
+	return state == history.StateDirty || state == history.StateWaiting
 }
 
 // reversible reports whether a reconciled migration should be undone, refusing the states nothing can.
@@ -188,6 +199,8 @@ func reversible(cps []history.Checkpoint) func(history.Status) (bool, error) {
 			return false, driftedError(st, ir.Down, false)
 		case history.StateDirty:
 			return false, dirtyError(st, cps)
+		case history.StateWaiting:
+			return false, waitingError(st)
 		}
 
 		return false, unknownStateError(st)
@@ -206,7 +219,7 @@ func resumableFrom(st history.Status, cps []history.Checkpoint) (history.Checkpo
 // resuming attaches what it carries on from to every queued migration that carries on from something.
 func resuming(queue []queued, left leftover) []queued {
 	for i, item := range queue {
-		if item.state != history.StateDirty {
+		if !stopped(item.state) {
 			continue
 		}
 

@@ -300,6 +300,9 @@ func seedRemedyFor(state history.State) string {
 			"the one the files describe (invariant #6)"
 	case history.StateDirty:
 		return "Settle it with `migr resolve` first: a database between states is not one to seed"
+	case history.StateWaiting:
+		return "A shadow-table migration is waiting for its cutover -- confirm it with `migr cutover " +
+			"--confirm` and let `migr up` swap it in, or abandon it with `migr resolve --rolled-back`"
 	case history.StateApplied:
 		return ""
 	default:

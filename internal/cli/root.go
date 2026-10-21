@@ -21,6 +21,7 @@ type options struct {
 	allowDestructive bool
 	connect          bool
 	release          string
+	unattended       bool
 	log              *slog.Logger
 	clock            func() time.Time
 	drivers          *driver.Registry
@@ -91,7 +92,7 @@ func rootCmd(opts *options) *cobra.Command {
 	cmd.AddCommand(newVersionCmd(opts), newConfigCmd(opts), newInitCmd(opts), newCreateCmd(opts),
 		newUpCmd(opts), newDownCmd(opts), newStatusCmd(opts), newHistoryCmd(opts),
 		newPlanCmd(opts), newValidateCmd(opts), newResolveCmd(opts), newDiffCmd(opts),
-		newSeedCmd(opts))
+		newSeedCmd(opts), newCutoverCmd(opts))
 
 	return cmd
 }

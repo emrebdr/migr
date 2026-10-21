@@ -12,10 +12,12 @@ const (
 	StateMissing State = "missing"
 	StateDrifted State = "drifted"
 	StateDirty   State = "dirty"
+	// StateWaiting is a shadow-table migration held in sync until someone confirms its cutover.
+	StateWaiting State = "waiting"
 )
 
-// states lists every reconciled state, from the two that are settled to the three that need acting on.
-var states = []State{StateApplied, StatePending, StateMissing, StateDrifted, StateDirty}
+// states lists every reconciled state, from the two that are settled to the four that need acting on.
+var states = []State{StateApplied, StatePending, StateMissing, StateDrifted, StateDirty, StateWaiting}
 
 // States returns every state a migration may reconcile to, as a copy.
 func States() []State {

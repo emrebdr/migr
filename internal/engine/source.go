@@ -108,6 +108,8 @@ type Options struct {
 	CaptureLag time.Duration
 	// Shadowed is told about every moment of a shadow-table migration, and an unset one tells nobody.
 	Shadowed func(ShadowProgress)
+	// Unattended cuts a shadow-table migration over as soon as its copy is caught up, waiting for no confirmation.
+	Unattended bool
 }
 
 // check reports what an apply run was not given, before it takes a lock it could not use.

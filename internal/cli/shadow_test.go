@@ -63,12 +63,13 @@ func TestUpHoldsAShadowTableInSyncSaysSoAndCutsOverOnceConfirmed(t *testing.T) {
 	}
 }
 
-func TestAStoppedHoldIsReportedByStatusAndCarriedOnByTheNextUp(t *testing.T) {
+func TestADetachedHoldExitsSixIsReportedWaitingAndCarriedOnByTheNextUp(t *testing.T) {
 	dir, f, drivers := shadowedProject(t)
 	f.captures, f.shadows, f.killAt = true, true, 3
 
-	if _, _, err := shadowed(t, dir, drivers, "up"); !errors.Is(err, errStopped) {
-		t.Fatalf("the stopped run returned %v", err)
+	if _, _, err := shadowed(t, dir, drivers, "up"); !errors.Is(err, errStopped) ||
+		ExitCode(err) != ExitAwaiting {
+		t.Fatalf("the detached run exited %d: %v", ExitCode(err), err)
 	}
 
 	if !f.slots[usersCapture] || !f.asked("detach "+usersCapture) {
@@ -80,8 +81,9 @@ func TestAStoppedHoldIsReportedByStatusAndCarriedOnByTheNextUp(t *testing.T) {
 		t.Fatalf("status: %v", err)
 	}
 
-	for _, want := range []string{"stopped syncing through the shadow table " + usersShadow,
-		"migr up carries it on", "migr resolve --rolled-back abandons it"} {
+	for _, want := range []string{"waiting  " + versionAt(0),
+		"held in sync through the shadow table " + usersShadow, "trailed the log by 0s",
+		"migr cutover --confirm " + versionAt(0), "1 waiting"} {
 		if !strings.Contains(status, want) {
 			t.Errorf("status does not say %q:\n%s", want, status)
 		}

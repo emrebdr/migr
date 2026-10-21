@@ -281,6 +281,10 @@ func remedyFor(state history.State) string {
 	case history.StateDirty:
 		return "Settle it with `migr resolve` first: a database between states is not one a " +
 			"schema can be read off"
+	case history.StateWaiting:
+		return "A shadow-table migration is waiting for its cutover, so the table it changes is not " +
+			"yet the one the project describes -- confirm it with `migr cutover --confirm` and let " +
+			"`migr up` swap it in, or abandon it with `migr resolve --rolled-back`"
 	case history.StateApplied:
 		return ""
 	default:

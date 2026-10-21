@@ -11,10 +11,10 @@ import (
 
 // shadowColumns is the order the shadow store binds and scans, held to history.ShadowSchema.
 var shadowColumns = []string{"version", "table_name", "shadow", "retired", "capture", "stage",
-	"cursor", "position", "copied", "applied", "confirmed", "updated_at"}
+	"cursor", "position", "copied", "applied", "behind", "confirmed", "updated_at"}
 
 // shadowSaved are the columns a save moves, which leaves the confirmation as someone else wrote it.
-var shadowSaved = []string{"stage", "cursor", "position", "copied", "applied", "updated_at"}
+var shadowSaved = []string{"stage", "cursor", "position", "copied", "applied", "behind", "updated_at"}
 
 // shadowTable names the table this store's shadow-table migrations live in.
 func (h pgHistory) shadowTable() string {
@@ -65,9 +65,9 @@ func (h pgHistory) BeginShadow(ctx context.Context, s history.ShadowState) error
 	}
 
 	_, err = h.session.runner().Exec(ctx, "INSERT INTO "+quote(h.shadowTable())+" ("+
-		quoteAll(shadowColumns)+")\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false, $11)",
+		quoteAll(shadowColumns)+")\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false, $12)",
 		s.Version, s.Table, s.Shadow, s.Retired, s.Capture, string(s.Stage), cursor, s.Position,
-		s.Copied, s.Applied, s.UpdatedAt)
+		s.Copied, s.Applied, history.BehindMillis(s.Behind), s.UpdatedAt)
 	if err != nil {
 		return h.wrapShadow("recording a shadow-table migration", err)
 	}
@@ -87,8 +87,9 @@ func (h pgHistory) SaveShadow(ctx context.Context, s history.ShadowState) error 
 	}
 
 	_, err = h.session.runner().Exec(ctx, "UPDATE "+quote(h.shadowTable())+" SET ("+
-		quoteAll(shadowSaved)+") = ($1, $2, $3, $4, $5, $6)\nWHERE \"version\" = $7",
-		string(s.Stage), cursor, s.Position, s.Copied, s.Applied, s.UpdatedAt, s.Version)
+		quoteAll(shadowSaved)+") = ($1, $2, $3, $4, $5, $6, $7)\nWHERE \"version\" = $8",
+		string(s.Stage), cursor, s.Position, s.Copied, s.Applied, history.BehindMillis(s.Behind),
+		s.UpdatedAt, s.Version)
 	if err != nil {
 		return h.wrapShadow("recording how far a shadow-table migration got", err)
 	}
@@ -145,10 +146,11 @@ func (h pgHistory) collectShadows(rows pgx.Rows) ([]history.ShadowState, error) 
 			s      history.ShadowState
 			stage  string
 			cursor string
+			behind int64
 		)
 
 		if err := rows.Scan(&s.Version, &s.Table, &s.Shadow, &s.Retired, &s.Capture, &stage,
-			&cursor, &s.Position, &s.Copied, &s.Applied, &s.Confirmed, &s.UpdatedAt); err != nil {
+			&cursor, &s.Position, &s.Copied, &s.Applied, &behind, &s.Confirmed, &s.UpdatedAt); err != nil {
 			return nil, h.wrapShadow("reading a shadow-table migration", err)
 		}
 
@@ -158,6 +160,7 @@ func (h pgHistory) collectShadows(rows pgx.Rows) ([]history.ShadowState, error) 
 		}
 
 		s.Stage, s.Cursor, s.UpdatedAt = history.Stage(stage), decoded, s.UpdatedAt.UTC()
+		s.Behind = history.BehindOf(behind)
 		found = append(found, s)
 	}
 

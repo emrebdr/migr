@@ -59,6 +59,8 @@ type world struct {
 	read int
 	// refuses is what the session's Admits answers, nil admitting the table.
 	refuses error
+	// cause is what a killed process's calls fail with, errKilled where nothing else is named.
+	cause error
 }
 
 // newWorld returns a server holding people with the given number of rows, permitting capture.
@@ -99,21 +101,30 @@ func (w *world) reach(point string) error {
 	w.calls = append(w.calls, point)
 
 	if w.killed {
-		return errKilled
+		return w.killedBy()
 	}
 
 	w.at(point)
 
 	if w.killed {
-		return errKilled
+		return w.killedBy()
 	}
 
 	return nil
 }
 
+// killedBy is what a call into a stopped process fails with.
+func (w *world) killedBy() error {
+	if w.cause != nil {
+		return w.cause
+	}
+
+	return errKilled
+}
+
 // restart is the next process: the server keeps everything it committed, and answers again.
 func (w *world) restart() {
-	w.killed, w.inTx, w.at = false, false, func(string) {}
+	w.killed, w.inTx, w.at, w.cause = false, false, func(string) {}, nil
 }
 
 // saved is everything a transaction that fails puts back.

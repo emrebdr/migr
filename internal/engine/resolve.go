@@ -192,7 +192,7 @@ func soleDirty(report history.Report) (history.Status, bool, error) {
 	var dirty []history.Status
 
 	for _, st := range statuses {
-		if st.State == history.StateDirty {
+		if stopped(st.State) {
 			dirty = append(dirty, st)
 		}
 	}

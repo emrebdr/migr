@@ -36,7 +36,7 @@ type Status struct {
 	Source checksum.Digest
 	// Recorded is the run that left the migration in this state, zero when none did.
 	Recorded Record
-	// State is what this version reconciled to, and it is exactly one of the five.
+	// State is what this version reconciled to, and it is exactly one of the six.
 	State State
 }
 
@@ -63,9 +63,20 @@ func Reconcile(files []File, log Log) Report {
 	runs := group(ordered)
 
 	return Report{
-		statuses: append(described(files, runs), undescribed(ordered, files, runs)...),
+		statuses: awaited(append(described(files, runs), undescribed(ordered, files, runs)...), log),
 		present:  true,
 	}
+}
+
+// awaited names a dirty forward run whose shadow table is held in sync for what it is: waiting for a cutover.
+func awaited(statuses []Status, log Log) []Status {
+	for i, st := range statuses {
+		if st.State == StateDirty && st.Recorded.Direction == ir.Up && log.waiting(st.Version) {
+			statuses[i].State = StateWaiting
+		}
+	}
+
+	return statuses
 }
 
 // group collects each version's runs, and is the only map here, built to be looked up and never walked.

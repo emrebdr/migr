@@ -33,6 +33,7 @@ func TestAShadowStateIsRecordedBesideTheHistoryAndASaveKeepsItsConfirmationOnBot
 			Position: "binlog.000002:4711", UpdatedAt: time.Date(2026, 10, 20, 9, 30, 0, 123456000, time.UTC)}
 		saved := begun
 		saved.Stage, saved.Position, saved.Copied = history.StageSyncing, "binlog.000002:5000", 7
+		saved.Behind = 1500 * time.Millisecond
 
 		if err := c.Transact(t.Context(), func(ctx context.Context) error {
 			if err := held.BeginShadow(ctx, begun); err != nil {
@@ -50,7 +51,7 @@ func TestAShadowStateIsRecordedBesideTheHistoryAndASaveKeepsItsConfirmationOnBot
 
 		got, err := held.ShadowStates(t.Context())
 		if err != nil || len(got) != 1 || got[0].Stage != history.StageSyncing ||
-			got[0].Position != "binlog.000002:5000" || !got[0].Confirmed || got[0].Copied != 7 ||
+			got[0].Position != "binlog.000002:5000" || !got[0].Confirmed || got[0].Copied != 7 || got[0].Behind != saved.Behind ||
 			!got[0].UpdatedAt.Equal(begun.UpdatedAt) {
 			t.Errorf("the state read back as %+v, %v", got, err)
 		}

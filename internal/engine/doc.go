@@ -316,8 +316,9 @@
 //     migrated database.
 //
 // The switch on history.State carries no default, so exhaustive names this package the day a sixth
-// state arrives — M13-T14 already says it needs one. The trailing return is the answer for a state
-// this build cannot interpret, and it refuses rather than guessing.
+// state arrives — and M13-T14's did: waiting, which an apply carries on as a hold and a rollback
+// refuses (ADR 0093). The trailing return is the answer for a state this build cannot interpret,
+// and it refuses rather than guessing.
 //
 // Three are refused per migration, before its first statement, each naming the task that lifts it:
 //

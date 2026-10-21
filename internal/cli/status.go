@@ -63,7 +63,7 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	states, err := shadowStatesOf(cmd.Context(), s.conn.History())
+	states, err := history.ReadShadows(cmd.Context(), s.conn.History())
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	status := statusOf(s.database, found, report, cps).withShadows(states)
+	status := statusOf(s.database, found, report, cps).withShadows(states, opts.clock())
 	status.InvalidIndexes = invalid
 
 	return writeResult(cmd.OutOrStdout(), opts, status)
@@ -120,7 +120,7 @@ type statusRow struct {
 	Version string `json:"version"`
 	// File is the filename it was found in, empty when no file carries the version.
 	File string `json:"file,omitempty"`
-	// State is what reconciliation resolved it to, and it is exactly one of the five.
+	// State is what reconciliation resolved it to, and it is exactly one of the six.
 	State history.State `json:"state"`
 	// Run is the run that left it in that state, absent for a migration nothing has run.
 	Run *recordedRun `json:"run,omitempty"`
@@ -130,7 +130,7 @@ type statusRow struct {
 	CurrentSource string `json:"current_source,omitempty"`
 	// Checkpoint is how far a dirty migration running in chunks got, absent for every other one.
 	Checkpoint *checkpoint `json:"checkpoint,omitempty"`
-	// Shadow is where a dirty shadow-table migration stands, absent for every other one.
+	// Shadow is where a dirty or waiting shadow-table migration stands, absent for every other one.
 	Shadow *shadowDoc `json:"shadow,omitempty"`
 }
 
@@ -403,6 +403,8 @@ func describeState(row statusRow, about subject) string {
 		}
 
 		return describeDirty(row.Run, row.Checkpoint, about)
+	case history.StateWaiting:
+		return describeWaiting(row.Shadow, row.Version)
 	}
 
 	return "this build has no note for that state"

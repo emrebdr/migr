@@ -11,10 +11,10 @@ import (
 
 // shadowColumns is the order the shadow store binds and scans, held to history.ShadowSchema.
 var shadowColumns = []string{"version", "table_name", "shadow", "retired", "capture", "stage",
-	"cursor", "position", "copied", "applied", "confirmed", "updated_at"}
+	"cursor", "position", "copied", "applied", "behind", "confirmed", "updated_at"}
 
 // shadowSaved are the columns a save moves, which leaves the confirmation as someone else wrote it.
-var shadowSaved = []string{"stage", "cursor", "position", "copied", "applied", "updated_at"}
+var shadowSaved = []string{"stage", "cursor", "position", "copied", "applied", "behind", "updated_at"}
 
 // shadowTable names the table this store's shadow-table migrations live in, as every statement names it.
 func (h mysqlHistory) shadowTable() string {
@@ -74,9 +74,9 @@ func (h mysqlHistory) BeginShadow(ctx context.Context, s history.ShadowState) er
 	}
 
 	_, err = h.session.runner().ExecContext(ctx, "INSERT INTO "+quote(h.shadowTable())+" ("+
-		quoteAll(shadowColumns)+")\nVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, ?)", s.Version,
+		quoteAll(shadowColumns)+")\nVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, ?)", s.Version,
 		s.Table, s.Shadow, s.Retired, s.Capture, string(s.Stage), cursor, s.Position, s.Copied,
-		s.Applied, renderTime(s.UpdatedAt))
+		s.Applied, history.BehindMillis(s.Behind), renderTime(s.UpdatedAt))
 	if err != nil {
 		return h.wrapShadow("recording a shadow-table migration", err)
 	}
@@ -102,7 +102,7 @@ func (h mysqlHistory) SaveShadow(ctx context.Context, s history.ShadowState) err
 
 	_, err = h.session.runner().ExecContext(ctx, "UPDATE "+quote(h.shadowTable())+" SET "+
 		strings.Join(assigned, ", ")+"\nWHERE `version` = ?", string(s.Stage), cursor, s.Position,
-		s.Copied, s.Applied, renderTime(s.UpdatedAt), s.Version)
+		s.Copied, s.Applied, history.BehindMillis(s.Behind), renderTime(s.UpdatedAt), s.Version)
 	if err != nil {
 		return h.wrapShadow("recording how far a shadow-table migration got", err)
 	}
@@ -177,10 +177,11 @@ func (h mysqlHistory) scanShadow(rows *sql.Rows) (history.ShadowState, error) {
 		stage   string
 		cursor  string
 		updated string
+		behind  int64
 	)
 
 	if err := rows.Scan(&s.Version, &s.Table, &s.Shadow, &s.Retired, &s.Capture, &stage, &cursor,
-		&s.Position, &s.Copied, &s.Applied, &s.Confirmed, &updated); err != nil {
+		&s.Position, &s.Copied, &s.Applied, &behind, &s.Confirmed, &updated); err != nil {
 		return history.ShadowState{}, h.wrapShadow("reading a shadow-table migration", err)
 	}
 
@@ -194,7 +195,7 @@ func (h mysqlHistory) scanShadow(rows *sql.Rows) (history.ShadowState, error) {
 		return history.ShadowState{}, h.wrapShadow("reading a shadow-table migration", err)
 	}
 
-	s.Stage, s.Cursor, s.UpdatedAt = history.Stage(stage), decoded, at
+	s.Stage, s.Cursor, s.UpdatedAt, s.Behind = history.Stage(stage), decoded, at, history.BehindOf(behind)
 
 	return s, nil
 }

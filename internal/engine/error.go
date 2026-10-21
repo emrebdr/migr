@@ -819,6 +819,14 @@ func dirtyError(st history.Status, cps []history.Checkpoint) error {
 	}
 }
 
+// waitingError refuses a rollback while a shadow-table migration is held in sync, waiting for its cutover.
+func waitingError(st history.Status) error {
+	return fmt.Errorf("%w: %s is held in sync through a shadow table, and nothing is undone while it "+
+		"waits -- confirm it with migr cutover --confirm %s and let migr up cut it over, or abandon it "+
+		"with migr resolve --rolled-back, which drops the copy and releases the change stream",
+		ErrWaiting, describeVersion(st), st.Version)
+}
+
 // missingError refuses the whole rollback, naming a version the database carries and no file does.
 func missingError(st history.Status) error {
 	return fmt.Errorf("%w: %s -- a rollback runs newest first, so stepping around it would undo "+

@@ -524,7 +524,7 @@ func (t *target) connect(ctx context.Context, opts *options) (*session, error) {
 		Planner: plan.Planner{Compiler: d, Expander: expanderOf(conn), Rewriter: rewriterOf(conn),
 			Rewrites: t.cfg.Safety.Enabled(), Capabilities: &caps},
 	}, conn, opts.log)
-	options = t.shadowing(options, d, conn, opts.log)
+	options = t.shadowing(options, d, conn, opts)
 	options.Repairer = repairerOf(conn)
 
 	return &session{conn: conn, database: t.name, options: t.retrying(options, opts.log),

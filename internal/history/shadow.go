@@ -57,9 +57,11 @@ type ShadowState struct {
 	Copied int64
 	// Applied is how many captured changes were written to the shadow.
 	Applied int64
+	// Behind is how far the stream trailed the log's end at its last read, as the server measured it.
+	Behind time.Duration
 	// Confirmed reports that someone confirmed the cutover, which the engine reads and never writes.
 	Confirmed bool
-	// UpdatedAt is when the row last moved, supplied by the caller since this package reads no clock.
+	// UpdatedAt is when the row last moved -- while syncing, when the log was last read -- supplied by the caller.
 	UpdatedAt time.Time
 }
 
@@ -78,6 +80,11 @@ func (s ShadowState) Validate() error {
 			return fmt.Errorf("the shadow-table state of %s names %q, and a name is 1 to %d bytes",
 				s.Version, name, nameLimit)
 		}
+	}
+
+	if s.Behind < 0 {
+		return fmt.Errorf("the shadow-table state of %s records a stream %s behind the log, which no "+
+			"reading measures", s.Version, s.Behind)
 	}
 
 	if s.Copied < 0 || s.Applied < 0 {
@@ -133,9 +140,20 @@ func shadowColumns() []ir.Column {
 		{Name: "position", Type: typeOf("text")},
 		{Name: "copied", Type: typeOf("int64")},
 		{Name: "applied", Type: typeOf("int64")},
+		{Name: "behind", Type: typeOf("int64")},
 		{Name: "confirmed", Type: typeOf("bool")},
 		{Name: "updated_at", Type: typeOf("timestamptz")},
 	}
+}
+
+// BehindMillis is how a recorded lag is stored: whole milliseconds.
+func BehindMillis(d time.Duration) int64 {
+	return d.Milliseconds()
+}
+
+// BehindOf reads a stored lag back from its whole milliseconds.
+func BehindOf(millis int64) time.Duration {
+	return time.Duration(millis) * time.Millisecond
 }
 
 // FindShadow returns the state of one migration among several, and whether there is one.

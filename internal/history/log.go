@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 )
 
@@ -13,6 +14,8 @@ type Log struct {
 	runs []Record
 	// present distinguishes a table holding no runs from a database that has no table at all.
 	present bool
+	// syncing are the versions whose shadow table is held in sync, waiting for a cutover confirmation.
+	syncing []string
 }
 
 // Read collects a store's runs, reporting a table nothing created as an absent log rather than a failure.
@@ -26,7 +29,27 @@ func Read(ctx context.Context, store Reader) (Log, error) {
 		return Log{}, err
 	}
 
-	return NewLog(runs), nil
+	shadows, err := ReadShadows(ctx, store)
+	if err != nil {
+		return Log{}, err
+	}
+
+	return NewLog(runs).WithShadows(shadows), nil
+}
+
+// ReadShadows reads where every shadow-table migration stands, and nothing where the store remembers none.
+func ReadShadows(ctx context.Context, store Reader) ([]ShadowState, error) {
+	remembering, remembers := store.(Shadows)
+	if !remembers {
+		return nil, nil
+	}
+
+	states, err := remembering.ShadowStates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading where a shadow-table migration stands: %w", err)
+	}
+
+	return states, nil
 }
 
 // NewLog returns the log a history table holding these runs would produce, ordered by run.
@@ -40,6 +63,24 @@ func NewLog(runs []Record) Log {
 // byRun orders runs by the key ADR 0013 chose, since a clock ties and a rollback reverses this order.
 func byRun(a, b Record) int {
 	return cmp.Or(cmp.Compare(a.Batch, b.Batch), cmp.Compare(a.Ordinal, b.Ordinal))
+}
+
+// WithShadows returns this log knowing which versions are held in sync, waiting for a cutover confirmation.
+func (l Log) WithShadows(states []ShadowState) Log {
+	l.syncing = nil
+
+	for _, s := range states {
+		if s.Stage == StageSyncing {
+			l.syncing = append(l.syncing, s.Version)
+		}
+	}
+
+	return l
+}
+
+// waiting reports whether a version's shadow table is held in sync, waiting for a cutover confirmation.
+func (l Log) waiting(version string) bool {
+	return slices.Contains(l.syncing, version)
 }
 
 // Present reports whether this database has a history table at all, which holding no runs is not.

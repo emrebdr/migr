@@ -35,7 +35,8 @@
 // blocks every command identically; a state does not — drifted blocks up and down but not status,
 // and missing blocks neither — so one bool would be three different answers. M4-T5, M4-T6 and
 // M4-T9 each switch on State with no default instead, which is what makes exhaustive name every
-// one of them the day a sixth state arrives. M13-T14 already says it needs one.
+// one of them the day a sixth state arrives -- and M13-T14's did: waiting, a dirty forward run whose
+// shadow table is held in sync, which Read derives by reading the shadow rows beside the log (ADR 0093).
 //
 // # The table is a log, not a state
 //

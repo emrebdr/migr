@@ -101,6 +101,13 @@ func report(cmd *cobra.Command, opts *options, s *session, dir ir.Direction, saf
 	rendered := compiledOf(s, previewed)
 	rendered.safety = safe.printed()
 
+	invalid, err := invalidIndexesOf(cmd.Context(), s.conn)
+	if err != nil {
+		return errors.Join(planErr, err)
+	}
+
+	rendered.InvalidIndexes = invalid
+
 	written := writeResult(cmd.OutOrStdout(), opts, rendered)
 	if planErr != nil || written != nil || !safe.required {
 		return errors.Join(planErr, written)
@@ -325,6 +332,8 @@ type compiledPlan struct {
 	Held *heldDoc `json:"held,omitempty"`
 	// Unreleased is why migr up would refuse this run for naming no release, absent where it would not.
 	Unreleased string `json:"unreleased,omitempty"`
+	// InvalidIndexes are the indexes a failed concurrent build or drop left INVALID, absent where there are none.
+	InvalidIndexes []invalidIndex `json:"invalid_indexes,omitempty"`
 	// safety prints the lock axis in the text rendering, which a document always carries.
 	safety bool
 }
@@ -636,6 +645,16 @@ func destroyedSubject(op ir.Operation) string {
 
 // String renders every statement the plan would send, grouped by migration and by operation.
 func (p compiledPlan) String() string {
+	var b strings.Builder
+
+	b.WriteString(p.body())
+	writeInvalidIndexes(&b, p.InvalidIndexes)
+
+	return b.String()
+}
+
+// body renders every migration the plan would run, then what it adds up to.
+func (p compiledPlan) body() string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "plan — database %q, %s%s\n", p.Database, p.Direction, describeBatch(p.Batch))

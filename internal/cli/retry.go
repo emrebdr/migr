@@ -22,6 +22,8 @@ func (t *target) retrying(options engine.Options, log *slog.Logger) engine.Optio
 	options.Rewrote = logRewrite(log)
 	options.StatementTimeout = t.cfg.Safety.StatementTimeout.Duration()
 	options.MigrationTimeout = t.cfg.Safety.Migration()
+	options.ConcurrentTimeout = t.cfg.Safety.Concurrent()
+	options.Repaired = logRepair(log)
 
 	return options
 }

@@ -145,6 +145,7 @@ func resolveAgainst(cmd *cobra.Command, opts *options, repair engine.Repair,
 	}()
 
 	settled, err = engine.Resolve(cmd.Context(), s.conn, s.options, repair)
+	s.warnInvalid(cmd.Context())
 
 	return settled, s.database, err
 }

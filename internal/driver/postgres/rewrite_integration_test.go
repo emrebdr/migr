@@ -282,7 +282,7 @@ func TestAConcurrentBuildStoppedPartwayNamesTheIndexItLeftInvalid(t *testing.T) 
 			opts := queueOptions(t, staged{version: "20260727T153000", name: "index_people",
 				ops: ir.Operations{ir.AddIndex{Table: "people", Name: "people_v", Columns: []string{"v"}}}})
 			opts.Planner.Rewriter, opts.Planner.Rewrites = session, driver.RewriteNames()
-			opts.StatementTimeout = 50 * time.Millisecond
+			opts.ConcurrentTimeout = 50 * time.Millisecond
 
 			_, err := engine.Apply(t.Context(), session, opts)
 
@@ -303,6 +303,6 @@ func TestAConcurrentBuildStoppedPartwayNamesTheIndexItLeftInvalid(t *testing.T) 
 	}
 
 	t.Log("A concurrent build that is stopped -- by its bound, by Ctrl-C, by a duplicate -- leaves")
-	t.Log("its index INVALID, which slows every write and serves no query. The failure names it and")
-	t.Log("the drop; cleaning it up automatically, and retrying, are M13-T11's.")
+	t.Log("its index INVALID, which slows every write and serves no query. With no Repairer, as here,")
+	t.Log("the failure names it and the drop; online_index_integration_test.go holds the repair.")
 }

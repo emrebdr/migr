@@ -29,6 +29,7 @@ const marker = "-- migr:"
 const (
 	statementHeader = marker + "statement "
 	noTransaction   = " no-transaction"
+	unblocking      = " unblocking"
 	unsupported     = marker + "unsupported "
 	needsSession    = marker + "needs-session "
 	chunkHeader     = marker + "chunk key "
@@ -280,6 +281,10 @@ func renderStatement(position int, stmt driver.Statement) string {
 	header := statementHeader + strconv.Itoa(position)
 	if stmt.NoTransaction {
 		header += noTransaction
+	}
+
+	if stmt.Unblocking {
+		header += unblocking
 	}
 
 	return header + "\n" + stmt.SQL

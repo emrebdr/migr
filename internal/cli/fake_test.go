@@ -59,6 +59,10 @@ type fake struct {
 	expands bool
 	// outsideTx is the SQL that compiles to a statement which cannot share a transaction.
 	outsideTx string
+	// invalid are the INVALID indexes this database reports.
+	invalid []driver.InvalidIndex
+	// repaired is what every repair answers, and nil makes this session repair nothing.
+	repaired *driver.Repaired
 	// rewrites is the SQL this session performs as a safer two-statement sequence, empty for none.
 	rewrites string
 	// costly is the SQL this server declares rewrites its table unless the table is small, empty for none.
@@ -410,6 +414,24 @@ func (d *fakeDriver) Open(context.Context, string) (driver.Conn, error) {
 type fakeConn struct {
 	fake *fake
 	caps capability.Set
+}
+
+// InvalidIndexes reports the INVALID indexes the test staged, asking the session nothing it records.
+func (c *fakeConn) InvalidIndexes(context.Context) ([]driver.InvalidIndex, error) {
+	return c.fake.invalid, nil
+}
+
+// Repair answers as the test staged, recording that it was asked.
+func (c *fakeConn) Repair(_ context.Context, _ ir.Operation, stmt driver.Statement, when driver.RepairTime,
+	_ error,
+) (driver.Repaired, error) {
+	if c.fake.repaired == nil {
+		return driver.Repaired{}, nil
+	}
+
+	c.fake.calls = append(c.fake.calls, "repair "+string(when)+" "+stmt.SQL)
+
+	return *c.fake.repaired, nil
 }
 
 // Assess reads the table a costly statement changes, and finds it small where the test said it would.

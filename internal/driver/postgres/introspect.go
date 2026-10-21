@@ -56,7 +56,7 @@ SELECT t.relname, c.conname, c.contype::text, c.condeferrable,
 
 	indexQuery = `
 SELECT t.relname, i.relname, x.indisunique, x.indpred IS NOT NULL, x.indexprs IS NOT NULL,
-       coalesce(a.attname, ''), (x.indoption[s] & 1) = 1
+       coalesce(a.attname, ''), (x.indoption[s] & 1) = 1, NOT x.indisvalid
   FROM pg_index x
   JOIN pg_class i ON i.oid = x.indexrelid
   JOIN pg_class t ON t.oid = x.indrelid

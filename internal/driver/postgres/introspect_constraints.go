@@ -220,6 +220,8 @@ type waiting struct {
 	columns []string
 	// descending reports whether any covered column is covered in descending order.
 	descending bool
+	// invalid reports an index PostgreSQL marked INVALID, which every write maintains and no query uses.
+	invalid bool
 }
 
 // An index backing a primary key, a unique constraint or an exclusion constraint is excluded by the
@@ -272,7 +274,7 @@ func (c *pgConn) scanIndex(rows interface {
 	)
 
 	if err := rows.Scan(&table, &found.name, &found.unique, &found.partial, &found.expression,
-		&column, &found.descending); err != nil {
+		&column, &found.descending, &found.invalid); err != nil {
 		return "", nil, c.failedProbe("the indexes", err)
 	}
 
@@ -324,14 +326,14 @@ func (i *indexed) add(one *waiting) {
 
 	if one.unique {
 		i.uniques = append(i.uniques, schema.Unique{
-			Name: one.name, Columns: one.columns, Beyond: beyond,
+			Name: one.name, Columns: one.columns, Beyond: beyond, Invalid: one.invalid,
 		})
 
 		return
 	}
 
 	i.indexes = append(i.indexes, schema.Index{
-		Name: one.name, Columns: one.columns, Beyond: beyond,
+		Name: one.name, Columns: one.columns, Beyond: beyond, Invalid: one.invalid,
 	})
 }
 
@@ -347,6 +349,12 @@ func indexFindings(one *waiting) []string {
 	if one.descending {
 		findings = append(findings, "it covers at least one column in descending order, which no "+
 			"operation can carry")
+	}
+
+	if one.invalid {
+		findings = append(findings, "PostgreSQL marks it INVALID -- a concurrent build or drop that "+
+			"failed -- so every write maintains it and no query uses it; REINDEX INDEX CONCURRENTLY "+
+			"or DROP INDEX CONCURRENTLY it before migr diff can compare it")
 	}
 
 	return findings

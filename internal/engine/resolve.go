@@ -443,7 +443,7 @@ func (e *executor) prepareResume(ctx context.Context, item queued, dir ir.Direct
 		return prepared{}, e.fail(item, plan.Plan{}, err)
 	}
 
-	e.from = rec.LastStatement
+	e.from, e.recheck = rec.LastStatement, rec.LastStatement+1
 
 	ready, err := e.compileFor(ctx, item, dir, emitted)
 	if err != nil {

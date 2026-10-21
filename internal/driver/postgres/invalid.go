@@ -36,9 +36,9 @@ type InvalidIndexError struct {
 // Error names the index left INVALID and the drop to run before the dirty run is settled.
 func (e *InvalidIndexError) Error() string {
 	return fmt.Sprintf("%v -- PostgreSQL left %s behind INVALID: it slows every write to the table "+
-		"and no query uses it. Run DROP INDEX CONCURRENTLY %s before migr resolve, since a second "+
-		"build fails on its name (cleaning it up automatically is M13-T11's)", e.Err, quote(e.Index),
-		quote(e.Index))
+		"and no query uses it. migr drops it before trying the build again; where it could not, run "+
+		"DROP INDEX CONCURRENTLY %s yourself, since a second build fails on its name", e.Err,
+		quote(e.Index), quote(e.Index))
 }
 
 // Unwrap reports the sentinel and what stopped the build, so errors.Is finds either.

@@ -259,6 +259,17 @@
 //
 // # Keeping a shadow table current
 //
+// # Cleaning up after a statement no transaction rolled back
+//
+// Repairer is optional on a Conn (M13-T11, ADR 0092). The engine asks it about a statement that ran
+// outside any transaction twice: straight after one fails, given what it failed with, and before a
+// resume reruns the one a stopped run last sent. Repaired says what it ran, whether the statement may
+// be sent again, whether the failure was the leftover itself and so worth retrying at once, and whether
+// the statement's work is already in place, so it is skipped. InvalidIndexReader lists what such a
+// statement can leave on an engine that has the state, and Statement.Unblocking marks a statement that
+// blocks no write once its own lock is held, which safety.concurrent_timeout bounds instead of
+// safety.statement_timeout.
+//
 // Driver.Capture opens a change stream on a connection of its own, which ADR 0014 B2 put on the
 // Driver because a stream outlives statements and fails apart from the pinned session. It is
 // mandatory; MySQL implements it from M13-T10 (ADR 0091), PostgreSQL refuses with

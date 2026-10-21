@@ -416,24 +416,42 @@
 //
 // # What a session rewrites
 //
-// pgConn is a driver.Rewriter. Against the version Open detected, it answers three operations with
+// pgConn is a driver.Rewriter. Against the version Open detected, it answers six operations with
 // a safer sequence than the plain compile:
 //   - add_check and add_foreign_key become ADD ... NOT VALID and then VALIDATE CONSTRAINT, the
 //     VALIDATE bare;
 //   - alter_column narrowing to NOT NULL with no retype becomes, on 12 and later, a NOT VALID
 //     IS NOT NULL check, its VALIDATE bare, SET NOT NULL, and the check dropped;
-//   - add_index becomes CREATE INDEX CONCURRENTLY, bare.
+//   - add_index becomes CREATE INDEX CONCURRENTLY, bare;
+//   - drop_index becomes DROP INDEX CONCURRENTLY, bare (M13-T11, ADR 0092);
+//   - add_unique becomes CREATE UNIQUE INDEX CONCURRENTLY, bare, then ADD CONSTRAINT ... UNIQUE
+//     USING INDEX, a catalog change;
+//   - add_primary_key becomes, on 12 and later, a validated IS NOT NULL check per key column, the
+//     concurrent unique build, ADD PRIMARY KEY USING INDEX, and the checks dropped -- measured over
+//     3 million rows, the attach scanned for 87ms without the checks and took 1.8ms behind them.
+//
+// Every concurrent statement and every VALIDATE is Statement.Unblocking, so the engine bounds it by
+// safety.concurrent_timeout rather than safety.statement_timeout: 30 seconds stopped every build of a
+// large index, which then left an INVALID one.
 //
 // Measured on 16 and 17 over 15 million rows: the plain ADD CHECK blocked 34 of 35 writes for its
 // 9.5s scan, and the pair blocked none. The pair inside one transaction blocked 34 again, because
 // the ADD's lock is held to commit, which is why VALIDATE runs outside one. SET NOT NULL took 0.7ms
 // behind a validated check against 367ms without one.
 //
-// A concurrent build that fails leaves its index INVALID. Exec reads pg_index afterwards on the
-// session that is still alive (ADR 0083) and returns InvalidIndexError, naming the index and the
-// DROP INDEX CONCURRENTLY to run before migr resolve. Dropping it automatically, the unique, key and
-// drop forms, and REINDEX are M13-T11's. Only a raw operation declaring no_transaction (ADR 0084)
-// and these rewrites set Statement.NoTransaction.
+// A concurrent build that fails leaves its index INVALID, and a concurrent drop that fails leaves its
+// index in place and INVALID. Exec reads pg_index afterwards on the session that is still alive (ADR
+// 0083) and returns InvalidIndexError naming the index. repair.go is the driver.Repairer the engine
+// asks next (M13-T11, ADR 0092): after a failure it drops a build's leftover so the build can run
+// again, and lets a drop or a VALIDATE simply run again; before a resume, which may follow a killed run
+// that repaired nothing, it rebuilds a leftover with REINDEX INDEX CONCURRENTLY where the leftover is
+// exactly the index the operation builds -- its table, its columns in order, its uniqueness -- drops
+// any other, and skips a build or drop it finds already done. A failed REINDEX leaves <name>_ccnew
+// INVALID beside the original, and both are dropped. InvalidIndexes lists every INVALID index the
+// namespace holds, and Introspect marks each one -- schema.Index.Invalid and a marker -- so a name it
+// holds is not taken and migr diff declines to compare it. Only a raw operation declaring
+// no_transaction (ADR 0084) and these rewrites set Statement.NoTransaction, and a raw one's concurrent
+// statement is repaired too, never reindexed, since nothing says which index it builds.
 //
 // alter_column emits one statement per requested change, in a fixed order: type, then nullability,
 // then default. That is not cosmetic — SET NOT NULL against a column being retyped has to run after

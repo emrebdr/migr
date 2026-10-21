@@ -341,6 +341,7 @@ func validateSafety(v *validator, s Safety) {
 	}
 
 	validateMigrationTimeout(v, s)
+	validateConcurrentTimeout(v, s)
 	validateRewrites(v, s.Rewrites)
 
 	if s.ReplicaLagThreshold <= 0 {
@@ -373,6 +374,25 @@ func validateMigrationTimeout(v *validator, s Safety) {
 	case limit < s.StatementTimeout.Duration():
 		v.add("safety.migration_timeout", "must be at least safety.statement_timeout (%s), got %s: "+
 			"a migration is at least one statement", s.StatementTimeout, *s.MigrationTimeout)
+	}
+}
+
+// validateConcurrentTimeout checks the optional bound on a statement that blocks no write against its lock wait.
+func validateConcurrentTimeout(v *validator, s Safety) {
+	if s.ConcurrentTimeout == nil {
+		return
+	}
+
+	limit := s.Concurrent()
+
+	switch {
+	case limit <= 0:
+		v.add("safety.concurrent_timeout", "must be positive, got %s; leave it unset for no bound",
+			*s.ConcurrentTimeout)
+	case s.LockTimeout > 0 && limit <= s.LockTimeout.Duration():
+		v.add("safety.concurrent_timeout", "must be longer than safety.lock_timeout (%s), got %s: "+
+			"a concurrent build waits for its lock first, and would be stopped as too slow before "+
+			"that wait ends", s.LockTimeout, *s.ConcurrentTimeout)
 	}
 }
 

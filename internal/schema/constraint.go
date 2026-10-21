@@ -48,6 +48,8 @@ type Index struct {
 	Unique bool `json:"unique,omitempty"`
 	// Beyond marks an index the v1 operation set cannot express -- partial, expression, prefixed.
 	Beyond *Unrepresented `json:"beyond,omitempty"`
+	// Invalid reports an index the engine marked unusable, a failed concurrent build's leftover a run repairs.
+	Invalid bool `json:"invalid,omitempty"`
 }
 
 // Validate reports whether the index names itself and the columns it covers.
@@ -68,7 +70,8 @@ func (i Index) Equal(other Index) bool {
 	return i.Name == other.Name &&
 		sameColumns(i.Columns, other.Columns) &&
 		i.Unique == other.Unique &&
-		i.Beyond.Equal(other.Beyond)
+		i.Beyond.Equal(other.Beyond) &&
+		i.Invalid == other.Invalid
 }
 
 // Unique is a unique constraint over a table's columns, which is not an Index carrying Unique.
@@ -79,6 +82,8 @@ type Unique struct {
 	Columns []string `json:"columns"`
 	// Beyond marks a constraint the v1 operation set cannot express.
 	Beyond *Unrepresented `json:"beyond,omitempty"`
+	// Invalid reports a unique index the engine marked unusable, a failed concurrent build's leftover a run repairs.
+	Invalid bool `json:"invalid,omitempty"`
 }
 
 // Validate reports whether the constraint names itself and the columns it covers.
@@ -98,7 +103,8 @@ func (u Unique) Validate() error {
 func (u Unique) Equal(other Unique) bool {
 	return u.Name == other.Name &&
 		sameColumns(u.Columns, other.Columns) &&
-		u.Beyond.Equal(other.Beyond)
+		u.Beyond.Equal(other.Beyond) &&
+		u.Invalid == other.Invalid
 }
 
 // Check is a check constraint, whose expression is engine SQL and does not port.

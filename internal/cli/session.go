@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -70,6 +71,8 @@ type session struct {
 	options engine.Options
 	// ceiling is safety.max_lock_impact, the most a preview lets an operation cost a live database.
 	ceiling capability.LockImpact
+	// logger is where a run warns of what it leaves behind it, such as an INVALID index.
+	logger *slog.Logger
 }
 
 // resolve loads the config and names the one database this invocation targets, connecting to nothing.
@@ -358,6 +361,8 @@ type asked struct {
 	rewriter driver.Rewriter
 	// shadows reports a session that performs shadow-table migration, which a report states (ADR 0089).
 	shadows bool
+	// invalid are the indexes a failed concurrent build or drop left INVALID, which a report lists.
+	invalid []invalidIndex
 }
 
 // Both reads happen on one session and it closes straight after, which is ADR 0064's rule unchanged:
@@ -405,11 +410,17 @@ func (t *target) declared(ctx context.Context, opts *options) (asked, error) {
 
 	logSchema(opts, t, live)
 
+	invalid, err := invalidIndexesOf(ctx, conn)
+	if err != nil {
+		return asked{}, errors.Join(err, conn.Close(context.WithoutCancel(ctx)))
+	}
+
 	if err := conn.Close(context.WithoutCancel(ctx)); err != nil {
 		return asked{}, fmt.Errorf("closing the session the database was read from: %w", err)
 	}
 
-	return asked{caps: &caps, live: live, rewriter: rewriterOf(conn), shadows: shadowsOf(conn)}, nil
+	return asked{caps: &caps, live: live, rewriter: rewriterOf(conn), shadows: shadowsOf(conn),
+		invalid: invalid}, nil
 }
 
 // offlineSource returns what reads this project's migrations over sessions that open no database.
@@ -514,9 +525,10 @@ func (t *target) connect(ctx context.Context, opts *options) (*session, error) {
 			Rewrites: t.cfg.Safety.Enabled(), Capabilities: &caps},
 	}, conn, opts.log)
 	options = t.shadowing(options, d, conn, opts.log)
+	options.Repairer = repairerOf(conn)
 
 	return &session{conn: conn, database: t.name, options: t.retrying(options, opts.log),
-		ceiling: t.cfg.Safety.MaxLockImpact}, nil
+		ceiling: t.cfg.Safety.MaxLockImpact, logger: opts.log}, nil
 }
 
 // open resolves the target, discovers the migrations, and opens a session ready to run a direction.
@@ -646,8 +658,16 @@ func (s *session) end(ctx context.Context) error {
 // run performs one direction against this database, returning what it did alongside what stopped it.
 func (s *session) run(ctx context.Context, dir ir.Direction) (engine.Result, error) {
 	result, err := s.perform(ctx, dir)
+	s.warnInvalid(ctx)
 
 	return result, selected(err)
+}
+
+// warnInvalid warns of every INVALID index the database holds after a run, on a context Ctrl-C has not ended.
+func (s *session) warnInvalid(ctx context.Context) {
+	if s.logger != nil {
+		warnInvalidIndexes(context.WithoutCancel(ctx), s.logger, s.conn)
+	}
 }
 
 // perform routes a direction to the entry point that runs it.

@@ -68,8 +68,15 @@ func runStatus(cmd *cobra.Command, opts *options) (err error) {
 		return err
 	}
 
-	return writeResult(cmd.OutOrStdout(), opts, statusOf(s.database, found, report, cps).
-		withShadows(states))
+	invalid, err := invalidIndexesOf(cmd.Context(), s.conn)
+	if err != nil {
+		return err
+	}
+
+	status := statusOf(s.database, found, report, cps).withShadows(states)
+	status.InvalidIndexes = invalid
+
+	return writeResult(cmd.OutOrStdout(), opts, status)
 }
 
 // checkpointsOf reads how far every chunked migration got, where the history remembers it at all.
@@ -156,6 +163,8 @@ type statusReport struct {
 	Counts map[string]int `json:"counts"`
 	// Environment is the one a seed report's database runs under, absent from a migration report.
 	Environment string `json:"environment,omitempty"`
+	// InvalidIndexes are the indexes a failed concurrent build or drop left INVALID, absent where there are none.
+	InvalidIndexes []invalidIndex `json:"invalid_indexes,omitempty"`
 	// about is what the rows are, which the zero value reads as migrations.
 	about subject
 }
@@ -266,8 +275,18 @@ func countStates(statuses []history.Status) map[string]int {
 	return counts
 }
 
-// String renders one state per line, then how many resolved to each.
+// String renders one state per line, then how many resolved to each, then any INVALID index.
 func (s statusReport) String() string {
+	var b strings.Builder
+
+	b.WriteString(s.body())
+	writeInvalidIndexes(&b, s.InvalidIndexes)
+
+	return b.String()
+}
+
+// body renders one state per line, then how many resolved to each.
+func (s statusReport) body() string {
 	var b strings.Builder
 
 	about := s.about.or()

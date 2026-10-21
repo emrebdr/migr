@@ -50,6 +50,8 @@ type ran struct {
 	Retries int `json:"lock_retries,omitempty"`
 	// Rewritten is how many of its operations ran as a safer sequence than they were declared as.
 	Rewritten int `json:"rewritten,omitempty"`
+	// Repaired are what the run cleaned up after statements outside any transaction, each as one sentence.
+	Repaired []string `json:"repaired,omitempty"`
 	// Holds is how often a chunk was held back on replica lag, every poll counted.
 	Holds int `json:"lag_holds,omitempty"`
 	// Held is how long those holds waited together.
@@ -93,6 +95,7 @@ func ranOf(run engine.Run) ran {
 		Resumed:    run.Resumed,
 		Retries:    run.Retries,
 		Rewritten:  run.Rewritten,
+		Repaired:   repairsOf(run.Repairs),
 		Holds:      run.Holds,
 		Held:       elapsed(run.Held),
 		Duration:   elapsed(run.Duration),
@@ -103,7 +106,16 @@ func ranOf(run engine.Run) ran {
 // describeWork says what a run executed: its statements, or the chunks a data-only one ran in.
 func describeWork(run ran) string {
 	return describeExecuted(run) + describeRewritten(run.Rewritten) + describeRetries(run.Retries) +
-		describeHolds(run)
+		describeHolds(run) + describeRepaired(run.Repaired)
+}
+
+// describeRepaired says what a run cleaned up after a statement no transaction rolled back, and nothing where it cleaned nothing.
+func describeRepaired(repaired []string) string {
+	if len(repaired) == 0 {
+		return ""
+	}
+
+	return ", repaired: " + strings.Join(repaired, "; ")
 }
 
 // describeHolds says how often and how long replica lag held a run's chunks back, and nothing if never.

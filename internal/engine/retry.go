@@ -123,7 +123,7 @@ func retryable(err error) bool {
 
 // backoff waits out the next retry's delay, or reports why the failure is final.
 func (e *executor) backoff(ctx context.Context, a *attempts, notice Retry) (bool, error) {
-	if e.opts.Backoff == nil || !retryable(notice.Err) {
+	if e.opts.Backoff == nil || (!retryable(notice.Err) && !rerunnable(notice.Err)) {
 		return false, nil
 	}
 

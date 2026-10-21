@@ -233,6 +233,8 @@ type validation struct {
 	Unchecked []unchecked `json:"unchecked,omitempty"`
 	// Projections names what the references were judged against, so no problems is not nothing read.
 	Projections []string `json:"projections,omitempty"`
+	// InvalidIndexes are the indexes a failed concurrent build or drop left INVALID, which --connect reads.
+	InvalidIndexes []invalidIndex `json:"invalid_indexes,omitempty"`
 }
 
 // validationOf renders what a validation run found against one project.
@@ -248,6 +250,8 @@ func validationOf(t *target, answered asked, report validate.Report) validation 
 		Warnings:    faultsOf(report.Warnings()),
 		Unchecked:   uncheckedOf(report.Unchecked()),
 		Projections: report.Projections(),
+
+		InvalidIndexes: answered.invalid,
 	}
 }
 
@@ -305,8 +309,18 @@ func faultOf(problem validate.Problem) fault {
 	}
 }
 
-// String renders every problem under the migration it belongs to, then what the run adds up to.
+// String renders every problem under the migration it belongs to, what the run adds up to, then any INVALID index.
 func (v validation) String() string {
+	var b strings.Builder
+
+	b.WriteString(v.body())
+	writeInvalidIndexes(&b, v.InvalidIndexes)
+
+	return b.String()
+}
+
+// body renders every problem under the migration it belongs to, then what the run adds up to.
+func (v validation) body() string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "validate — database %q (%s), %s\n", v.Database, v.Driver,

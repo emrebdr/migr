@@ -238,11 +238,11 @@ func namedBy(table schema.Table, name string) string {
 		return ""
 	}
 
-	if slices.ContainsFunc(table.Indexes, func(i schema.Index) bool { return i.Name == name }) {
+	if slices.ContainsFunc(table.Indexes, func(i schema.Index) bool { return i.Name == name && !i.Invalid }) {
 		return "an index"
 	}
 
-	if slices.ContainsFunc(table.Uniques, func(u schema.Unique) bool { return u.Name == name }) {
+	if slices.ContainsFunc(table.Uniques, func(u schema.Unique) bool { return u.Name == name && !u.Invalid }) {
 		return "a unique constraint"
 	}
 

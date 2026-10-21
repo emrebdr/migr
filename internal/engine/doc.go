@@ -619,6 +619,17 @@
 // RepairRolledBack is the abort, by the names the state row recorded; Retire drops the retained
 // original. Only an up runs through the shadow: a rollback is the ordinary inverse.
 //
+// # A statement outside any transaction is repaired, and then may be retried
+//
+// M13-T4 never retried a bare statement, since nothing rolled back what it left. Since M13-T11 (ADR
+// 0092) the engine asks Options.Repairer about one that failed, and a repair saying the statement may
+// run again lifts that rule for it alone: a lock wait is retried with the ordinary backoff, and a
+// failure the repair says was the leftover itself is retried at once. A repair finding the statement's
+// work already done counts the statement as run. A resume asks the repairer once more before it reruns
+// the statement a stopped run last sent, so a run killed mid-build is carried on rather than failing on
+// a name its corpse holds. Every repair is reported through Options.Repaired and on the run. A
+// statement marked Unblocking runs under Options.ConcurrentTimeout instead of StatementTimeout.
+//
 // Since M13-T10 (ADR 0091) three things more. The session's Shadower.Admits is asked after the key is
 // read and before the stream opens, so a table that engine cannot carry is refused with nothing
 // created. A preview judges only the first queued migration against the live table: a later one's

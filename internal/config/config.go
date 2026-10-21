@@ -81,6 +81,7 @@ type Safety struct {
 	LockBackoff         Duration                      `yaml:"lock_backoff"          json:"lock_backoff"`
 	StatementTimeout    Duration                      `yaml:"statement_timeout"     json:"statement_timeout"`
 	MigrationTimeout    *Duration                     `yaml:"migration_timeout"     json:"migration_timeout,omitempty"`
+	ConcurrentTimeout   *Duration                     `yaml:"concurrent_timeout"    json:"concurrent_timeout,omitempty"`
 	MaxLockImpact       capability.LockImpact         `yaml:"max_lock_impact"       json:"max_lock_impact"`
 	AutoRewrite         *bool                         `yaml:"auto_rewrite"          json:"auto_rewrite"`
 	Rewrites            map[driver.RewriteName]Switch `yaml:"rewrites" json:"rewrites"`
@@ -129,6 +130,15 @@ func (s Safety) Migration() time.Duration {
 	}
 
 	return s.MigrationTimeout.Duration()
+}
+
+// Concurrent returns how long one statement that blocks no write may run, and zero for no bound.
+func (s Safety) Concurrent() time.Duration {
+	if s.ConcurrentTimeout == nil {
+		return 0
+	}
+
+	return s.ConcurrentTimeout.Duration()
 }
 
 // Retries returns how many times a statement that gave up on a lock is tried again, zero none.

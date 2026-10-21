@@ -27,8 +27,17 @@ const (
 	notNullReason = "a validated check stands in for the scan, so SET NOT NULL holds its lock for " +
 		"a moment rather than for the whole table"
 	concurrentReason = "built CONCURRENTLY, outside any transaction, so writes go on while it builds " +
-		"-- a build that fails leaves the index INVALID, to be dropped before migr resolve"
+		"-- a build that fails leaves the index INVALID, which migr drops before trying again"
+	concurrentDropReason = "dropped CONCURRENTLY, outside any transaction, so it waits for the queries " +
+		"using the index rather than locking them out of the table"
+	concurrentUniqueReason = "its index built CONCURRENTLY and then attached, so only the attach takes " +
+		"the table's lock, for a moment"
+	concurrentKeyReason = "its columns proved NOT NULL by validated checks, its index built " +
+		"CONCURRENTLY, and only the attach takes the table's lock, for a moment"
 )
+
+// pkeySuffix ends the name PostgreSQL gives a primary key nobody named.
+const pkeySuffix = "_pkey"
 
 // compile-time proof that a session offers the rewrites this server can perform.
 var _ driver.Rewriter = (*pgConn)(nil)
@@ -54,6 +63,12 @@ func rewriteFor(v serverVersion, op ir.Operation) (driver.Rewrite, bool) {
 		return notNullBehindCheck(v, o)
 	case ir.AddIndex:
 		return concurrently(o), true
+	case ir.DropIndex:
+		return dropConcurrently(o), true
+	case ir.AddUnique:
+		return uniqueConcurrently(o), true
+	case ir.AddPrimaryKey:
+		return keyConcurrently(v, o)
 	default:
 		return driver.Rewrite{}, false
 	}
@@ -77,6 +92,7 @@ func validate(table, name string) driver.Statement {
 	return driver.Statement{
 		SQL:           "ALTER TABLE " + quote(table) + " VALIDATE CONSTRAINT " + quote(name) + terminator,
 		NoTransaction: true,
+		Unblocking:    true,
 	}
 }
 
@@ -144,13 +160,106 @@ func notNullCheckName(table, column string) string {
 // concurrently builds an index without blocking writes, which PostgreSQL refuses inside a transaction.
 func concurrently(op ir.AddIndex) driver.Rewrite {
 	return driver.Rewrite{
+		Name:       driver.RewriteConcurrentIndex,
+		Statements: []driver.Statement{build("", op.Name, op.Table, op.Columns)},
+		Reason:     concurrentReason,
+		Lock:       capability.LockFree,
+	}
+}
+
+// build renders a concurrent index build, outside any transaction and bounded as a statement that blocks no write.
+func build(unique, name, table string, columns []string) driver.Statement {
+	return driver.Statement{
+		SQL: "CREATE " + unique + "INDEX CONCURRENTLY " + quote(name) + " ON " + quote(table) +
+			" (" + quoteAll(columns) + ")" + terminator,
+		NoTransaction: true,
+		Unblocking:    true,
+	}
+}
+
+// dropConcurrently drops an index while queries go on, waiting for the ones using it.
+func dropConcurrently(op ir.DropIndex) driver.Rewrite {
+	return driver.Rewrite{
 		Name: driver.RewriteConcurrentIndex,
 		Statements: []driver.Statement{{
-			SQL: "CREATE INDEX CONCURRENTLY " + quote(op.Name) + " ON " + quote(op.Table) +
-				" (" + quoteAll(op.Columns) + ")" + terminator,
-			NoTransaction: true,
+			SQL: "DROP INDEX CONCURRENTLY " + quote(op.Name) + terminator, NoTransaction: true,
+			Unblocking: true,
 		}},
-		Reason: concurrentReason,
+		Reason: concurrentDropReason,
 		Lock:   capability.LockFree,
 	}
+}
+
+// uniqueConcurrently builds a unique constraint's index concurrently and attaches it under a brief lock.
+func uniqueConcurrently(op ir.AddUnique) driver.Rewrite {
+	return driver.Rewrite{
+		Name: driver.RewriteConcurrentIndex,
+		Statements: []driver.Statement{
+			build("UNIQUE ", op.Name, op.Table, op.Columns),
+			{SQL: "ALTER TABLE " + quote(op.Table) + " ADD CONSTRAINT " + quote(op.Name) +
+				" UNIQUE USING INDEX " + quote(op.Name) + terminator},
+		},
+		Reason: concurrentUniqueReason,
+		Lock:   capability.BriefExclusive,
+	}
+}
+
+// keyConcurrently builds a primary key's index concurrently behind validated NOT NULL checks, on a server whose key trusts them.
+func keyConcurrently(v serverVersion, op ir.AddPrimaryKey) (driver.Rewrite, bool) {
+	if !v.AtLeast(checkedNotNullRelease) {
+		return driver.Rewrite{}, false
+	}
+
+	index := keyIndexName(op)
+	table := "ALTER TABLE " + quote(op.Table) + " "
+
+	var checks, validates, drops []driver.Statement
+
+	for _, column := range op.Columns {
+		check := notNullCheckName(op.Table, column)
+		checks = append(checks, driver.Statement{SQL: table + "ADD CONSTRAINT " + quote(check) +
+			" CHECK (" + quote(column) + " IS NOT NULL) NOT VALID" + terminator})
+		validates = append(validates, validate(op.Table, check))
+		drops = append(drops, driver.Statement{SQL: table + "DROP CONSTRAINT " + quote(check) + terminator})
+	}
+
+	attach := driver.Statement{SQL: table + addConstraint(op.Name) + "PRIMARY KEY USING INDEX " +
+		quote(index) + terminator}
+
+	stmts := append(append(checks, validates...), build("UNIQUE ", index, op.Table, op.Columns), attach)
+
+	return driver.Rewrite{
+		Name:       driver.RewriteConcurrentIndex,
+		Statements: append(stmts, drops...),
+		Reason:     concurrentKeyReason,
+		Lock:       capability.BriefExclusive,
+	}, true
+}
+
+// keyIndexName names the index a primary key is built on: the key's own name, or the one PostgreSQL would give it.
+func keyIndexName(op ir.AddPrimaryKey) string {
+	if op.Name != "" {
+		return op.Name
+	}
+
+	return withinLimit(op.Table, pkeySuffix)
+}
+
+// withinLimit joins a stem and a suffix, shortening the stem with a digest where PostgreSQL would truncate the whole.
+func withinLimit(stem, suffix string) string {
+	name := stem + suffix
+	if len(name) <= identifierLimit {
+		return name
+	}
+
+	sum := fnv.New32a()
+	_, _ = sum.Write([]byte(name))
+	tag := fmt.Sprintf("_%08x%s", sum.Sum32(), suffix)
+
+	cut := identifierLimit - len(tag)
+	for cut > 0 && !utf8.RuneStart(stem[cut]) {
+		cut--
+	}
+
+	return stem[:cut] + tag
 }

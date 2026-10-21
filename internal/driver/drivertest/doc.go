@@ -36,6 +36,9 @@
 //	-- migr:statement 2 no-transaction
 //	CREATE INDEX CONCURRENTLY "idx_users_email" ON "users" ("email");
 //
+// A statement that blocks no write once its lock is held adds " unblocking" to that header (M13-T11),
+// since a driver could otherwise change how a statement is bounded with no diff anywhere.
+//
 // The headers are not decoration. Statement.String returns only the SQL, so a driver that moves a
 // statement outside its transaction would otherwise produce a byte-identical file — a change to
 // what actually runs, with a green test. And separating statements by blank lines alone cannot

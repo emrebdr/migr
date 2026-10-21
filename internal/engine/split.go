@@ -173,7 +173,7 @@ func (e *executor) runPieces(ctx context.Context, ready *prepared, p part) error
 			continue
 		}
 
-		if err := e.exec(ctx, ready.compiled.Steps[pc.at].Statements[pc.from:pc.to]); err != nil {
+		if err := e.exec(ctx, ready.compiled.Steps[pc.at].Op, ready.compiled.Steps[pc.at].Statements[pc.from:pc.to]); err != nil {
 			return err
 		}
 	}
@@ -184,7 +184,7 @@ func (e *executor) runPieces(ctx context.Context, ready *prepared, p part) error
 // runBare runs a part outside any transaction, recording how far it got after every statement.
 func (e *executor) runBare(ctx context.Context, ready *prepared, rec *history.Record, p part, last bool) error {
 	for i, pc := range p.pieces {
-		if err := e.exec(ctx, ready.compiled.Steps[pc.at].Statements[pc.from:pc.to]); err != nil {
+		if err := e.exec(ctx, ready.compiled.Steps[pc.at].Op, ready.compiled.Steps[pc.at].Statements[pc.from:pc.to]); err != nil {
 			return err
 		}
 

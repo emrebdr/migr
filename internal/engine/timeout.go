@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/emrebdr/migr/internal/driver"
 )
 
 // Bound names which limit a run ran past, by the migr.yaml key an operator raises.
@@ -16,10 +18,15 @@ const (
 	BoundStatement Bound = "safety.statement_timeout"
 	// BoundMigration is one migration's limit, its retries and their backoff included.
 	BoundMigration Bound = "safety.migration_timeout"
+	// BoundConcurrent is the limit of one statement that blocks no write, safety.concurrent_timeout.
+	BoundConcurrent Bound = "safety.concurrent_timeout"
 )
 
 // errStatementTimeout is the cause a statement's own deadline carries, which tells it from a cancel.
 var errStatementTimeout = errors.New("the statement ran past its bound")
+
+// errConcurrentTimeout is the cause the deadline of a statement that blocks no write carries.
+var errConcurrentTimeout = errors.New("the statement that blocks no write ran past its bound")
 
 // errMigrationTimeout is the cause a migration's own deadline carries.
 var errMigrationTimeout = errors.New("the migration ran past its bound")
@@ -70,11 +77,22 @@ func (e *executor) timedOut(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(cause, errStatementTimeout):
 		return &TimeoutError{Bound: BoundStatement, Limit: e.opts.StatementTimeout, Err: err}
+	case errors.Is(cause, errConcurrentTimeout):
+		return &TimeoutError{Bound: BoundConcurrent, Limit: e.opts.ConcurrentTimeout, Err: err}
 	case errors.Is(cause, errMigrationTimeout):
 		return &TimeoutError{Bound: BoundMigration, Limit: e.opts.MigrationTimeout, Err: err}
 	default:
 		return err
 	}
+}
+
+// boundFor derives the context one statement runs under, by whether it blocks any write.
+func (e *executor) boundFor(ctx context.Context, stmt driver.Statement) (context.Context, context.CancelFunc) {
+	if stmt.Unblocking {
+		return bounded(ctx, e.opts.ConcurrentTimeout, errConcurrentTimeout)
+	}
+
+	return e.statementBound(ctx)
 }
 
 // statementBound derives the context one statement runs under.

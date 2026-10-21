@@ -38,7 +38,7 @@ func TestStatementBoundariesSurviveRendering(t *testing.T) {
 }
 
 func TestTheGoldenFormatCoversEveryStatementField(t *testing.T) {
-	const covered = 2
+	const covered = 3
 
 	if fields := reflect.TypeOf(driver.Statement{}).NumField(); fields != covered {
 		t.Errorf("driver.Statement has %d fields but the renderer covers %d", fields, covered)
@@ -147,3 +147,10 @@ var (
 	_ driver.Compiler = (*silentCompiler)(nil)
 	_ driver.Compiler = (*namedCompiler)(nil)
 )
+
+func TestAStatementThatBlocksNoWriteSaysSoInItsHeader(t *testing.T) {
+	got := renderStatement(2, driver.Statement{SQL: "x;", NoTransaction: true, Unblocking: true})
+	if got != statementHeader+"2"+noTransaction+unblocking+"\nx;" {
+		t.Errorf("rendered %q", got)
+	}
+}

@@ -84,6 +84,12 @@ type Options struct {
 	Rewrote func(Rewrote)
 	// StatementTimeout bounds each statement and each chunk, and zero bounds none.
 	StatementTimeout time.Duration
+	// ConcurrentTimeout bounds each statement that blocks no write, in place of StatementTimeout, and zero bounds none.
+	ConcurrentTimeout time.Duration
+	// Repairer cleans up what a statement outside any transaction left behind, nil where nothing can.
+	Repairer driver.Repairer
+	// Repaired is told about every repair a run made, and an unset one tells nobody.
+	Repaired func(Cleanup)
 	// MigrationTimeout bounds each migration, its retries and their backoff included, and zero none.
 	MigrationTimeout time.Duration
 	// Phases is what each migration declares itself a step of, keyed by version, and nil where none does.

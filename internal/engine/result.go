@@ -47,6 +47,8 @@ type Run struct {
 	Retries int
 	// Rewritten is how many of its operations ran as a safer sequence (ADR 0085).
 	Rewritten int
+	// Repairs are what the run cleaned up after statements outside any transaction, a resume's included.
+	Repairs []Cleanup
 	// Shadow is what a shadow-table migration's cutover left, and nil for every other run (ADR 0089).
 	Shadow *ShadowRun
 }

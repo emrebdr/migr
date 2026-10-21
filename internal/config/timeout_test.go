@@ -49,3 +49,28 @@ func TestAMigrationTimeoutOfNothingIsRefused(t *testing.T) {
 		t.Errorf("a negative migration_timeout loaded, or failed without naming it: %v", err)
 	}
 }
+
+func TestAStatementThatBlocksNoWriteIsUnboundedUnlessMigrYAMLBoundsIt(t *testing.T) {
+	cfg, err := loadSeeding(t, "", "")
+	if err != nil || cfg.Safety.Concurrent() != 0 {
+		t.Fatalf("an unset concurrent_timeout resolved to %v (%v), want no bound", cfg, err)
+	}
+
+	bounded, err := loadSeeding(t, "safety:\n  concurrent_timeout: 2h\n", "")
+	if err != nil || bounded.Safety.Concurrent() != 2*time.Hour {
+		t.Fatalf("concurrent_timeout: 2h resolved to %v (%v)", bounded, err)
+	}
+
+	for _, block := range []string{
+		"safety:\n  concurrent_timeout: -1s\n",
+		"safety:\n  lock_timeout: 5s\n  concurrent_timeout: 5s\n",
+	} {
+		_, err := loadSeeding(t, block, "")
+		if _, found := fieldProblem(err, "safety.concurrent_timeout"); !found {
+			t.Errorf("%q loaded, or failed without naming safety.concurrent_timeout: %v", block, err)
+		}
+	}
+
+	t.Log("A concurrent build blocks no write, so it is bounded apart from statement_timeout; it")
+	t.Log("waits for its lock first, so a bound no longer than lock_timeout could never let it run.")
+}

@@ -31,6 +31,12 @@ type executor struct {
 	position int32
 	// from is how many of a migration's statements a resume skips, and zero for every other run.
 	from int32
+	// current is the migration whose statements are running, which a repair report names.
+	current migration.Migration
+	// repairs are what the running migration's statements were cleaned up after, until its run is reported.
+	repairs []Cleanup
+	// recheck is the position a resume reruns first, where whatever a stopped run left is repaired, and zero for none.
+	recheck int32
 	// committed is how many of a migration's statements are durable, which every part it finishes moves on.
 	committed int32
 	// shift is how many ordinals the rows of chunked runs in progress took beyond their own.
@@ -193,6 +199,7 @@ func (e *executor) perform(ctx context.Context, ready prepared) (Run, error) {
 		Duration:   rec.Duration,
 		Retries:    retried,
 		Rewritten:  ready.compiled.Rewritten(),
+		Repairs:    e.takeRepairs(),
 	}, nil
 }
 
@@ -217,6 +224,7 @@ func (e *executor) runRetrying(ctx context.Context, ready *prepared, rec *histor
 	var tried attempts
 
 	original := slices.Clone(ready.compiled.Steps)
+	e.current = ready.item.migration
 
 	for {
 		e.position = 0
@@ -226,7 +234,7 @@ func (e *executor) runRetrying(ctx context.Context, ready *prepared, rec *histor
 			return 0, tried.retries, nil
 		}
 
-		if ranBare(err) {
+		if ranBare(err) && !rerunnable(err) {
 			return survived, tried.retries, notRetriedBare(err)
 		}
 
@@ -305,7 +313,7 @@ func (e *executor) runStep(ctx context.Context, ready *prepared, at int) error {
 		step = expanded
 	}
 
-	return e.exec(ctx, step.Statements)
+	return e.exec(ctx, step.Op, step.Statements)
 }
 
 // expand compiles one deferred operation, holding it to statements this migration's transaction takes.
@@ -342,8 +350,8 @@ func (e *executor) reached(err error) int32 {
 	return e.position
 }
 
-// exec runs statements in order, skipping what has already run and naming the one that failed.
-func (e *executor) exec(ctx context.Context, stmts []driver.Statement) error {
+// exec runs one operation's statements in order, skipping what has already run and naming the one that failed.
+func (e *executor) exec(ctx context.Context, op ir.Operation, stmts []driver.Statement) error {
 	for _, stmt := range stmts {
 		e.position++
 
@@ -351,17 +359,28 @@ func (e *executor) exec(ctx context.Context, stmts []driver.Statement) error {
 			continue
 		}
 
-		if err := e.execBounded(ctx, stmt); err != nil {
+		done, err := e.repairBefore(ctx, op, stmt)
+		if err != nil {
 			return &StatementError{Position: e.position, Statement: stmt, Err: err}
+		}
+
+		if done {
+			continue
+		}
+
+		if err := e.execBounded(ctx, stmt); err != nil {
+			if err = e.repairAfter(ctx, op, stmt, err); err != nil {
+				return &StatementError{Position: e.position, Statement: stmt, Err: err}
+			}
 		}
 	}
 
 	return nil
 }
 
-// execBounded runs one statement under safety.statement_timeout, naming the bound where it was reached.
+// execBounded runs one statement under its bound, naming the bound where it was reached.
 func (e *executor) execBounded(ctx context.Context, stmt driver.Statement) error {
-	bound, cancel := e.statementBound(ctx)
+	bound, cancel := e.boundFor(ctx, stmt)
 	defer cancel()
 
 	return e.timedOut(bound, e.conn.Exec(bound, stmt))

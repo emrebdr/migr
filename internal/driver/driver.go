@@ -18,6 +18,8 @@ type Statement struct {
 	SQL string
 	// NoTransaction declares that this statement cannot run inside a transaction.
 	NoTransaction bool
+	// Unblocking declares that once its own lock is held it blocks no read or write, so no statement bound applies.
+	Unblocking bool
 }
 
 // String returns the statement text, so a plan can print a statement directly.

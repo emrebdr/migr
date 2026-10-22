@@ -14,10 +14,18 @@ func readable(privileges ...string) captureAnswer {
 	return captureAnswer{logBin: true, format: "ROW", image: "FULL", privileges: privileges}
 }
 
+// mariadbReadable is readable on MariaDB, which asks one privilege more.
+func mariadbReadable(privileges ...string) captureAnswer {
+	a := readable(privileges...)
+	a.mariadb = true
+
+	return a
+}
+
 func TestABinlogReaderIsPermittedOnlyWithEverySettingAndPrivilegeInPlace(t *testing.T) {
 	for name, a := range map[string]captureAnswer{
 		"mysql":   readable(privReplicationSlave, privReplicationClient),
-		"mariadb": readable(privReplicationSlave, privBinlogMonitor),
+		"mariadb": mariadbReadable(privReplicationSlave, privBinlogMonitor, privReplicaAdmin),
 	} {
 		if got := a.capture(); !got.Permitted {
 			t.Errorf("%s: a readable server was refused: %+v", name, got)
@@ -36,6 +44,7 @@ func TestABinlogReaderIsPermittedOnlyWithEverySettingAndPrivilegeInPlace(t *test
 		"slave":     {readable(privReplicationClient), "REPLICATION SLAVE"},
 		"client":    {readable(privReplicationSlave), "REPLICATION CLIENT"},
 		"unrelated": {readable("PROCESS"), "REPLICATION SLAVE"},
+		"replicas":  {mariadbReadable(privReplicationSlave, privBinlogMonitor), "REPLICATION MASTER ADMIN"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got := tc.answer.capture()

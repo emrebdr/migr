@@ -125,6 +125,7 @@ func TestAShadowTableMigrationIsRefusedBeforeAnythingIsCreatedNamingWhatEachServ
 			lacks: "wal_level = logical (it is replica"},
 		{name: "mysql80 without the replication grants", driver: "mysql",
 			dsn: "migr_plain:migr_plain@tcp(127.0.0.1:55480)/migr", lacks: "the REPLICATION SLAVE privilege"},
+		{name: "mariadb114", driver: "mysql", dsn: "migr:migr@tcp(127.0.0.1:55411)/migr", lacks: "log_bin = ON"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			config := shadowProject(t, tc.driver, tc.dsn)
@@ -155,8 +156,9 @@ func TestAShadowTableMigrationIsRefusedBeforeAnythingIsCreatedNamingWhatEachServ
 		})
 	}
 
-	t.Log("Each server that cannot capture refuses for its own reason: one for a setting, one for a")
-	t.Log("privilege -- and each before a copy or a stream exists. postgres17 runs one (M13-T15).")
+	t.Log("Each server that cannot capture refuses for its own reason: two for a setting, one for a")
+	t.Log("privilege -- and each before a copy or a stream exists. postgres17 runs one (M13-T15), and")
+	t.Log("mariadb114binlog does (M13-T17).")
 }
 
 // shadowRunTable keeps the run that cuts over apart from the refusals, whose state it would otherwise meet.
@@ -169,14 +171,21 @@ const shadowVersion = "20261020T140100"
 func mysqlSession(t *testing.T, historyTable string) driver.Conn {
 	t.Helper()
 
+	return mysqlSessionOn(t, mysql80DSN, historyTable)
+}
+
+// mysqlSessionOn opens that session on any server the mysql driver speaks to.
+func mysqlSessionOn(t *testing.T, dsn, historyTable string) driver.Conn {
+	t.Helper()
+
 	d, err := mysql.New(driver.Options{HistoryTable: historyTable})
 	if err != nil {
 		t.Fatalf("building the mysql driver: %v", err)
 	}
 
-	conn, err := d.Open(t.Context(), mysql80DSN)
+	conn, err := d.Open(t.Context(), dsn)
 	if err != nil {
-		t.Fatalf("opening a session on mysql80: %v", err)
+		t.Fatalf("opening a session on %s: %v", dsn, err)
 	}
 
 	t.Cleanup(func() { _ = conn.Close(context.WithoutCancel(t.Context())) })
@@ -186,6 +195,9 @@ func mysqlSession(t *testing.T, historyTable string) driver.Conn {
 
 // mysql80DSN is the compose MySQL whose test user holds the replication grants.
 const mysql80DSN = "migr:migr@tcp(127.0.0.1:55480)/migr"
+
+// mariadbBinlogDSN is the compose MariaDB writing a row-format binary log (M13-T17).
+const mariadbBinlogDSN = "migr:migr@tcp(127.0.0.1:55412)/migr"
 
 // confirmWhenSyncing confirms the cutover once the copy is held in sync, as migr cutover --confirm will.
 func confirmWhenSyncing(conn driver.Conn) chan error {
@@ -241,8 +253,19 @@ func retireLeft(t *testing.T, conn driver.Conn) {
 }
 
 func TestAShadowTableMigrationOnMySQLHoldsUntilConfirmedAndThenCutsOver(t *testing.T) {
-	config := shadowProjectIn(t, "mysql", mysql80DSN, shadowRunTable)
-	conn := mysqlSession(t, shadowRunTable)
+	for name, dsn := range map[string]string{"mysql80": mysql80DSN, "mariadb114binlog": mariadbBinlogDSN} {
+		t.Run(name, func(t *testing.T) {
+			holdsThenCutsOver(t, dsn)
+		})
+	}
+}
+
+// holdsThenCutsOver runs the shadow-table migration through a real migr up on one server, confirming it as it holds.
+func holdsThenCutsOver(t *testing.T, dsn string) {
+	t.Helper()
+
+	config := shadowProjectIn(t, "mysql", dsn, shadowRunTable)
+	conn := mysqlSessionOn(t, dsn, shadowRunTable)
 
 	t.Cleanup(func() {
 		if err := migr(t, config, "down", "--step", "2"); err != nil {

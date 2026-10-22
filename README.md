@@ -448,6 +448,11 @@ The reasoning behind each contract — including the options that were rejected 
 | [0088](docs/adr/0088-replica-lag-pacing.md) | A chunk waits while a replica trails, and a replica migr cannot read counts as trailing |
 | [0089](docs/adr/0089-shadow-table-lifecycle.md) | A shadow-table migration is four recorded stages, and the hold between copy and cutover has no end of its own |
 | [0090](docs/adr/0090-capture-capability.md) | Whether a server permits log-based capture is read from it at Open, and an unread answer permits nothing |
+| [0091](docs/adr/0091-mysql-binlog-shadow.md) | MySQL keeps a shadow table current from its binary log and swaps it in by RENAME under LOCK TABLES |
+| [0092](docs/adr/0092-postgres-online-indexes.md) | PostgreSQL builds and drops every index concurrently, and migr repairs what a stopped one leaves |
+| [0093](docs/adr/0093-operator-confirmed-cutover.md) | A held shadow table is a sixth state, its lag is recorded by the run holding it, and `migr cutover` confirms it |
+| [0094](docs/adr/0094-postgres-logical-shadow.md) | PostgreSQL keeps a shadow table current through a replication slot, and no slot outlives the migration that made it |
+| [0095](docs/adr/0095-mariadb-binlog-shadow.md) | MariaDB keeps a shadow table current from its binary log, and swaps it in through a rename queued behind a write lock |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

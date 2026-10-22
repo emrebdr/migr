@@ -590,8 +590,9 @@
 // from information_schema.USER_PRIVILEGES -- never SHOW GRANTS, which prints a password hash on
 // MariaDB -- into capability.Facts.Capture (M13-T16, ADR 0090). REPLICATION CLIENT is accepted under
 // MariaDB's 10.5 name, BINLOG MONITOR, too. A failed read is read as not permitted. MySQL alone also
-// needs binlog_row_value_options empty, since PARTIAL_JSON sends half an image, and says how long it
-// keeps its log -- binlog_expire_logs_seconds -- as the fact's Retention.
+// needs binlog_row_value_options empty, since PARTIAL_JSON sends half an image; MariaDB alone also needs
+// REPLICATION MASTER ADMIN, which its SHOW SLAVE HOSTS asks for (M13-T17). Both say how long they keep
+// their log -- binlog_expire_logs_seconds -- as the fact's Retention.
 //
 // # A shadow table, kept current from the binary log
 //
@@ -604,8 +605,9 @@
 // the text the server answers with -- an unsigned integer un-signed, an enum's label, a float as the
 // exact double it is, a timestamp in UTC -- and bound back by its column's class.
 //
-// shadow.go is the Shadower. Admits refuses MariaDB, MySQL before 8.0.13, foreign keys either way,
-// triggers, user-named checks and a type no replay renders. The shadow is CREATE TABLE ... LIKE, its
+// shadow.go is the Shadower. Admits refuses MariaDB before 11.4, MySQL before 8.0.13, foreign keys
+// either way, triggers, user-named checks on MySQL, a system-versioned table on MariaDB and a type no
+// replay renders. The shadow is CREATE TABLE ... LIKE, its
 // changes compiled against it, an alter_column expanded from the original's column. A chunk is INSERT
 // ... SELECT ... FOR SHARE ON DUPLICATE KEY UPDATE k = k, which keeps a replayed row, downgrades no
 // other error the way INSERT IGNORE would, and waits out a writer whose event is readable before its
@@ -614,4 +616,20 @@
 // over, RENAME TABLE of both and UNLOCK TABLES -- measured, a writer queued on the lock lands in the
 // new table. MySQL holds no server resource for a reader, so retention is what a detached hold rests
 // on, and migr plan prints it.
+//
+// # The same on MariaDB
+//
+// MariaDB 11.4 runs it too (M13-T17, ADR 0095), with four differences, each measured on 11.4.13. Its
+// log is read in go-mysql's MariaDB flavor: a group opens with its own GTID event and no BEGIN, and a
+// standalone group is one statement that commits itself. Its position is gtid:<domain>-<server>-<seq>
+// from @@gtid_binlog_pos, which every server writing a binary log has -- file:<name>:<offset> only
+// where it has binlogged nothing yet -- and a set the other variant recorded is refused naming it. Its
+// copy reads LOCK IN SHARE MODE, since FOR SHARE is a syntax error there, and waits out an in-flight
+// delete the same way. CREATE TABLE ... LIKE keeps every check's name, so none is refused.
+//
+// Its cutover is not MySQL's, because RENAME TABLE under LOCK TABLES is error 1192 and an ALTER TABLE
+// ... RENAME under the lock failed every queued writer with 1146. shadow_mariadb.go says how it works
+// instead: a holder locks the table, the session catches up and commits, a renamer queues RENAME TABLE,
+// a prober confirms the renamer holds every name sorting before the table's, and the holder unlocks --
+// the pending exclusive request is granted first and the queued writers land in the new table.
 package mysql

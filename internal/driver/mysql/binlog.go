@@ -22,14 +22,19 @@ import (
 // heartbeat moves nothing, since it is not in the log. The copy's own inserts into the shadow arrive
 // too, and are read and dropped by their table map.
 
+// On MariaDB a transaction opens with its own GTID event, domain-server-seq, and carries no BEGIN; a
+// group the event flags standalone is one statement that commits itself, which the statement event
+// ends. The annotate, checkpoint and GTID-list events MariaDB adds carry no change, and move only the
+// offset.
+
 // heartbeats are the event types a server sends an idle reader, which carry no place in the log.
 var heartbeats = []replication.EventType{replication.HEARTBEAT_EVENT, replication.HEARTBEAT_LOG_EVENT_V2}
 
 // The row event types, in the three kinds a change can be.
 var (
-	writeEvents  = []replication.EventType{replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2}
-	updateEvents = []replication.EventType{replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2, replication.PARTIAL_UPDATE_ROWS_EVENT}
-	deleteEvents = []replication.EventType{replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2}
+	writeEvents  = []replication.EventType{replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2, replication.MARIADB_WRITE_ROWS_COMPRESSED_EVENT_V1}
+	updateEvents = []replication.EventType{replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2, replication.PARTIAL_UPDATE_ROWS_EVENT, replication.MARIADB_UPDATE_ROWS_COMPRESSED_EVENT_V1}
+	deleteEvents = []replication.EventType{replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2, replication.MARIADB_DELETE_ROWS_COMPRESSED_EVENT_V1}
 )
 
 // consume folds one event into the stream, returning the changes of a transaction it committed.
@@ -56,6 +61,10 @@ func (s *binlogStream) fold(event *replication.BinlogEvent) ([]capture.Change, e
 		s.at = logPoint{file: string(e.NextLogName), offset: offsetOf(e.Position)}
 	case *replication.GTIDEvent:
 		return nil, s.beginGTID(e)
+	case *replication.MariadbGTIDEvent:
+		s.beginMariaDBGTID(e)
+
+		return nil, nil
 	case *replication.QueryEvent:
 		return s.query(e)
 	case *replication.XIDEvent:
@@ -98,6 +107,15 @@ func (s *binlogStream) beginGTID(e *replication.GTIDEvent) error {
 	s.next = next.String()
 
 	return nil
+}
+
+// beginMariaDBGTID opens the transaction a MariaDB GTID event begins, noting its GTID where the stream reads GTIDs.
+func (s *binlogStream) beginMariaDBGTID(e *replication.MariadbGTIDEvent) {
+	s.open = true
+
+	if s.gtid {
+		s.next = e.GTID.String()
+	}
 }
 
 // query handles a statement event: a transaction's BEGIN or COMMIT, or a statement that commits itself.

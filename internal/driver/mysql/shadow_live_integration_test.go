@@ -21,19 +21,25 @@ import (
 	"github.com/emrebdr/migr/internal/migration"
 )
 
-// A shadow-table migration is held to the done-when here, on both MySQL servers compose runs: mysql80,
-// whose position is a file and an offset, and mysql80gtid, whose position is a GTID set. Eight writers
+// A shadow-table migration is held to the done-when here, on the three servers compose runs with a
+// row-format binary log: mysql80, whose position is a file and an offset, mysql80gtid, whose position is
+// a GTID set, and mariadb114binlog, whose position is a MariaDB GTID (M13-T17). Eight writers
 // keep a table and an unchanged control table equal, one row of each per transaction, from before the
 // copy starts until after the cutover; the migration changes a column's type and widens another; and
 // the two tables are compared by row count and checksum once it has cut over. A writer that fails is a
 // failure of the migration, however it failed.
 
-// shadowServers are the servers a shadow-table migration runs against, one recording GTIDs and one not.
+// shadowServers are the servers a shadow-table migration runs against: a MySQL recording GTIDs, one not, and a MariaDB.
 var shadowServers = []server{
 	servers[0],
 	{name: "mysql80gtid", env: "MIGR_TEST_MYSQL80GTID_DSN", dsn: "migr:migr@tcp(127.0.0.1:55481)/migr",
 		variant: MySQL, major: 8, minor: 0},
+	mariadbBinlog,
 }
+
+// mariadbBinlog is the MariaDB writing a row-format binary log, whose positions are domain-server-seq.
+var mariadbBinlog = server{name: "mariadb114binlog", env: "MIGR_TEST_MARIADB114BINLOG_DSN",
+	dsn: "migr:migr@tcp(127.0.0.1:55412)/migr", variant: MariaDB, major: 11, minor: 4}
 
 // The staged migration's version, which every derived name carries, and the rows the table starts with.
 const (
@@ -59,7 +65,7 @@ type shadowCase struct {
 	pool *sql.DB
 }
 
-// eachShadowServer runs one case against both servers, each with a table and a history of its own.
+// eachShadowServer runs one case against every shadow server, each with a table and a history of its own.
 func eachShadowServer(t *testing.T, run func(t *testing.T, sc *shadowCase)) {
 	t.Helper()
 
@@ -127,7 +133,7 @@ func (sc *shadowCase) seed(t *testing.T) {
 			"flag enum('a','b','c') NOT NULL DEFAULT 'a', note text, seen timestamp(6) NULL) DEFAULT CHARSET="+characterSet+" COLLATE="+collation)
 	}
 
-	exec(t, sc.c, "SET SESSION cte_max_recursion_depth = 100000")
+	exec(t, sc.c, "SET SESSION "+recursionLimit(sc.s)+" = 100000")
 	exec(t, sc.c, "INSERT INTO "+quote(sc.table)+" (n, label, at, price, flag, note) WITH RECURSIVE seq(i) AS "+
 		"(SELECT 1 UNION ALL SELECT i + 1 FROM seq WHERE i < "+fmt.Sprint(seededRows)+") SELECT i, "+
 		"CONCAT('row ', i), TIMESTAMP('2026-01-01') + INTERVAL i SECOND + INTERVAL i MICROSECOND, "+
@@ -135,6 +141,15 @@ func (sc *shadowCase) seed(t *testing.T) {
 	exec(t, sc.c, "INSERT INTO "+quote(sc.table)+" (id, n, label, at) VALUES ("+fmt.Sprint(hiddenID)+", 0, 'gone', NOW())")
 	exec(t, sc.c, "DELETE FROM "+quote(sc.table)+" WHERE id = "+fmt.Sprint(hiddenID))
 	exec(t, sc.c, "INSERT INTO "+quote(sc.control)+" SELECT * FROM "+quote(sc.table))
+}
+
+// recursionLimit is the variable bounding a recursive CTE, which each variant names its own way.
+func recursionLimit(s server) string {
+	if s.variant == MariaDB {
+		return "max_recursive_iterations"
+	}
+
+	return "cte_max_recursion_depth"
 }
 
 // changes are the migration's operations: a column's type changed, and another widened.
@@ -394,7 +409,7 @@ func (sc *shadowCase) checkLoad(t *testing.T, w *writers) {
 func (sc *shadowCase) checkCutOver(t *testing.T) {
 	t.Helper()
 
-	if got := scalar(t, sc.c, "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = "+
+	if got := scalar(t, sc.c, "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = "+
 		"DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'n'", sc.table); got != "bigint" {
 		t.Errorf("n is %s after the cutover, want bigint", got)
 	}
@@ -431,7 +446,7 @@ func (sc *shadowCase) checkCounter(t *testing.T) {
 
 // positionKind names the form a server's recorded position takes.
 func positionKind(s server) string {
-	if s.name == "mysql80gtid" {
+	if s.name == "mysql80gtid" || s.variant == MariaDB {
 		return gtidPrefix
 	}
 
@@ -559,7 +574,7 @@ func (sc *shadowCase) checkAbandoned(t *testing.T) {
 		t.Errorf("abandoning left %s of the copy and the retired name behind", got)
 	}
 
-	if got := scalar(t, sc.c, "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = "+
+	if got := scalar(t, sc.c, "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = "+
 		"DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'n'", sc.table); got != "int" {
 		t.Errorf("abandoning left n as %s, want the original int", got)
 	}
@@ -571,9 +586,14 @@ func (sc *shadowCase) checkAbandoned(t *testing.T) {
 
 	id := freeID(engine.CaptureName(sc.table, stagedVersion), nil)
 
-	rows, err := sc.c.runner().QueryContext(t.Context(), "SHOW REPLICAS")
+	listing := "SHOW REPLICAS"
+	if sc.s.variant == MariaDB {
+		listing = "SHOW SLAVE HOSTS"
+	}
+
+	rows, err := sc.c.runner().QueryContext(t.Context(), listing)
 	if err != nil {
-		t.Fatalf("SHOW REPLICAS: %v", err)
+		t.Fatalf("%s: %v", listing, err)
 	}
 
 	defer func() { _ = rows.Close() }()
@@ -616,29 +636,39 @@ func TestAbandoningAShadowMigrationAtAnyStageLeavesNoCopyNoReaderAndNoState(t *t
 }
 
 func TestATableChangedUnderAHeldShadowStopsTheMigrationNamingTheStatement(t *testing.T) {
-	sc := newShadowCase(t, shadowServers[0])
+	eachShadowServer(t, func(t *testing.T, sc *shadowCase) {
 
-	altered := false
+		altered := false
 
-	_, err := engine.Apply(t.Context(), sc.c, sc.options(t, func(p engine.ShadowProgress) {
-		if p.Holding && !altered {
-			altered = true
+		_, err := engine.Apply(t.Context(), sc.c, sc.options(t, func(p engine.ShadowProgress) {
+			if p.Holding && !altered {
+				altered = true
 
-			if _, err := sc.pool.ExecContext(context.Background(), "ALTER TABLE "+quote(sc.table)+
-				" ADD COLUMN extra int"); err != nil {
-				t.Errorf("altering the table under the hold: %v", err)
+				if _, err := sc.pool.ExecContext(context.Background(), "ALTER TABLE "+quote(sc.table)+
+					" ADD COLUMN extra int"); err != nil {
+					t.Errorf("altering the table under the hold: %v", err)
+				}
 			}
+		}))
+		if err == nil || !strings.Contains(err.Error(), "changed under this shadow-table migration") {
+			t.Fatalf("Apply returned %v, want the stream to stop naming the ALTER", err)
 		}
-	}))
-	if err == nil || !strings.Contains(err.Error(), "changed under this shadow-table migration") {
-		t.Fatalf("Apply returned %v, want the stream to stop naming the ALTER", err)
-	}
 
-	sc.abandon(t)
+		sc.abandon(t)
+	})
 }
 
 func TestAPositionTheServerPurgedIsRefusedNamingTheRetentionSetting(t *testing.T) {
-	sc := newShadowCase(t, shadowServers[1])
+	for _, s := range shadowServers[1:] {
+		t.Run(s.name, func(t *testing.T) {
+			purgedAfterAStop(t, newShadowCase(t, s))
+		})
+	}
+}
+
+// purgedAfterAStop stops a migration mid-copy, purges every log it read, and resumes it.
+func purgedAfterAStop(t *testing.T, sc *shadowCase) {
+	t.Helper()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -652,7 +682,7 @@ func TestAPositionTheServerPurgedIsRefusedNamingTheRetentionSetting(t *testing.T
 		t.Fatalf("the stopped run returned %v, want it canceled", err)
 	}
 
-	root, err := sql.Open("mysql", "root:migr@tcp(127.0.0.1:55481)/")
+	root, err := sql.Open("mysql", rootOf(sc.s))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -665,14 +695,7 @@ func TestAPositionTheServerPurgedIsRefusedNamingTheRetentionSetting(t *testing.T
 		}
 	}
 
-	var file, offset, doDB, ignoreDB, executed sql.NullString
-	if err := root.QueryRowContext(t.Context(), "SHOW MASTER STATUS").Scan(&file, &offset, &doDB, &ignoreDB, &executed); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := root.ExecContext(t.Context(), "PURGE BINARY LOGS TO '"+file.String+"'"); err != nil {
-		t.Fatalf("purging: %v", err)
-	}
+	purgeTo(t, root, firstColumn(t, root, "SHOW MASTER STATUS"))
 
 	_, err = engine.Apply(t.Context(), sc.c, sc.options(t, nil))
 	if err == nil || !strings.Contains(err.Error(), "binlog_expire_logs_seconds") {
@@ -680,6 +703,64 @@ func TestAPositionTheServerPurgedIsRefusedNamingTheRetentionSetting(t *testing.T
 	}
 
 	sc.abandon(t)
+}
+
+// rootOf is a server's root, which flushing and purging its log needs and migr never does.
+func rootOf(s server) string {
+	return strings.Replace(strings.TrimSuffix(s.dsnFor(), "migr"), "migr:migr@", "root:migr@", 1)
+}
+
+// purgeTo purges every log before one file, again until it is gone: MariaDB keeps a file its checkpoint still needs.
+func purgeTo(t *testing.T, root *sql.DB, file string) {
+	t.Helper()
+
+	for range 100 {
+		if _, err := root.ExecContext(t.Context(), "PURGE BINARY LOGS TO '"+file+"'"); err != nil {
+			t.Fatalf("purging: %v", err)
+		}
+
+		if firstColumn(t, root, "SHOW BINARY LOGS") == file {
+			return
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	t.Fatalf("the server still keeps the logs before %s", file)
+}
+
+// firstColumn reads the first column of a statement's first row, however many columns this server's answer has.
+func firstColumn(t *testing.T, root *sql.DB, query string) string {
+	t.Helper()
+
+	rows, err := root.QueryContext(t.Context(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	columns, err := rows.Columns()
+	if err != nil || !rows.Next() {
+		t.Fatalf("%s: %v", query, err)
+	}
+
+	values := make([]sql.NullString, len(columns))
+	targets := make([]any, len(values))
+
+	for i := range values {
+		targets[i] = &values[i]
+	}
+
+	if err := rows.Scan(targets...); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	return values[0].String
 }
 
 func TestANarrowingChangeThatWouldTruncateFailsTheCopyRatherThanTruncating(t *testing.T) {
@@ -704,35 +785,36 @@ func TestANarrowingChangeThatWouldTruncateFailsTheCopyRatherThanTruncating(t *te
 }
 
 func TestACatchUpThatOverrunsTheLockTimeoutReleasesTheLockAndSwapsNothing(t *testing.T) {
-	sc := newShadowCase(t, shadowServers[0])
-	shadow := driver.Shadow{Table: sc.table, Shadow: engine.ShadowName(sc.table, stagedVersion),
-		Retired: engine.RetiredName(sc.table, stagedVersion), Key: []string{"id"}}
+	eachShadowServer(t, func(t *testing.T, sc *shadowCase) {
+		shadow := driver.Shadow{Table: sc.table, Shadow: engine.ShadowName(sc.table, stagedVersion),
+			Retired: engine.RetiredName(sc.table, stagedVersion), Key: []string{"id"}}
 
-	if err := sc.c.History().Ensure(t.Context()); err != nil {
-		t.Fatalf("Ensure: %v", err)
-	}
+		if err := sc.c.History().Ensure(t.Context()); err != nil {
+			t.Fatalf("Ensure: %v", err)
+		}
 
-	exec(t, sc.c, "CREATE TABLE "+quote(shadow.Shadow)+" LIKE "+quote(sc.table))
-	sc.c.statementWait = 300 * time.Millisecond
+		exec(t, sc.c, "CREATE TABLE "+quote(shadow.Shadow)+" LIKE "+quote(sc.table))
+		sc.c.statementWait = 300 * time.Millisecond
 
-	err := sc.c.Cutover(t.Context(), shadow, func(ctx context.Context) error {
-		<-ctx.Done()
+		err := sc.c.Cutover(t.Context(), shadow, func(ctx context.Context) error {
+			<-ctx.Done()
 
-		return ctx.Err()
+			return ctx.Err()
+		})
+		if !errors.Is(err, driver.ErrStatementLockTimeout) {
+			t.Fatalf("an overrunning catch-up returned %v, want a lock wait the engine retries", err)
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+
+		if _, err := sc.pool.ExecContext(ctx, "UPDATE "+quote(sc.table)+" SET n = n WHERE id = 1"); err != nil {
+			t.Errorf("a writer could not reach the table after the overrun: %v", err)
+		}
+
+		if got := scalar(t, sc.c, "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = "+
+			"DATABASE() AND TABLE_NAME = ?", shadow.Retired); got != "0" {
+			t.Error("an overrunning catch-up swapped the tables anyway")
+		}
 	})
-	if !errors.Is(err, driver.ErrStatementLockTimeout) {
-		t.Fatalf("an overrunning catch-up returned %v, want a lock wait the engine retries", err)
-	}
-
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-
-	if _, err := sc.pool.ExecContext(ctx, "UPDATE "+quote(sc.table)+" SET n = n WHERE id = 1"); err != nil {
-		t.Errorf("a writer could not reach the table after the overrun: %v", err)
-	}
-
-	if got := scalar(t, sc.c, "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = "+
-		"DATABASE() AND TABLE_NAME = ?", shadow.Retired); got != "0" {
-		t.Error("an overrunning catch-up swapped the tables anyway")
-	}
 }

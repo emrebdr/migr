@@ -72,24 +72,42 @@ type position struct {
 	point logPoint
 }
 
-// parsePosition reads a recorded position back.
-func parsePosition(text capture.Position) (position, error) {
+// parsePosition reads a recorded position back, a GTID set in the flavor of the server it is read on.
+func parsePosition(text capture.Position, mariadb bool) (position, error) {
 	raw := string(text)
 
 	switch {
 	case strings.HasPrefix(raw, gtidPrefix):
-		set, err := gomysql.ParseMysqlGTIDSet(strings.TrimPrefix(raw, gtidPrefix))
-		if err != nil {
-			return position{}, fmt.Errorf("%w: %q: %w", errPosition, raw, err)
-		}
-
-		return position{gtid: set}, nil
+		return parseGTIDPosition(raw, mariadb)
 	case strings.HasPrefix(raw, filePrefix):
 		return parseFilePosition(raw)
 	default:
 		return position{}, fmt.Errorf("%w: %q begins with neither %q nor %q", errPosition, raw, gtidPrefix,
 			filePrefix)
 	}
+}
+
+// parseGTIDPosition reads a gtid:<set> position, refusing a set the other flavor of server recorded.
+func parseGTIDPosition(raw string, mariadb bool) (position, error) {
+	text := strings.TrimPrefix(raw, gtidPrefix)
+
+	parse, flavor, other := gomysql.ParseMysqlGTIDSet, "MySQL", gomysql.ParseMariadbGTIDSet
+	if mariadb {
+		parse, flavor, other = gomysql.ParseMariadbGTIDSet, "MariaDB", gomysql.ParseMysqlGTIDSet
+	}
+
+	set, err := parse(text)
+	if err == nil {
+		return position{gtid: set}, nil
+	}
+
+	if _, otherErr := other(text); otherErr == nil {
+		return position{}, fmt.Errorf("%w: %q is a GTID set the other flavor of server records, and this "+
+			"server is %s -- abandon the migration with migr resolve --rolled-back and run it again",
+			errPosition, raw, flavor)
+	}
+
+	return position{}, fmt.Errorf("%w: %q is not a %s GTID set: %w", errPosition, raw, flavor, err)
 }
 
 // parseFilePosition reads a file:<name>:<offset> position back.

@@ -25,10 +25,14 @@
 # a shadow-table migration keeps its copy current from, and mysql80gtid is the one MySQL that records
 # GTIDs (M13-T10): a shadow's position is a GTID set there and a file and offset on mysql80.
 #
+# mariadb114binlog is the one MariaDB writing a row-format binary log (M13-T17), so a shadow-table
+# migration runs on MariaDB there, its position a MariaDB GTID, while mariadb114 keeps log_bin off and
+# goes on refusing capture by name.
+#
 # Ports are non-default so this never collides with a server an operator is already running.
 # The DSNs matching these are the defaults in internal/driver/postgres and internal/driver/mysql;
 # override with MIGR_TEST_PG16_DSN, MIGR_TEST_PG17_DSN, MIGR_TEST_MYSQL80_DSN and
-# MIGR_TEST_MARIADB114_DSN.
+# MIGR_TEST_MARIADB114_DSN and MIGR_TEST_MARIADB114BINLOG_DSN.
 
 services:
   postgres16:
@@ -166,6 +170,26 @@ services:
       - "55411:3306"
     volumes:
       - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
+
+  # The same MariaDB writing a row-format binary log, so a shadow-table migration's position is a MariaDB
+  # GTID (domain-server-seq) here (M13-T17). Only the shadow-table suites use it.
+  mariadb114binlog:
+    image: mariadb:11.4
+    command: ["--log-bin=mariadb-bin", "--binlog-format=ROW", "--server-id=4"]
+    environment:
+      MARIADB_ROOT_PASSWORD: migr
+      MARIADB_USER: migr
+      MARIADB_PASSWORD: migr
+      MARIADB_DATABASE: migr
+    ports:
+      - "55412:3306"
+    volumes:
+      - ./initdb-mariadb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
       interval: 1s

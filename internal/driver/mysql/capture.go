@@ -33,6 +33,10 @@ const (
 	privBinlogMonitor     = "BINLOG MONITOR"
 )
 
+// privReplicaAdmin is what MariaDB from 10.5.2 asks of SHOW SLAVE HOSTS, which a reader lists every
+// replica's server id through so it never takes one: MariaDB disconnects one of two readers sharing an id.
+const privReplicaAdmin = "REPLICATION MASTER ADMIN"
+
 // The values the two settings must hold for every change to arrive as a whole row.
 const (
 	rowFormat = "ROW"
@@ -53,11 +57,13 @@ type captureAnswer struct {
 	expires int64
 	// privileges are this session's global privileges.
 	privileges []string
+	// mariadb reports a MariaDB server, which asks a further privilege of a reader.
+	mariadb bool
 }
 
 // readCapture asks whether this server permits a binlog reader, reading a failed answer as not permitted.
 func readCapture(ctx context.Context, c *mysqlConn, logBin bool, version serverVersion) capability.Capture {
-	a := captureAnswer{logBin: logBin}
+	a := captureAnswer{logBin: logBin, mariadb: version.Variant() == MariaDB}
 
 	if err := c.runner().QueryRowContext(ctx, binlogQuery).Scan(&a.format, &a.image); err != nil {
 		return capability.Lacks(fmt.Sprintf("an answer migr could read about binlog_format and "+
@@ -71,10 +77,10 @@ func readCapture(ctx context.Context, c *mysqlConn, logBin bool, version serverV
 			return capability.Lacks(fmt.Sprintf("an answer migr could read about "+
 				"binlog_row_value_options (%v)", err))
 		}
+	}
 
-		if err := c.runner().QueryRowContext(ctx, retentionQuery).Scan(&a.expires); err != nil {
-			a.expires = -1
-		}
+	if err := c.runner().QueryRowContext(ctx, retentionQuery).Scan(&a.expires); err != nil {
+		a.expires = -1
 	}
 
 	privileges, err := readPrivileges(ctx, c)
@@ -138,6 +144,11 @@ func (a captureAnswer) capture() capability.Capture {
 
 	if !slices.Contains(a.privileges, privReplicationClient) && !slices.Contains(a.privileges, privBinlogMonitor) {
 		missing = append(missing, "the REPLICATION CLIENT privilege on *.* (BINLOG MONITOR on MariaDB)")
+	}
+
+	if a.mariadb && !slices.Contains(a.privileges, privReplicaAdmin) {
+		missing = append(missing, "the REPLICATION MASTER ADMIN privilege on *.*, which MariaDB asks before "+
+			"it lists the replicas whose server ids a reader must not take")
 	}
 
 	if len(missing) > 0 {

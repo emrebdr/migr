@@ -20,7 +20,7 @@ func TestARecordedPositionReadsBackAsTheOneSpelled(t *testing.T) {
 		"gtid:4ba4da4e-ccba-11f1-8f15-d23d22d3c78b:1-15",
 		"gtid:",
 	} {
-		got, err := parsePosition(text)
+		got, err := parsePosition(text, false)
 		if err != nil {
 			t.Fatalf("parsePosition(%q): %v", text, err)
 		}
@@ -32,7 +32,7 @@ func TestARecordedPositionReadsBackAsTheOneSpelled(t *testing.T) {
 
 	for _, text := range []capture.Position{"", "binlog.000002:157", "file:binlog.000002", "file:binlog.000002:x",
 		"file:binlog.000002:3", "gtid:not-a-set"} {
-		if _, err := parsePosition(text); err == nil {
+		if _, err := parsePosition(text, false); err == nil {
 			t.Errorf("parsePosition(%q) read a position the driver never records", text)
 		}
 	}
@@ -371,7 +371,7 @@ func TestTheShadowerRefusesWhatACopyWouldGetWrong(t *testing.T) {
 
 func TestAServerTheReaderCannotReadIsRefusedByName(t *testing.T) {
 	for v, says := range map[serverVersion]string{
-		{variant: MariaDB, major: 11, minor: 4}:         "reads MySQL's binary log and not MariaDB's",
+		{variant: MariaDB, major: 10, minor: 11}:        "measured from 11.4",
 		{variant: MySQL, major: 8, minor: 0, patch: 12}: "8.0.13",
 	} {
 		if got := streamRefusal(v); !strings.Contains(got, says) {
@@ -381,6 +381,10 @@ func TestAServerTheReaderCannotReadIsRefusedByName(t *testing.T) {
 
 	if got := streamRefusal(serverVersion{variant: MySQL, major: 8, minor: 0, patch: 13}); got != "" {
 		t.Errorf("8.0.13 was refused: %s", got)
+	}
+
+	if got := streamRefusal(serverVersion{variant: MariaDB, major: 11, minor: 4}); got != "" {
+		t.Errorf("MariaDB 11.4, where the cutover was measured, was refused: %s", got)
 	}
 }
 

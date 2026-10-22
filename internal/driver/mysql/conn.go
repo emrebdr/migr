@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	sqldriver "database/sql/driver"
 	"errors"
 	"fmt"
 	"time"
@@ -60,6 +61,8 @@ type mysqlConn struct {
 	id int64
 	// killer is the pool a kill is sent from, so stopping a statement never closes this session.
 	killer killer
+	// connector opens the connections a MariaDB cutover locks, renames and probes from, beside this session.
+	connector sqldriver.Connector
 	// replicas are the servers migr.yaml names as this one's replicas, whose lag paces a backfill.
 	replicas []*replica
 	// statementWait is safety.lock_timeout, which also bounds how long a cutover keeps writers waiting.

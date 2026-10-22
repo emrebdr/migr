@@ -81,6 +81,12 @@ func TestEachServerDeclaresBinlogCaptureAsItIsConfigured(t *testing.T) {
 		}
 	})
 
+	logged := openServer(t, mariadbBinlog, driver.Options{HistoryTable: uniqueName(t)}).Capabilities().Capture()
+	if !logged.Permitted || !strings.Contains(logged.Retention, "binlog_expire_logs_seconds") {
+		t.Errorf("a MariaDB writing a row-format log declares %+v, want capture permitted and its retention named",
+			logged)
+	}
+
 	plain := openServer(t, server{name: "mysql80", dsn: "migr_plain:migr_plain@tcp(127.0.0.1:55480)/migr"},
 		driver.Options{HistoryTable: uniqueName(t)})
 

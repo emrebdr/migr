@@ -152,6 +152,7 @@ func (d *mysqlDriver) Open(ctx context.Context, dsn string) (driver.Conn, error)
 	}
 
 	session.killer = newKiller(connector)
+	session.connector = connector
 	session.replicas = replicas
 
 	return session, nil

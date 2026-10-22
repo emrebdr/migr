@@ -46,6 +46,10 @@ const foreignKeyQuery = "SELECT CONSTRAINT_NAME, TABLE_NAME FROM information_sch
 const triggerQuery = "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() " +
 	"AND EVENT_OBJECT_TABLE = ? ORDER BY TRIGGER_NAME"
 
+// versionedQuery names a table where it is MariaDB's system-versioned kind.
+const versionedQuery = "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() " +
+	"AND TABLE_NAME = ? AND TABLE_TYPE = 'SYSTEM VERSIONED'"
+
 // autoIncrementOption reads the next AUTO_INCREMENT value out of a SHOW CREATE TABLE.
 var autoIncrementOption = regexp.MustCompile(`\) .*AUTO_INCREMENT=(\d+)`)
 
@@ -87,7 +91,7 @@ func (c *mysqlConn) Admits(ctx context.Context, s driver.Shadow) error {
 	var problems []string
 
 	for _, read := range []func(context.Context, string) (string, error){
-		c.foreignKeysOf, c.triggersOf, c.namedChecksOf, c.unreplayableOf,
+		c.foreignKeysOf, c.triggersOf, c.namedChecksOf, c.versionedOf, c.unreplayableOf,
 	} {
 		problem, err := read(ctx, table)
 		if err != nil {
@@ -128,8 +132,12 @@ func (c *mysqlConn) triggersOf(ctx context.Context, table string) (string, error
 		"carry to the retired original", nil
 }
 
-// namedChecksOf says which checks carry a name of their own, which CREATE TABLE ... LIKE renames.
+// namedChecksOf says which checks carry a name of their own, which CREATE TABLE ... LIKE renames on MySQL alone.
 func (c *mysqlConn) namedChecksOf(ctx context.Context, table string) (string, error) {
+	if c.version.Variant() == MariaDB {
+		return "", nil
+	}
+
 	checks, err := c.names(ctx, checkQuery, table)
 	if err != nil {
 		return "", err
@@ -151,6 +159,21 @@ func (c *mysqlConn) namedChecksOf(ctx context.Context, table string) (string, er
 
 	return "has the named checks " + strings.Join(named, ", ") + ", which CREATE TABLE ... LIKE renames " +
 		"on the shadow, so they would not survive the cutover by name", nil
+}
+
+// versionedOf says whether a table keeps system-versioned history, which MariaDB alone does and a copy would not carry.
+func (c *mysqlConn) versionedOf(ctx context.Context, table string) (string, error) {
+	if c.version.Variant() != MariaDB {
+		return "", nil
+	}
+
+	versioned, err := c.names(ctx, versionedQuery, table)
+	if err != nil || len(versioned) == 0 {
+		return "", err
+	}
+
+	return "is SYSTEM VERSIONED, and a copy carries its current rows and none of the history the " +
+		"retired original would keep", nil
 }
 
 // unreplayableOf says which columns hold a type no captured change can be replayed into.
@@ -385,7 +408,7 @@ func (c *mysqlConn) copyChunk(ctx context.Context, s driver.Shadow, after []stri
 	}
 
 	statement := shape.write(s.Key, len(after) > 0, found) + " ORDER BY " + quoteAll(s.Key) +
-		" FOR SHARE ON DUPLICATE KEY UPDATE " + quote(s.Key[0]) + " = " + quote(s.Shadow) + "." + quote(s.Key[0])
+		c.shareLock() + " ON DUPLICATE KEY UPDATE " + quote(s.Key[0]) + " = " + quote(s.Shadow) + "." + quote(s.Key[0])
 
 	args := spelled(after)
 	if found {
@@ -407,6 +430,15 @@ func (c *mysqlConn) copyChunk(ctx context.Context, s driver.Shadow, after []stri
 	}
 
 	return driver.Sliced{Written: copied, Last: bound}, nil
+}
+
+// shareLock is the clause a copy reads its rows under, which MariaDB spells the older way and refuses FOR SHARE.
+func (c *mysqlConn) shareLock() string {
+	if c.version.Variant() == MariaDB {
+		return " LOCK IN SHARE MODE"
+	}
+
+	return " FOR SHARE"
 }
 
 // copyBound reads the key of the last row a copy chunk covers, and reports none when fewer rows remain.
@@ -628,6 +660,10 @@ func (c *mysqlConn) inUTC(ctx context.Context) (func() error, error) {
 func (c *mysqlConn) Cutover(ctx context.Context, s driver.Shadow, catchUp driver.CatchUp) (err error) {
 	if _, err := c.pairOf(ctx, s); err != nil {
 		return err
+	}
+
+	if c.version.Variant() == MariaDB {
+		return c.cutoverMariaDB(ctx, s, catchUp)
 	}
 
 	locked := "LOCK TABLES " + quote(s.Table) + " WRITE, " + quote(s.Shadow) + " WRITE, " +

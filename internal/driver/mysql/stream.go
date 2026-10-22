@@ -36,6 +36,12 @@ const errPurged = 1236
 // gtidModeOn is how @@gtid_mode spells a server recording a GTID for every transaction.
 const gtidModeOn = "ON"
 
+// The oldest MariaDB release a shadow table's cutover was measured on, and is relied on from.
+const (
+	mariadbFloorMajor = 11
+	mariadbFloorMinor = 4
+)
+
 // Capture opens a stream of one table's row changes read from the server's binary log, on connections of its own.
 func (d *mysqlDriver) Capture(ctx context.Context, dsn string, req capture.Request) (capture.Stream, error) {
 	if err := req.Validate(); err != nil {
@@ -90,8 +96,10 @@ type binlogStream struct {
 	columns []sourceColumn
 	// key are the indexes of the primary key's columns in columns.
 	key []int
-	// gtid reports a server recording GTIDs, whose position is a GTID set.
+	// gtid reports a stream whose position is a GTID set.
 	gtid bool
+	// mariadb reports a MariaDB server, whose GTIDs are domain-server-seq and whose log is read as its flavor.
+	mariadb bool
 	// start is where the stream began.
 	start capture.Position
 	// at is the file and offset of the last event read.
@@ -134,7 +142,7 @@ func openStream(ctx context.Context, db *sql.DB, source parsed, req capture.Requ
 		return nil, err
 	}
 
-	config, err := syncerConfig(source, id)
+	config, err := syncerConfig(source, id, s.mariadb)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +160,7 @@ func openStream(ctx context.Context, db *sql.DB, source parsed, req capture.Requ
 
 // readServer reads the server's version and whether it records GTIDs, refusing a server this reader cannot read.
 func (s *binlogStream) readServer(ctx context.Context) error {
-	var reported, comment, mode string
+	var reported, comment string
 
 	if err := s.db.QueryRowContext(ctx, versionQuery).Scan(&reported, &comment); err != nil {
 		return fmt.Errorf("reading the server's version for a change stream: %w", err)
@@ -167,12 +175,23 @@ func (s *binlogStream) readServer(ctx context.Context) error {
 		return fmt.Errorf("%w: %s", capture.ErrUnsupported, refusal)
 	}
 
+	s.version, s.mariadb = version, version.Variant() == MariaDB
+
+	if s.mariadb {
+		if err := s.db.QueryRowContext(ctx, "SELECT @@lower_case_table_names").Scan(&s.folding); err != nil {
+			return fmt.Errorf("reading how the server folds table names: %w", err)
+		}
+
+		return nil
+	}
+
+	var mode string
 	if err := s.db.QueryRowContext(ctx, "SELECT @@global.gtid_mode, @@lower_case_table_names").
 		Scan(&mode, &s.folding); err != nil {
 		return fmt.Errorf("reading whether the server records GTIDs: %w", err)
 	}
 
-	s.version, s.gtid = version, strings.EqualFold(mode, gtidModeOn)
+	s.gtid = strings.EqualFold(mode, gtidModeOn)
 
 	return nil
 }
@@ -180,9 +199,12 @@ func (s *binlogStream) readServer(ctx context.Context) error {
 // streamRefusal says why this reader cannot read a server's log, and nothing where it can.
 func streamRefusal(v serverVersion) string {
 	switch {
+	case v.Variant() == MariaDB && !v.AtLeast(MariaDB, mariadbFloorMajor, mariadbFloorMinor):
+		return fmt.Sprintf("a shadow table's cutover on MariaDB was measured from %d.%d, where RENAME TABLE "+
+			"queued behind a write lock is let through before the writers it holds back, and this server is %s",
+			mariadbFloorMajor, mariadbFloorMinor, v)
 	case v.Variant() == MariaDB:
-		return "the mysql driver reads MySQL's binary log and not MariaDB's, whose GTIDs and cutover " +
-			"locking differ, so a shadow-table migration is refused on MariaDB"
+		return ""
 	case !v.AtLeastPatch(MySQL, 8, 0, 13):
 		return fmt.Sprintf("a shadow table's cutover renames it under LOCK TABLES, which MySQL allows "+
 			"from 8.0.13, and this server is %s", v)
@@ -251,6 +273,10 @@ type logEnd struct {
 
 // readEnd reads where the log ends now, the way this server's release asks.
 func (s *binlogStream) readEnd(ctx context.Context) (logEnd, error) {
+	if s.mariadb {
+		return s.readMariaDBEnd(ctx)
+	}
+
 	query := "SHOW MASTER STATUS"
 	if s.version.AtLeast(MySQL, 8, 2) {
 		query = "SHOW BINARY LOG STATUS"
@@ -285,8 +311,45 @@ func (s *binlogStream) readEnd(ctx context.Context) (logEnd, error) {
 	return end, nil
 }
 
+// readMariaDBEnd reads where a MariaDB log ends: its four-column status, then the GTID of every binlogged transaction.
+func (s *binlogStream) readMariaDBEnd(ctx context.Context) (logEnd, error) {
+	var (
+		file, offset, doDB, ignoreDB sql.NullString
+		executed                     string
+		end                          logEnd
+	)
+
+	if err := s.db.QueryRowContext(ctx, "SHOW BINLOG STATUS").Scan(&file, &offset, &doDB, &ignoreDB); err != nil {
+		return logEnd{}, fmt.Errorf("reading where the binary log ends (SHOW BINLOG STATUS): %w", err)
+	}
+
+	at, err := strconv.ParseUint(offset.String, 10, 32)
+	if err != nil {
+		return logEnd{}, fmt.Errorf("reading where the binary log ends: %q is not an offset", offset.String)
+	}
+
+	end.point = logPoint{file: file.String, offset: uint32(at)}
+
+	if err := s.db.QueryRowContext(ctx, "SELECT @@global.gtid_binlog_pos, UNIX_TIMESTAMP()").
+		Scan(&executed, &end.now); err != nil {
+		return logEnd{}, fmt.Errorf("reading the server's binlogged GTIDs and its clock: %w", err)
+	}
+
+	if s.gtid {
+		if end.gtid, err = gomysql.ParseMariadbGTIDSet(executed); err != nil {
+			return logEnd{}, fmt.Errorf("reading the server's binlogged GTIDs %q: %w", executed, err)
+		}
+	}
+
+	return end, nil
+}
+
 // startingPoint returns where the stream starts: the recorded position, or where the log ends now.
 func (s *binlogStream) startingPoint(ctx context.Context, from capture.Position) (position, error) {
+	if s.mariadb {
+		return s.mariadbStartingPoint(ctx, from)
+	}
+
 	if from == "" {
 		end, err := s.readEnd(ctx)
 		if err != nil {
@@ -300,7 +363,7 @@ func (s *binlogStream) startingPoint(ctx context.Context, from capture.Position)
 		return position{point: end.point}, nil
 	}
 
-	recorded, err := parsePosition(from)
+	recorded, err := parsePosition(from, false)
 	if err != nil {
 		return position{}, err
 	}
@@ -312,6 +375,38 @@ func (s *binlogStream) startingPoint(ctx context.Context, from capture.Position)
 	}
 
 	return recorded, nil
+}
+
+// mariadbStartingPoint starts a MariaDB stream at a GTID where the server has binlogged one, and at a file and offset where not.
+func (s *binlogStream) mariadbStartingPoint(ctx context.Context, from capture.Position) (position, error) {
+	if from != "" {
+		recorded, err := parsePosition(from, true)
+		if err != nil {
+			return position{}, err
+		}
+
+		s.gtid = recorded.gtid != nil
+
+		return recorded, nil
+	}
+
+	var executed string
+	if err := s.db.QueryRowContext(ctx, "SELECT @@global.gtid_binlog_pos").Scan(&executed); err != nil {
+		return position{}, fmt.Errorf("reading the server's binlogged GTIDs: %w", err)
+	}
+
+	s.gtid = strings.TrimSpace(executed) != ""
+
+	end, err := s.readEnd(ctx)
+	if err != nil {
+		return position{}, err
+	}
+
+	if s.gtid {
+		return position{gtid: end.gtid}, nil
+	}
+
+	return position{point: end.point}, nil
 }
 
 // recordedOrNot says whether a server records GTIDs, for a refusal naming both.
@@ -406,10 +501,15 @@ func replicaIDs(rows *sql.Rows) (map[uint32]bool, error) {
 }
 
 // syncerConfig is the replication connection's configuration, read from the connection string the session uses.
-func syncerConfig(source parsed, id uint32) (replication.BinlogSyncerConfig, error) {
+func syncerConfig(source parsed, id uint32, mariadb bool) (replication.BinlogSyncerConfig, error) {
+	flavor := gomysql.MySQLFlavor
+	if mariadb {
+		flavor = gomysql.MariaDBFlavor
+	}
+
 	c := source.config
 	config := replication.BinlogSyncerConfig{
-		ServerID: id, Flavor: gomysql.MySQLFlavor, User: c.User, Password: c.Passwd,
+		ServerID: id, Flavor: flavor, User: c.User, Password: c.Passwd,
 		TLSConfig: c.TLS, TimestampStringLocation: time.UTC, HeartbeatPeriod: heartbeat,
 		ReadTimeout: readTimeout, DisableRetrySync: true, Logger: slog.New(slog.DiscardHandler),
 	}

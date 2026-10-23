@@ -292,7 +292,7 @@ func TestCommandsThatNeedASettledDatabaseNameTheCutoverOverAWaitingMigration(t *
 			dir, _, drivers := waitingProject(t)
 
 			_, _, err := at(t, dir, drivers, noon.Add(time.Hour), command)
-			if ExitCode(err) != ExitRuntime || !strings.Contains(err.Error(), "migr cutover --confirm") {
+			if ExitCode(err) != ExitRuntime || !strings.Contains(said(err), "migr cutover --confirm") {
 				t.Errorf("migr %s over a waiting migration exited %d: %v", command, ExitCode(err), err)
 			}
 		})

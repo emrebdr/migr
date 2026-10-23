@@ -76,6 +76,8 @@ var codes = []coded{
 		want: ExitValidation},
 	{name: "a filename the grammar refuses", command: "up", stage: stagedUnnamed,
 		want: ExitValidation},
+	{name: "a README in the migrations directory", command: "up", stage: stagedReadme,
+		want: ExitValidation},
 	{name: "a migrations directory that is not there", command: "up", stage: stagedNoDirectory,
 		want: ExitRuntime},
 	{name: "a migration file that will not open", command: "up", stage: stagedUnreadable,
@@ -137,6 +139,8 @@ var codes = []coded{
 		args: []string{"--require-safe"}, stage: stagedCostly, want: ExitLockImpact},
 	{name: "a rule this build does not ship", command: "validate", stage: stagedUnknownRule,
 		want: ExitValidation},
+	{name: "a config value that will not decode", command: "up", stage: stagedUndecodable,
+		want: ExitValidation},
 	{name: "a migration nothing can undo", command: "validate", stage: stagedOneWay,
 		want: ExitValidation},
 	{name: "resolve over a database with nothing between states", command: "resolve",
@@ -155,9 +159,9 @@ var codes = []coded{
 	{name: "a language nothing writes a generated migration in", command: "diff",
 		stage: stagedApplied, want: ExitValidation},
 	{name: "a diff over a database with migrations still to run", command: "diff",
-		stage: pendingGoProject, want: ExitRuntime, scripted: true},
+		stage: pendingGoProjectAfterNoon, want: ExitRuntime, scripted: true},
 	{name: "a name the filename grammar refuses", command: "diff", args: []string{"Not-A-Name"},
-		stage: stagedApplied, want: ExitValidation},
+		stage: appliedGoProjectAfterNoon, want: ExitValidation, scripted: true},
 	{name: "the migration lock a diff takes to read", command: "diff",
 		stage: lockedGoProject, want: ExitLock, scripted: true},
 	{name: "seed", command: "seed", stage: stagedSeedable, want: ExitOK},
@@ -588,6 +592,16 @@ func stagedUnknownRule(t *testing.T) (string, *fake, *driver.Registry) {
 	return dir, f, drivers
 }
 
+// stagedUndecodable is a project whose migr.yaml carries a value of the wrong shape for its key.
+func stagedUndecodable(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := project(t, twoTables()...)
+	write(t, filepath.Join(dir, config.DefaultFilename), projectConfig+"safety:\n  lock_timeout: soon\n")
+
+	return dir, f, drivers
+}
+
 // stagedUnreachable is a project whose database answers nothing, which --connect must fail over.
 func stagedUnreachable(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
@@ -742,6 +756,16 @@ func stagedUnparsable(t *testing.T) (string, *fake, *driver.Registry) {
 	return dir, f, drivers
 }
 
+// stagedReadme is a project whose migrations directory holds a README, which discovery refuses.
+func stagedReadme(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := project(t, twoTables()...)
+	write(t, filepath.Join(dir, scaffoldDir, "README.md"), "# migrations\n")
+
+	return dir, f, drivers
+}
+
 // stagedUnnamed is a project holding a file the migration grammar refuses to name.
 func stagedUnnamed(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
@@ -791,7 +815,7 @@ func stagedUnroutable(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
 	dir, f, drivers := staged(t)
-	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_add_other.py"), "def up(s):\n    pass\n")
+	write(t, filepath.Join(dir, scaffoldDir, versionAt(2)+"_add_other.py"), "def up(s):\n    pass\n")
 
 	return dir, f, drivers
 }

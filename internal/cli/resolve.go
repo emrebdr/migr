@@ -11,6 +11,7 @@ import (
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // errNoRepair marks a resolution that named none of the three things it could do.
@@ -81,11 +82,12 @@ func (r asking) repair() (engine.Repair, error) {
 	}
 
 	if len(chosen) == 0 {
-		return engine.Repair{}, errNoRepair
+		return engine.Repair{}, remedy.With(errNoRepair, "pass one of them: migr status shows the "+
+			"migration between states, and --dry-run prints what each would do")
 	}
 
 	if len(chosen) > 1 {
-		return engine.Repair{}, errSeveralRepairs
+		return engine.Repair{}, remedy.With(errSeveralRepairs, "pass only one of them")
 	}
 
 	return engine.Repair{Mode: chosen[0], Reason: r.reason, DryRun: r.dry}, nil

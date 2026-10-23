@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // sdkManifest is the file the probe resolves, and one of the two paths @migr/sdk exports at all.
@@ -40,9 +42,9 @@ func executableIn(path string) (string, error) {
 	at := filepath.Join(filepath.Dir(path), filepath.FromSlash(named))
 
 	if _, err := os.Stat(at); err != nil {
-		return "", fmt.Errorf("%w: the package at %s names %s, which is not there -- an installed "+
-			"@migr/sdk ships it, and a linked one needs `npm run build` first",
-			ErrNoExecutable, filepath.Dir(path), named)
+		return "", remedy.With(fmt.Errorf("%w: the package at %s names %s, which is not there",
+			ErrNoExecutable, filepath.Dir(path), named),
+			"reinstall @migr/sdk with npm install; a linked checkout of it needs npm run build first")
 	}
 
 	return at, nil

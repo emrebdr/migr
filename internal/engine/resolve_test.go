@@ -8,6 +8,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // resumable stages a session a run left between states, with the statements it ran already behind it.
@@ -242,8 +243,8 @@ func TestAResumeIsRefusedWhenTheFileMovedSinceTheRunThatStopped(t *testing.T) {
 	}
 
 	if !strings.Contains(err.Error(), "stopped partway") ||
-		!strings.Contains(err.Error(), "--rolled-back") {
-		t.Errorf("the refusal reads as one about an applied migration:\n%v", err)
+		!strings.Contains(remedy.Of(err), "--rolled-back") {
+		t.Errorf("the refusal reads as one about an applied migration:\n%v\nnext: %s", err, remedy.Of(err))
 		t.Log("Both refusals are drift and both exit 4, but only one of the two can be resumed,")
 		t.Log("so the advice they give an operator is not the same advice.")
 	}

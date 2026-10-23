@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/runtime"
 )
 
@@ -165,7 +166,7 @@ func TestAProjectWithNoSDKIsToldHowToInstallOne(t *testing.T) {
 	}
 
 	for _, want := range []string{root, "npm install @migr/sdk"} {
-		if !strings.Contains(err.Error(), want) {
+		if !strings.Contains(err.Error()+"\n"+remedy.Of(err), want) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
 		}
 	}
@@ -184,7 +185,7 @@ func TestAnSDKThatWasNeverBuiltSaysSoRatherThanNamingAMissingFile(t *testing.T) 
 	}
 
 	for _, want := range []string{filepath.Dir(manifest), "npm run build"} {
-		if !strings.Contains(err.Error(), want) {
+		if !strings.Contains(err.Error()+"\n"+remedy.Of(err), want) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
 		}
 	}

@@ -182,10 +182,12 @@ export interface Status {
 
 /** Failure is what migr reported when a command failed, which --json makes one document. */
 export interface Failure {
-  /** The exit code, which CLAUDE.md §5 gives five meanings. */
+  /** The exit code, which CLAUDE.md §5 gives seven meanings. */
   code: number;
   /** What went wrong, as the one line a failing command writes. */
   error: string;
+  /** What migr says to do about it, which every failure carries. */
+  next?: string;
 }
 
 /** Project is a staged project with a database of its own, and the commands run against it. */

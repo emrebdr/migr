@@ -91,7 +91,7 @@ func TestReachingAStepWithNoReleaseIsAValidationFailureBeforeAnythingRuns(t *tes
 		t.Errorf("a run naming no release applied %d migrations before refusing", len(f.runs))
 	}
 
-	if !strings.Contains(err.Error(), "--release") || !strings.Contains(err.Error(), releaseVariable) {
+	if !strings.Contains(said(err), "--release") || !strings.Contains(said(err), releaseVariable) {
 		t.Errorf("the refusal does not name the remedy: %v", err)
 	}
 }

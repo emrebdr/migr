@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // ErrPhase marks phase declarations that do not describe a change a deploy can carry out in order.
@@ -77,7 +79,9 @@ func Gates(ordered []Migration, phases Phases) (map[string]Gate, error) {
 	}
 
 	if len(problems) > 0 {
-		return nil, fmt.Errorf("%w:\n%w", ErrPhase, errors.Join(problems...))
+		return nil, remedy.With(fmt.Errorf("%w:\n%w", ErrPhase, errors.Join(problems...)),
+			"make each phase wait on a step another migration of the same change declares, in the "+
+				"order the steps run")
 	}
 
 	return gates, nil

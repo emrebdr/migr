@@ -17,6 +17,7 @@ import (
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // errSchemaInSeed marks a seed that emitted a schema change, which belongs in a migration instead.
@@ -184,12 +185,14 @@ func (t *target) seeds(opts *options) (seedSet, error) {
 func discoverCommon(dir string, environments []string) ([]migration.Migration, error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("%w: seeds.dir is %s, so there is nothing to seed -- create it, or "+
-			"point seeds.dir at the directory that holds them", errNoSeedsDir, dir)
+		return nil, remedy.With(fmt.Errorf("%w: seeds.dir is %s, so there is nothing to seed",
+			errNoSeedsDir, dir), "create the directory, or point seeds.dir in migr.yaml at the one that "+
+			"holds the seeds")
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("reading the seeds directory: %w", err)
+		return nil, remedy.With(fmt.Errorf("reading the seeds directory: %w", err),
+			"make the seeds directory readable by the user migr runs as")
 	}
 
 	if err := checkEnvironments(dir, entries, environments); err != nil {
@@ -212,11 +215,11 @@ func checkEnvironments(dir string, entries []fs.DirEntry, environments []string)
 			continue
 		}
 
-		return NewExitError(ExitValidation, fmt.Errorf("%s: a subdirectory of the seeds "+
+		return NewExitError(ExitValidation, remedy.With(fmt.Errorf("%s: a subdirectory of the seeds "+
 			"directory holds the seeds of the environment it is named for, and no database in "+
-			"migr.yaml runs under %q (environments: %s) -- rename it, or set "+
-			"databases.<name>.environment", filepath.Join(dir, entry.Name()), entry.Name(),
-			strings.Join(environments, ", ")))
+			"migr.yaml runs under %q (environments: %s)", filepath.Join(dir, entry.Name()), entry.Name(),
+			strings.Join(environments, ", ")), "rename the directory to one of those environments, or "+
+			"set databases.<name>.environment in migr.yaml to its name"))
 	}
 
 	return nil
@@ -230,7 +233,8 @@ func discoverOwn(dir string) ([]migration.Migration, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", dir, err)
+		return nil, remedy.With(fmt.Errorf("reading %s: %w", dir, err),
+			"make the directory readable by the user migr runs as")
 	}
 
 	if !info.IsDir() {
@@ -267,8 +271,9 @@ func (s *session) checkMigrated(ctx context.Context, files []history.File) error
 
 	for _, state := range history.States() {
 		if named := unsettled[state]; len(named) > 0 {
-			return fmt.Errorf("this database is not ready to seed: %d %s (%s). %s",
-				len(named), state, strings.Join(named, ", "), seedRemedyFor(state))
+			return remedy.With(fmt.Errorf("this database is not ready to seed: %d %s (%s), and a seed "+
+				"runs against the schema every migration leaves", len(named), state,
+				strings.Join(named, ", ")), nextFor(state))
 		}
 	}
 
@@ -281,33 +286,9 @@ func absentHistory(migrations int) error {
 		return nil
 	}
 
-	return fmt.Errorf("this database is not ready to seed: it has no migration history table, so "+
-		"none of the %d migrations has run. Run `migr up` first: a seed runs against the schema "+
-		"every migration leaves, never between two of them: %w", migrations, history.ErrNoTable)
-}
-
-// seedRemedyFor names what settles each state, since a seed runs only once every migration has.
-func seedRemedyFor(state history.State) string {
-	switch state {
-	case history.StatePending:
-		return "Run `migr up` first: a seed runs against the schema every migration leaves, never " +
-			"between two of them"
-	case history.StateMissing:
-		return "This database recorded a migration that is not on disk, so the schema it holds is " +
-			"not one this project describes -- restore the file or settle it with `migr resolve`"
-	case history.StateDrifted:
-		return "An applied migration's source has changed, so the schema this database holds is not " +
-			"the one the files describe (invariant #6)"
-	case history.StateDirty:
-		return "Settle it with `migr resolve` first: a database between states is not one to seed"
-	case history.StateWaiting:
-		return "A shadow-table migration is waiting for its cutover -- confirm it with `migr cutover " +
-			"--confirm` and let `migr up` swap it in, or abandon it with `migr resolve --rolled-back`"
-	case history.StateApplied:
-		return ""
-	default:
-		return ""
-	}
+	return remedy.With(fmt.Errorf("this database is not ready to seed -- none of the %d migrations has "+
+		"run, and a seed runs against the schema every migration leaves, never between two of them: %w",
+		migrations, history.ErrNoTable), "run migr up first")
 }
 
 // attachSeeds gives this session what reads the seeds, in their own order and against their own table.

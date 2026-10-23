@@ -12,11 +12,13 @@ import (
 
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/diff"
+	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/fold"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/schema"
 	"github.com/emrebdr/migr/internal/source/golang"
 	"github.com/emrebdr/migr/internal/source/typescript"
@@ -115,7 +117,7 @@ func claim(opts *options, t *target, name string) (migration.Migration, error) {
 
 	m, err := migration.New(opts.clock(), name, tmpl.ext)
 	if err != nil {
-		return migration.Migration{}, NewExitError(ExitValidation, err)
+		return migration.Migration{}, NewExitError(ExitValidation, remedy.With(err, "name it in lowercase words joined by underscores, as add_users"))
 	}
 
 	if err := checkUnclaimed(t.cfg.Migrations.Dir, m.Version); err != nil {
@@ -177,6 +179,10 @@ func (s *session) schemas(ctx context.Context, opts *options,
 	read readable) (schema.Snapshot, schema.Snapshot, error) {
 	unlock, err := s.conn.Lock(ctx)
 	if err != nil {
+		if errors.Is(err, driver.ErrLockTimeout) {
+			err = remedy.Fallback(err, driver.LockWaitNext)
+		}
+
 		return schema.Snapshot{}, schema.Snapshot{}, err
 	}
 
@@ -227,11 +233,10 @@ func (s *session) checkSettled(ctx context.Context, files []history.File) error 
 func checkStates(report history.Report) error {
 	resolved, present := report.Resolved()
 	if !present {
-		return fmt.Errorf("this database is not the one the migrations describe: it has no "+
-			"migration history table at all, so nothing says which of them it already holds. "+
-			"Run `migr up` first: a diff folds every migration forward, so against a database "+
-			"they have not run against it would propose everything they do: %w",
-			history.ErrNoTable)
+		return remedy.With(fmt.Errorf("this database is not the one the migrations describe -- nothing "+
+			"says which of them it already holds, and a diff folds every migration forward: %w",
+			history.ErrNoTable),
+			"run migr up first, which creates the history table and applies every migration")
 	}
 
 	unsettled := map[history.State][]string{}
@@ -262,29 +267,27 @@ func describeUnsettled(one history.Status) string {
 
 // unsettledError says which migrations are not applied, and what to do about each state.
 func unsettledError(state history.State, named []string) error {
-	return fmt.Errorf("this database is not the one the migrations describe: %d %s (%s). %s",
-		len(named), state, strings.Join(named, ", "), remedyFor(state))
+	return remedy.With(fmt.Errorf("this database is not the one the migrations describe: %d %s (%s), "+
+		"and a diff folds every migration forward, so it reads only a database they have all run "+
+		"against", len(named), state, strings.Join(named, ", ")), nextFor(state))
 }
 
-// remedyFor names what settles each state, since a diff is only meaningful once one of them has run.
-func remedyFor(state history.State) string {
+// nextFor names what settles each state, which a diff and a seed both need before they run.
+func nextFor(state history.State) string {
 	switch state {
 	case history.StatePending:
-		return "Run `migr up` first: a diff folds every migration forward, so against a database " +
-			"they have not all run against it would propose everything they do"
+		return "run migr up first"
 	case history.StateMissing:
-		return "This database recorded a migration that is not on disk, so what the project " +
-			"describes cannot be folded at all -- restore the file or settle it with `migr resolve`"
+		return "restore the file of each migration named from version control, then run the command again"
 	case history.StateDrifted:
-		return "An applied migration's source has changed, so what was run is not what would be " +
-			"folded (invariant #6)"
+		return "restore each file named to the bytes that were applied, and make the change in a new " +
+			"migration"
 	case history.StateDirty:
-		return "Settle it with `migr resolve` first: a database between states is not one a " +
-			"schema can be read off"
+		return "settle the migration with migr resolve first: a database between states holds no " +
+			"schema a migration describes"
 	case history.StateWaiting:
-		return "A shadow-table migration is waiting for its cutover, so the table it changes is not " +
-			"yet the one the project describes -- confirm it with `migr cutover --confirm` and let " +
-			"`migr up` swap it in, or abandon it with `migr resolve --rolled-back`"
+		return "confirm the shadow-table migration with migr cutover --confirm and let migr up swap it " +
+			"in, or abandon it with migr resolve --rolled-back"
 	case history.StateApplied:
 		return ""
 	default:
@@ -454,13 +457,16 @@ func unwritableLanguage(lang config.Language) error {
 	reason := fmt.Sprintf("migrations.language: %s: nothing here writes a generated migration in "+
 		"that language (expected one of: %s)", lang, joinLanguages(renderable()))
 
+	next := "set migrations.language in migr.yaml to one of those to generate a migration in it"
+
 	if lang != config.LanguageSQL {
-		return errors.New(reason)
+		return remedy.With(errors.New(reason), next)
 	}
 
-	return errors.New(reason + ". Nor would there be anything to write about: every statement in " +
-		"a .sql migration reaches the database as a raw operation, whose effect on the schema " +
-		"migr cannot read, so the schema those migrations describe cannot be read off them at all")
+	return remedy.With(errors.New(reason+". Nor would there be anything to write about: every "+
+		"statement in a .sql migration reaches the database as a raw operation, whose effect on the "+
+		"schema migr cannot read, so the schema those migrations describe cannot be read off them at "+
+		"all"), "write the migration by hand: migr diff reads Go and TypeScript projects only")
 }
 
 // renderWith writes the operations as the source of one language, refusing one that writes none.

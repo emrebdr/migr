@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // ErrNoToolchain marks a machine with no go on PATH, which is the one thing this adapter needs.
@@ -45,9 +47,17 @@ func (e *BuildError) details() string {
 	return ":\n  " + strings.ReplaceAll(trimmed, "\n", "\n  ")
 }
 
+// noModule is what to do about a project the go tool finds no module around.
+const noModule = "run go mod init in the project, or point migrations.dir at a directory inside a Go module"
+
+// outsideModule is what to do about migrations the module they would be built in cannot import.
+const outsideModule = "move the migrations directory inside the Go module, or point migrations.dir " +
+	"at one that is"
+
 // toolError reports a go invocation that failed, naming what was asked and what it answered.
 func toolError(args []string, output string, err error) error {
-	return fmt.Errorf("go %s: %w%s", strings.Join(args, " "), err, indentOutput(output))
+	return remedy.With(fmt.Errorf("go %s: %w%s", strings.Join(args, " "), err, indentOutput(output)),
+		"fix what go reported above in the migrations, then run the command again")
 }
 
 // indentOutput renders a tool's output beneath the failure, or nothing when it produced none.

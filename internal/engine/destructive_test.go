@@ -8,6 +8,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/driver/drivertest"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/schema"
 )
 
@@ -132,10 +133,10 @@ func TestADestructiveMigrationIsRefusedBeforeAnythingRuns(t *testing.T) {
 		string(ir.KindDropTable),
 		`"legacy"`,
 		"--allow-destructive",
-		"allow_destructive: [drop_table]",
+		"drop_table to validation.allow_destructive",
 	} {
-		if !strings.Contains(refusal.Error(), want) {
-			t.Errorf("the refusal does not name %q:\n%s", want, refusal.Error())
+		if said := refusal.Error() + "\n" + remedy.Of(refusal); !strings.Contains(said, want) {
+			t.Errorf("the refusal does not name %q:\n%s", want, said)
 		}
 	}
 }

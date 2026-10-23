@@ -222,7 +222,7 @@ func TestADiffRefusesADatabaseWithMigrationsStillToRun(t *testing.T) {
 		stage func(*testing.T) (string, string)
 		says  string
 	}{
-		{"nothing has run at all", diffProject, "no migration history table at all"},
+		{"nothing has run at all", diffProject, "has no migration history table"},
 		{"one migration has run and another has not", pendingDiffProject, "1 pending"},
 	}
 
@@ -233,7 +233,7 @@ func TestADiffRefusesADatabaseWithMigrationsStillToRun(t *testing.T) {
 			reported := migrFailure(t, config, "diff")
 
 			for _, want := range []string{"not the one the migrations describe",
-				"Run `migr up` first", one.says} {
+				"next: run migr up first", one.says} {
 				if !strings.Contains(reported, want) {
 					t.Errorf("the refusal does not say %q:\n%s", want, reported)
 				}

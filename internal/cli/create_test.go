@@ -350,7 +350,7 @@ func TestClaimantFindsTheFileHoldingAVersion(t *testing.T) {
 // errorSays reports whether an error's message contains every phrase.
 func errorSays(err error, phrases ...string) bool {
 	for _, phrase := range phrases {
-		if !strings.Contains(err.Error(), phrase) {
+		if !strings.Contains(said(err), phrase) {
 			return false
 		}
 	}

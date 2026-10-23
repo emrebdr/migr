@@ -16,6 +16,7 @@ import (
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/rule"
 	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
@@ -34,7 +35,8 @@ func Load(path string) (*Config, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("no config file at %s (create one with `migr init`): %w", path, err)
+			return nil, remedy.With(fmt.Errorf("no config file at %s: %w", path, err),
+				"create one with migr init, or pass --config the path of the one you mean")
 		}
 
 		return nil, fmt.Errorf("reading %s: %w", path, err)
@@ -56,16 +58,20 @@ func Resolve(flagValue string) string {
 func parse(src []byte, source string, lookup func(string) (string, bool)) (*Config, error) {
 	file, err := parser.ParseBytes(src, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("parsing %s:\n%s", source, yaml.FormatError(err, false, true))
+		return nil, remedy.With(fmt.Errorf("parsing %s:\n%s", source, yaml.FormatError(err, false, true)),
+			fmt.Sprintf("fix the YAML at the line shown in %s", source))
 	}
 
 	if err := expandEnv(file, lookup); err != nil {
-		return nil, fmt.Errorf("expanding variables in %s: %w", source, err)
+		return nil, remedy.Fallback(fmt.Errorf("expanding variables in %s: %w", source, err),
+			fmt.Sprintf("set the variable named, or give it a fallback in %s as ${NAME:-value}", source))
 	}
 
 	cfg := &Config{}
 	if err := decode(file, cfg); err != nil {
-		return nil, fmt.Errorf("loading %s:\n%s", source, yaml.FormatError(err, false, true))
+		return nil, remedy.With(fmt.Errorf("loading %s:\n%s", source, yaml.FormatError(err, false, true)),
+			fmt.Sprintf("fix the value named above in %s; migr config prints the file as resolved once "+
+				"it loads", source))
 	}
 
 	applyDefaults(cfg)

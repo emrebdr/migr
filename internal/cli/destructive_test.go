@@ -50,7 +50,7 @@ func TestARunIsRefusedOverAMigrationNothingPermits(t *testing.T) {
 		t.Fatalf("migr up exited %d, want %d: %v", got, ExitValidation, err)
 	}
 
-	message := err.Error()
+	message := said(err)
 
 	for _, want := range []string{
 		fileAt(0, "add_users"),
@@ -59,7 +59,7 @@ func TestARunIsRefusedOverAMigrationNothingPermits(t *testing.T) {
 		string(ir.KindRaw),
 		"CREATE TABLE users (id bigint);",
 		"--allow-destructive",
-		allowingRaw,
+		string(ir.KindRaw) + " to validation.allow_destructive",
 	} {
 		if !strings.Contains(message, want) {
 			t.Errorf("the refusal does not name %q:\n%s", want, message)

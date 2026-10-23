@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // program is the toolchain binary this adapter looks for and runs, and the only one it knows.
@@ -53,7 +55,8 @@ type probed struct {
 func find() (string, error) {
 	path, err := exec.LookPath(program)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrNoToolchain, err)
+		return "", remedy.With(fmt.Errorf("%w: %w", ErrNoToolchain, err),
+			fmt.Sprintf("install node %d or newer and put it on the PATH migr runs with", MinimumNode))
 	}
 
 	return path, nil

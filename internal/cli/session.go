@@ -18,6 +18,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/rule"
 	"github.com/emrebdr/migr/internal/runtime"
 	"github.com/emrebdr/migr/internal/schema"
@@ -145,9 +146,9 @@ func checkRoutable(found []migration.Migration) error {
 			continue
 		}
 
-		return NewExitError(ExitValidation, fmt.Errorf("%s: nothing here reads %s files, and a "+
-			"migrations directory holds migrations one of them runs (%s) -- rename the file or "+
-			"move it out of the directory", m.Filename(), m.Ext, routable()))
+		return NewExitError(ExitValidation, remedy.With(fmt.Errorf("%s: nothing here reads %s files, "+
+			"and a migrations directory holds migrations one of them runs (%s)", m.Filename(), m.Ext,
+			routable()), "rename the file to one of those extensions, or move it out of the directory"))
 	}
 
 	return nil
@@ -476,7 +477,9 @@ func (t *target) start(ctx context.Context, opts *options, conn driver.Conn, lan
 		Timeouts: t.timeouts(),
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("starting the %s runtime: %w", adapter.Name(), err)
+		return nil, nil, remedy.Fallback(fmt.Errorf("starting the %s runtime: %w", adapter.Name(), err),
+			fmt.Sprintf("check that the %s toolchain is installed and on PATH and that the project "+
+				"builds, then run the command again; -v shows everything the runtime printed", adapter.Name()))
 	}
 
 	return session, session.Close, nil
@@ -738,7 +741,9 @@ func hashed(fsys fs.FS, found []migration.Migration) ([]history.File, error) {
 	for _, m := range found {
 		src, err := fs.ReadFile(fsys, m.Filename())
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", m.Filename(), err)
+			return nil, remedy.With(fmt.Errorf("reading %s: %w", m.Filename(), err),
+				"make the file readable by the user migr runs as, or move it out of the migrations "+
+					"directory")
 		}
 
 		files = append(files, history.NewFile(m, src))
@@ -789,7 +794,9 @@ func dial(ctx context.Context, opts *options, t *target) (driver.Driver, driver.
 
 	conn, err := d.Open(ctx, t.db.DSN.Reveal())
 	if err != nil {
-		return nil, nil, fmt.Errorf("connecting to database %q: %w", t.name, err)
+		return nil, nil, remedy.Fallback(fmt.Errorf("connecting to database %q: %w", t.name, err),
+			fmt.Sprintf("check that the server is up and that databases.%s.dsn in migr.yaml reaches "+
+				"it; migr config prints the DSN as resolved, secret redacted", t.name))
 	}
 
 	return d, conn, nil

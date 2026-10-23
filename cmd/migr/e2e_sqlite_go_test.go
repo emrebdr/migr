@@ -396,7 +396,7 @@ func TestATypedDropIsRefusedUntilItsKindIsPermitted(t *testing.T) {
 		"this migration destroys data",
 		"operation 1 (drop_column)",
 		`"rebuilt_notes.body"`,
-		"allow_destructive: [drop_column]",
+		"adding drop_column to validation.allow_destructive",
 	} {
 		if !strings.Contains(out, fragment) {
 			t.Errorf("the refusal does not carry %q:\n%s", fragment, out)

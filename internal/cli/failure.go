@@ -12,6 +12,7 @@ import (
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // failure is what a command failed with, as fields, so --json never carries a paragraph.
@@ -20,6 +21,8 @@ type failure struct {
 	Code int `json:"code"`
 	// Error states what went wrong in one line, since the prose belongs to the terminal rendering.
 	Error string `json:"error"`
+	// Next says what to do about it, which every failure carries.
+	Next string `json:"next,omitempty"`
 	// Migration is the file the failure happened in, absent for one that is about no migration.
 	Migration string `json:"migration,omitempty"`
 	// Operation is the operation it came from, absent where the failure named none.
@@ -188,16 +191,29 @@ func reportFailure(w io.Writer, opts *options, err error) error {
 		return writeFailure(w, err)
 	}
 
-	if _, werr := fmt.Fprintf(w, "migr: %v\n", err); werr != nil {
+	if _, werr := fmt.Fprint(w, Rendered(err)); werr != nil {
 		return fmt.Errorf("reporting the failure: %w", werr)
 	}
 
 	return nil
 }
 
+// Rendered is a failure as the terminal shows it: the message, then what to do next on a line of its own.
+func Rendered(err error) string {
+	next := remedy.Of(err)
+	if next == "" {
+		return fmt.Sprintf("migr: %v\n", err)
+	}
+
+	return fmt.Sprintf("migr: %v\n  next: %s\n", err, next)
+}
+
 // writeFailure renders a failure as the one JSON object per line stderr carries under --json.
 func writeFailure(w io.Writer, err error) error {
-	if encErr := json.NewEncoder(w).Encode(failureOf(err)); encErr != nil {
+	encoder := json.NewEncoder(w)
+	encoder.SetEscapeHTML(false)
+
+	if encErr := encoder.Encode(failureOf(err)); encErr != nil {
 		return fmt.Errorf("reporting the failure: %w", encErr)
 	}
 
@@ -206,7 +222,7 @@ func writeFailure(w io.Writer, err error) error {
 
 // failureOf reads whatever failed a command for the fields --json renders it as.
 func failureOf(err error) failure {
-	found := failure{Code: ExitCode(err), Error: err.Error()}
+	found := failure{Code: ExitCode(err), Error: err.Error(), Next: remedy.Of(err)}
 
 	found.name(err)
 	found.locate(err)

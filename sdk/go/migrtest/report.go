@@ -179,13 +179,15 @@ type Counts struct {
 
 // Failure is what migr reported when a command failed, which --json makes one document on stderr.
 type Failure struct {
-	// Code is the exit code, which CLAUDE.md §5 gives five meanings.
+	// Code is the exit code, which CLAUDE.md §5 gives seven meanings.
 	Code int `json:"code"`
 	// Error is what went wrong, as the one line a failing command writes.
 	Error string `json:"error"`
+	// Next is what migr says to do about it, which every failure carries.
+	Next string `json:"next"`
 }
 
-// Says reports whether the failure mentions a phrase, for a test asserting what it was told.
+// Says reports whether the failure or what to do about it mentions a phrase, as an operator reads both.
 func (f Failure) Says(phrase string) bool {
-	return strings.Contains(f.Error, phrase)
+	return strings.Contains(f.Error, phrase) || strings.Contains(f.Next, phrase)
 }

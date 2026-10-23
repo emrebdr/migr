@@ -11,6 +11,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/runtime/protocol"
 )
 
@@ -494,8 +495,8 @@ func TestLoadReportsMissingFileHelpfully(t *testing.T) {
 		t.Fatal("a missing file must be an error")
 	}
 
-	if !strings.Contains(err.Error(), "migr init") {
-		t.Errorf("error should suggest a remedy, got: %v", err)
+	if !strings.Contains(remedy.Of(err), "migr init") {
+		t.Errorf("the error should say to run migr init next, got: %v (next: %q)", err, remedy.Of(err))
 	}
 }
 

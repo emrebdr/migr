@@ -13,6 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // executor is one run's session and the counters it numbers its own work with.
@@ -88,13 +89,22 @@ func (e *executor) ask(ctx context.Context, m migration.Migration, dir ir.Direct
 // invocation is what one run does under the migration lock: an apply, a rollback, or a preview.
 type invocation[T any] func(ctx context.Context) (T, error)
 
+// lockFailure says what to do about a lock another run holds, where the driver said nothing more precise.
+func lockFailure(err error) error {
+	if errors.Is(err, driver.ErrLockTimeout) {
+		return remedy.Fallback(err, driver.LockWaitNext)
+	}
+
+	return err
+}
+
 // locked takes the migration lock, runs the invocation, and gives the lock back after it returns.
 func locked[T any](ctx context.Context, e *executor, work invocation[T]) (result T, err error) {
 	var none T
 
 	unlock, err := e.conn.Lock(ctx)
 	if err != nil {
-		return none, err
+		return none, lockFailure(err)
 	}
 
 	defer func() { err = errors.Join(err, unlock(context.WithoutCancel(ctx))) }()

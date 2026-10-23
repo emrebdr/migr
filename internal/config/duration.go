@@ -20,7 +20,8 @@ func (d *Duration) UnmarshalYAML(unmarshal func(any) error) error {
 
 	parsed, err := time.ParseDuration(s)
 	if err != nil {
-		return fmt.Errorf("invalid duration %q%s", s, durationHint(s))
+		return fmt.Errorf("invalid duration %q%s: a duration is a number and a unit, as \"30s\" or "+
+			"\"500ms\"", s, durationHint(s))
 	}
 
 	*d = Duration(parsed)

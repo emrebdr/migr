@@ -16,8 +16,8 @@ var ErrDuplicateVersion = errors.New("two migrations claim one version")
 // ErrNoDirectory marks a migrations directory that is not there at all, for errors.Is.
 var ErrNoDirectory = errors.New("the migrations directory does not exist")
 
-// remedy is what an operator does about a file this package refuses, and it never varies.
-const remedy = "rename it, or move it out of the migrations directory"
+// renameOrMove is what an operator does about a file this package refuses, and it never varies.
+const renameOrMove = "rename it, or move it out of the migrations directory"
 
 // NameError reports a file that is not named as a migration, and what about the name is not.
 type NameError struct {
@@ -27,10 +27,15 @@ type NameError struct {
 	Detail string
 }
 
-// Error names the file, what is wrong with its name, the grammar it missed, and what to do.
+// Error names the file, what is wrong with its name, and the grammar it missed.
 func (e *NameError) Error() string {
-	return fmt.Sprintf("%s is not a migration: %s. Migrations are named %s, as %s — %s",
-		e.File, e.Detail, grammar, example, remedy)
+	return fmt.Sprintf("%s is not a migration: %s. Migrations are named %s, as %s",
+		e.File, e.Detail, grammar, example)
+}
+
+// Next says to rename the file or move it, the directory holding migrations alone.
+func (e *NameError) Next() string {
+	return renameOrMove
 }
 
 // Unwrap reports the sentinel so errors.Is(err, ErrMalformed) succeeds.
@@ -54,8 +59,12 @@ type DuplicateError struct {
 // Error names both files, the version they share, and the two questions that leaves unanswerable.
 func (e *DuplicateError) Error() string {
 	return fmt.Sprintf("%s both claim version %s, so nothing can say which one a history row "+
-		"records or which one --to names: rename one of them",
-		strings.Join(e.Files, " and "), e.Version)
+		"records or which one --to names", strings.Join(e.Files, " and "), e.Version)
+}
+
+// Next says to give one of them a version of its own.
+func (e *DuplicateError) Next() string {
+	return "rename the one not yet applied to a version of its own, as migr create would stamp it"
 }
 
 // Unwrap reports the sentinel so errors.Is(err, ErrDuplicateVersion) succeeds.
@@ -108,6 +117,12 @@ func (e *GraphError) Error() string {
 	}
 
 	return b.String()
+}
+
+// Next says to make each declaration name a migration that exists, and to break each loop.
+func (e *GraphError) Next() string {
+	return "make each dependency name the version of a migration in this directory, and break each " +
+		"cycle by removing one of its dependencies"
 }
 
 // Unwrap reports the sentinel so errors.Is(err, ErrUnresolved) succeeds.

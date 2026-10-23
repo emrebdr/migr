@@ -7,6 +7,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // ErrNoRelease refuses a run reaching a step of a change across deploys without naming the deploy it is.
@@ -97,9 +98,10 @@ func (e *executor) needsRelease(queue []queued) error {
 
 	for _, item := range queue {
 		if _, declared := e.opts.Phases[item.migration.Version]; declared && item.resume == nil {
-			return fmt.Errorf("%w: %s declares a step of %q, so run it as migr up --release <id> -- the "+
-				"deploy it belongs to -- or with MIGR_RELEASE set", ErrNoRelease, item.migration.Filename(),
-				e.opts.Phases[item.migration.Version].Change)
+			return remedy.With(fmt.Errorf("%w: %s declares a step of %q, which runs only a deploy after "+
+				"the step before it", ErrNoRelease, item.migration.Filename(),
+				e.opts.Phases[item.migration.Version].Change),
+				"name the deploy this run belongs to: migr up --release <build id>, or MIGR_RELEASE set")
 		}
 	}
 
@@ -114,7 +116,8 @@ func (e *executor) releases(ctx context.Context, queue []queued) ([]history.Rele
 
 	releaser, records := e.store.(history.Releaser)
 	if !records {
-		return nil, ErrNoReleases
+		return nil, remedy.With(ErrNoReleases, "this driver's history store records no releases, which "+
+			"is a bug in the driver: report it at https://github.com/emrebdr/migr/issues")
 	}
 
 	return releaser.Releases(ctx)

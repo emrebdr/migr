@@ -15,6 +15,7 @@ import (
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/rule"
 	"github.com/emrebdr/migr/internal/source/sql"
 	"github.com/emrebdr/migr/internal/validate"
@@ -133,11 +134,12 @@ func finish(cmd *cobra.Command, opts *options, result validation) error {
 	}
 
 	if over := overCeiling(result.Problems); over == len(result.Problems) {
-		return fmt.Errorf("%w: %s safety.max_lock_impact, each listed above", engine.ErrLockImpact,
-			describeExceeding(over))
+		return remedy.With(fmt.Errorf("%w: %s safety.max_lock_impact, each listed above",
+			engine.ErrLockImpact, describeExceeding(over)), engine.LockImpactNext)
 	}
 
-	return NewExitError(ExitValidation, errValidationFailed)
+	return NewExitError(ExitValidation, remedy.With(errValidationFailed,
+		"fix each problem listed above, then run migr validate again"))
 }
 
 // A broken migration is the argument being wrong, so it is fixed first and exits 2 whatever else the

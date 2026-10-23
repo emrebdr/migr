@@ -62,6 +62,10 @@ func (h LockHolder) describeUnmeasured() string {
 const snapshotCaveat = "That holder was read after the wait had already failed, so it is who " +
 	"holds the lock now rather than provably who blocked this run."
 
+// LockWaitNext is what to do about a migration lock another run holds, whichever driver reported it.
+const LockWaitNext = "another migr run holds the migration lock: let it finish and run the command " +
+	"again, or wait longer with lock.timeout in migr.yaml or --lock-timeout"
+
 // LockBusyError reports a wait that gave up, naming whoever held the lock when the driver looked.
 type LockBusyError struct {
 	// Driver is the driver that gave up, since each engine bounds its own wait its own way.
@@ -79,6 +83,11 @@ type LockBusyError struct {
 // Error names the driver, the bound it gave up at, and what it could learn about the holder.
 func (e *LockBusyError) Error() string {
 	return fmt.Sprintf("%s %v after %s: %s", e.Driver, ErrLockTimeout, e.Wait, e.describeHolder())
+}
+
+// Next says to let the holder finish or to wait longer for it.
+func (e *LockBusyError) Next() string {
+	return LockWaitNext
 }
 
 // describeHolder names who holds the lock, or says why this driver could not find out.

@@ -12,6 +12,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // RepairMode is what an operator asked be done about a migration left between states.
@@ -210,9 +211,10 @@ func soleDirty(report history.Report) (history.Status, bool, error) {
 
 // noHistoryError refuses a resolution against a database that has never recorded a run at all.
 func noHistoryError() error {
-	return fmt.Errorf("%w, so nothing here is between states -- and a resolution creates nothing, "+
-		"since a command whose whole job is repair may not be the one that invents the record it "+
-		"repairs. migr up is what makes a history table", history.ErrNoTable)
+	return remedy.With(fmt.Errorf("%w, so nothing here is between states -- and a resolution creates "+
+		"nothing, since a command whose whole job is repair may not be the one that invents the record "+
+		"it repairs", history.ErrNoTable), "check that --database names the database you mean; migr up "+
+		"is what creates a history table")
 }
 
 // assert records what an operator did by hand, compiling nothing and asking no migration anything.

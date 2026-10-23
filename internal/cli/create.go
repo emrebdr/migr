@@ -13,6 +13,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/source/golang"
 	"github.com/emrebdr/migr/internal/source/sql"
 	"github.com/emrebdr/migr/internal/source/typescript"
@@ -126,7 +127,7 @@ func create(cfg *config.Config, opts *options, name, lang string) (created, erro
 
 	m, err := migration.New(opts.clock(), name, tmpl.ext)
 	if err != nil {
-		return created{}, NewExitError(ExitValidation, err)
+		return created{}, NewExitError(ExitValidation, remedy.With(err, "name it in lowercase words joined by underscores, as add_users"))
 	}
 
 	if err := checkUnclaimed(cfg.Migrations.Dir, m.Version); err != nil {
@@ -204,16 +205,20 @@ func claimant(entries []fs.DirEntry, version string) string {
 
 // claimed says which file holds the version, and why a second one cannot be written under it.
 func claimed(version, holder string) error {
-	return fmt.Errorf("%s already claims version %s: versions have second resolution, so two "+
-		"migrations created in one second collide, and nothing could then say which one a history "+
-		"row records or which one --to names. Try again in a moment", holder, version)
+	return remedy.With(fmt.Errorf("%s already claims version %s: versions have second resolution, "+
+		"so two migrations created in one second collide, and nothing could then say which one a "+
+		"history row records or which one --to names", holder, version),
+		"run the command again in a second, which stamps the next version")
 }
 
 // unwritable refuses to write into a migrations directory that is not there, as discovery refuses to read one.
 func unwritable(dir string, err error) error {
 	if errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("%s: %w (create one with `migr init`): %w", dir, migration.ErrNoDirectory, err)
+		return remedy.With(fmt.Errorf("%s: %w: %w", dir, migration.ErrNoDirectory, err),
+			"create it with migr init, or point migrations.dir in migr.yaml at the directory that "+
+				"holds the migrations")
 	}
 
-	return fmt.Errorf("reading %s: %w", dir, err)
+	return remedy.With(fmt.Errorf("reading %s: %w", dir, err),
+		"make the migrations directory readable and writable by the user migr runs as")
 }

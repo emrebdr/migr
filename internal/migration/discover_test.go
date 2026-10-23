@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // dir builds a migrations directory holding one empty file per name.
@@ -282,8 +284,8 @@ func TestAMissingDirectoryIsNotAnEmptyOne(t *testing.T) {
 		t.Errorf("the refusal does not unwrap to the cause: %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "migr init") {
-		t.Errorf("the refusal does not say what to do about it:\n  %v", err)
+	if !strings.Contains(remedy.Of(err), "migr init") {
+		t.Errorf("the refusal does not say what to do about it:\n  %v\n  next: %s", err, remedy.Of(err))
 	}
 
 	t.Log("Zero migrations is a fresh project. A directory that is not there is one nobody")

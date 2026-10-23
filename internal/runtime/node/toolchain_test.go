@@ -8,6 +8,8 @@ import (
 	stdruntime "runtime"
 	"strings"
 	"testing"
+
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // The probe, driven against a node this test wrote.
@@ -127,7 +129,7 @@ func TestAVersionBelowTheFloorIsRefusedNamingWhatToInstall(t *testing.T) {
 	}
 
 	for _, want := range []string{path, "18.20.8", "24", "nodejs.org"} {
-		if !strings.Contains(err.Error(), want) {
+		if !strings.Contains(err.Error()+"\n"+remedy.Of(err), want) {
 			t.Errorf("the refusal does not name %q, so it is not actionable: %v", want, err)
 		}
 	}

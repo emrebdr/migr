@@ -46,6 +46,12 @@ func (e *ValidationError) Error() string {
 	return b.String()
 }
 
+// Next says to fix each key listed, and where the resolved result can be read.
+func (e *ValidationError) Next() string {
+	return fmt.Sprintf("fix each key listed in %s; migr config prints the file as resolved, defaults "+
+		"included", e.Source)
+}
+
 // pluralProblems renders the problem count with the right noun.
 func pluralProblems(n int) string {
 	if n == 1 {

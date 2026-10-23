@@ -11,6 +11,7 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
 	"github.com/emrebdr/migr/internal/plan"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // Mode is whether the engine is running a migration or asking it a question.
@@ -136,7 +137,8 @@ func (o Options) check() error {
 
 	if o.Release != "" {
 		if err := history.ValidateRelease(o.Release); err != nil {
-			return fmt.Errorf("%w: %w", ErrNoRelease, err)
+			return remedy.With(fmt.Errorf("%w: %w", ErrNoRelease, err),
+				"pass a release that is your build id, as --release or MIGR_RELEASE")
 		}
 	}
 

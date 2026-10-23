@@ -11,6 +11,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // errBothSelectors marks a run given two ways of narrowing itself, which name different sets.
@@ -170,7 +171,7 @@ func describeStep(dir ir.Direction) string {
 // scope turns the flags into the selector the engine narrows with, refusing two that disagree.
 func (n narrowing) scope(dir ir.Direction) (engine.Scope, error) {
 	if n.step != 0 && n.to != "" {
-		return engine.Scope{}, errBothSelectors
+		return engine.Scope{}, remedy.With(errBothSelectors, "pass --step or --to, not both")
 	}
 
 	if n.step != 0 {

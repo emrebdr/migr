@@ -26,7 +26,7 @@ func (ops Operations) MarshalJSON() ([]byte, error) {
 	for i, op := range ops {
 		encoded, err := Marshal(op)
 		if err != nil {
-			return nil, fmt.Errorf("operation %d (%s): %w", i, op.Kind(), err)
+			return nil, fmt.Errorf("operation %d (%s): %w", i+1, op.Kind(), err)
 		}
 
 		items[i] = encoded

@@ -63,7 +63,7 @@ func TestAStatementPastStatementTimeoutFailsNamingTheKeyToRaise(t *testing.T) {
 		t.Fatalf("the failure is %v, want the statement bound", err)
 	}
 
-	if !strings.Contains(err.Error(), "raise safety.statement_timeout") {
+	if !strings.Contains(said(err), "raise safety.statement_timeout") {
 		t.Errorf("the failure does not name the key to raise: %v", err)
 	}
 

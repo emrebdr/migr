@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/runtime"
 )
 
@@ -73,7 +74,8 @@ func buildFor(ctx context.Context, chain toolchain, mod module, dir string,
 	runner []byte, migrations string) (string, error) {
 	relative, err := filepath.Rel(mod.dir, dir)
 	if err != nil {
-		return "", fmt.Errorf("%w: %s is not under %s", ErrOutsideModule, dir, mod.dir)
+		return "", remedy.With(fmt.Errorf("%w: %s is not under %s", ErrOutsideModule, dir, mod.dir),
+			outsideModule)
 	}
 
 	store := cacheIn(mod.dir, relative)

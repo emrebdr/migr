@@ -10,6 +10,7 @@ import (
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // newSeedStatusCmd builds `migr seed status`, the seed history's own reconciliation.
@@ -199,7 +200,7 @@ func (set seedSet) files() ([]history.File, error) {
 func runSeedResolve(cmd *cobra.Command, opts *options, ask asking) (err error) {
 	repair, err := ask.repair()
 	if err != nil {
-		return NewExitError(ExitValidation, err)
+		return NewExitError(ExitValidation, wordedForSeeds(err))
 	}
 
 	if err := repair.Check(); err != nil {
@@ -252,8 +253,21 @@ var seedWords = strings.NewReplacer(
 	"migr down refuses", "migr seed down refuses",
 	"Neither up nor down runs", "Neither migr seed nor migr seed down runs",
 	"Both up and down refuse", "Both migr seed and migr seed down refuse",
+	"an applied migration has been edited since it was applied", "an applied seed has been edited since it ran",
 	"this migration", "this seed",
+	"about the migration", "about the seed",
 	"a migration may branch", "a seed may branch",
+)
+
+// seedNexts are the engine's own remedies naming a migration command, and the seed command each means.
+var seedNexts = strings.NewReplacer(
+	"migr resolve", "migr seed resolve",
+	"migr down --to", "migr seed down --to",
+	"migr status", "migr seed status",
+	"run migr up again to carry on", "run migr seed again to carry on",
+	"make the change in a new migration with migr create", "make the change in a new seed",
+	"author a down for this migration", "author a down for this seed",
+	"the migration between states", "the seed between states",
 )
 
 // seedWorded is a seed run's failure, its prose naming the seed commands where the engine names its own.
@@ -274,6 +288,11 @@ func wordedForSeeds(err error) error {
 // Error renders the failure with every migration command it names spelled as its seed one.
 func (w seedWorded) Error() string {
 	return seedWords.Replace(w.err.Error())
+}
+
+// Next renders the failure's remedy with every migration command it names spelled as its seed one.
+func (w seedWorded) Next() string {
+	return seedNexts.Replace(remedy.Of(w.err))
 }
 
 // Unwrap reports the failure itself, so a failure document still finds the fields it is built from.

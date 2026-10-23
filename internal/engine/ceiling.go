@@ -95,15 +95,22 @@ type LockImpactError struct {
 	Exceeded []Exceeded
 }
 
-// lockImpactTemplate names the ceiling, every operation over it, and the two ways to settle it.
+// lockImpactTemplate names the ceiling and every operation over it.
 const lockImpactTemplate = `%s %s safety.max_lock_impact (%s):
 
 %s
 
-Each would block a live database's reads or writes for longer than this project allows. Make the
-operation cheaper -- a rewrite, an expand and contract, or a smaller step -- or raise the ceiling in
-migr.yaml, which is a decision a review can see. A raw statement is unknown, which counts as
-table_rewrite.`
+Each would block a live database's reads or writes for longer than this project allows. A raw
+statement is unknown, which counts as table_rewrite.`
+
+// LockImpactNext names the ways to get under the ceiling, the last of which a review sees.
+const LockImpactNext = "make each operation cheaper -- a rewrite, an expand and contract, a shadow " +
+	"table, or a smaller step -- or raise safety.max_lock_impact in migr.yaml"
+
+// Next names the ways to get under the ceiling.
+func (e *LockImpactError) Next() string {
+	return LockImpactNext
+}
 
 // Error names the ceiling and every operation over it, each beside the migration it is in.
 func (e *LockImpactError) Error() string {

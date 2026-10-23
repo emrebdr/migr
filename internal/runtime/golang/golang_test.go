@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/runtime"
 )
 
@@ -190,6 +191,10 @@ func TestAMigrationsDirectoryOutsideTheModuleIsRefused(t *testing.T) {
 		t.Log("so the failure would arrive as a compile error about generated code.")
 		t.Fatalf("Command returned %v, want %v", err, ErrOutsideModule)
 	}
+
+	if !strings.Contains(remedy.Of(err), "migrations.dir") {
+		t.Errorf("the refusal says to %q next, want where migrations.dir must point", remedy.Of(err))
+	}
 }
 
 func TestAProjectOutsideAnyModuleIsRefused(t *testing.T) {
@@ -202,8 +207,13 @@ func TestAProjectOutsideAnyModuleIsRefused(t *testing.T) {
 
 	adapter, _ := New()
 
-	if _, err := adapter.Command(t.Context(), p); !errors.Is(err, ErrNoModule) {
+	_, err := adapter.Command(t.Context(), p)
+	if !errors.Is(err, ErrNoModule) {
 		t.Fatalf("Command returned %v, want %v", err, ErrNoModule)
+	}
+
+	if !strings.Contains(remedy.Of(err), "go mod init") {
+		t.Errorf("the refusal says to %q next, want go mod init", remedy.Of(err))
 	}
 }
 
@@ -268,8 +278,13 @@ func TestDiscoverFindsTheToolchainAndSaysSoWhenThereIsNone(t *testing.T) {
 
 	t.Setenv("PATH", t.TempDir())
 
-	if err := adapter.Discover(t.Context()); !errors.Is(err, ErrNoToolchain) {
+	err := adapter.Discover(t.Context())
+	if !errors.Is(err, ErrNoToolchain) {
 		t.Errorf("Discover returned %v, want %v", err, ErrNoToolchain)
+	}
+
+	if !strings.Contains(remedy.Of(err), "install Go") {
+		t.Errorf("the refusal says to %q next, want to install Go", remedy.Of(err))
 	}
 }
 

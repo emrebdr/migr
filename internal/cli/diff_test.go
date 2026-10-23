@@ -419,6 +419,16 @@ func pendingGoProject(t *testing.T) (string, *fake, *driver.Registry) {
 func lockedGoProject(t *testing.T) (string, *fake, *driver.Registry) {
 	t.Helper()
 
+	dir, f, drivers := appliedGoProjectAfterNoon(t)
+	f.lockErr = driver.ErrLockTimeout
+
+	return dir, f, drivers
+}
+
+// appliedGoProjectAfterNoon stages a Go project whose one migration, a second past noon, has run.
+func appliedGoProjectAfterNoon(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
 	dir, f, drivers := project(t)
 	write(t, filepath.Join(dir, config.DefaultFilename),
 		strings.Replace(projectConfig, "language: sql", "language: go", 1))
@@ -429,7 +439,19 @@ func lockedGoProject(t *testing.T) (string, *fake, *driver.Registry) {
 	}
 
 	f.live = projectedSchema(t)
-	f.lockErr = driver.ErrLockTimeout
+
+	return dir, f, drivers
+}
+
+// pendingGoProjectAfterNoon stages a Go project whose one migration, a second past noon, has not run.
+func pendingGoProjectAfterNoon(t *testing.T) (string, *fake, *driver.Registry) {
+	t.Helper()
+
+	dir, f, drivers := project(t)
+	write(t, filepath.Join(dir, config.DefaultFilename),
+		strings.Replace(projectConfig, "language: sql", "language: go", 1))
+	write(t, filepath.Join(dir, scaffoldDir, versionAt(1)+"_second.go"), "package migrations\n")
+	f.live = projectedSchema(t)
 
 	return dir, f, drivers
 }

@@ -278,6 +278,8 @@ lint:
 golden-update:
 	@echo "==> go test ./internal/driver/... -update"
 	@go test ./internal/driver/... -update
+	@echo "==> go test ./internal/cli -run TestEveryFailureSaysWhatToDoNext -update"
+	@go test ./internal/cli -run TestEveryFailureSaysWhatToDoNext -update
 
 tools:
 	@mkdir -p bin

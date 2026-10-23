@@ -13,6 +13,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // scaffoldDir is the migrations directory init creates, and the one the config it writes names.
@@ -131,9 +132,9 @@ func checkAbsent(path string) error {
 
 // alreadyInitialized says why an existing config is never replaced, and where one may be written.
 func alreadyInitialized(path string) error {
-	return fmt.Errorf("%s already exists, and init will not overwrite it: that file names your "+
-		"databases, and no flag here replaces one. Delete it, or pass --config to write elsewhere",
-		path)
+	return remedy.With(fmt.Errorf("%s already exists, and init will not overwrite it: that file "+
+		"names your databases, and no flag here replaces one", path),
+		"delete it, or pass --config to write the new project's config elsewhere")
 }
 
 // ensureDir creates the migrations directory, reporting it as created only when it was not there.

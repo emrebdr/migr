@@ -217,7 +217,7 @@ func TestSeedRefusesADatabaseTheMigrationsHaveNotAllRunAgainst(t *testing.T) {
 				t.Fatalf("seed returned %v (exit %d), want exit %d", err, ExitCode(err), ExitRuntime)
 			}
 
-			if !strings.Contains(err.Error(), tc.want) {
+			if !strings.Contains(said(err), tc.want) {
 				t.Errorf("the refusal does not name %q: %v", tc.want, err)
 			}
 
@@ -239,7 +239,7 @@ func TestSeedRefusesADatabaseLeftBetweenStates(t *testing.T) {
 	f.runs[len(f.runs)-1].Error = "stopped"
 
 	_, _, err := runWith(t, dir, noon, drivers, "seed")
-	if err == nil || !strings.Contains(err.Error(), "migr resolve") {
+	if err == nil || !strings.Contains(said(err), "migr resolve") {
 		t.Fatalf("seed over a dirty migration returned %v, want a refusal naming migr resolve", err)
 	}
 }
@@ -714,7 +714,7 @@ func TestSeedDownRefusesADatabaseTheMigrationsHaveNotAllRunAgainst(t *testing.T)
 	rows := len(f.seedRuns)
 
 	_, _, err := runWith(t, dir, noon, drivers, "seed", "down")
-	if ExitCode(err) != ExitRuntime || !strings.Contains(err.Error(), "migr up") {
+	if ExitCode(err) != ExitRuntime || !strings.Contains(said(err), "migr up") {
 		t.Fatalf("seed down returned %v (exit %d), want exit 1 naming migr up", err, ExitCode(err))
 	}
 
@@ -783,7 +783,7 @@ func TestADirtySeedsRefusalNamesTheSeedCommandsThatSettleIt(t *testing.T) {
 		t.Fatal("seeding over a dirty seed succeeded")
 	}
 
-	message := err.Error()
+	message := said(err)
 	if !strings.Contains(message, "migr seed resolve") ||
 		strings.Contains(strings.ReplaceAll(message, "migr seed resolve", ""), "migr resolve") {
 		t.Errorf("the refusal does not send the operator to migr seed resolve:\n%s", message)

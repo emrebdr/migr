@@ -105,6 +105,12 @@ func (e *LockRetryError) Error() string {
 		"so the run stopped rather than queue behind whoever holds it: %v", e.Attempts, e.Waited, e.Err)
 }
 
+// Next says to clear what holds the table, or to wait longer for it, which is two settings.
+func (e *LockRetryError) Next() string {
+	return "find the session holding the table and let it finish, then run the command again; " +
+		"safety.lock_retries and safety.lock_timeout in migr.yaml set how long a run waits"
+}
+
 // Unwrap reports the last attempt's failure, so the statement and the lock timeout stay reachable.
 func (e *LockRetryError) Unwrap() error {
 	return e.Err

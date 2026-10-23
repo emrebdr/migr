@@ -163,7 +163,16 @@ Every command exits with a code a script can branch on:
 | 5 | `--require-safe` found an operation above `safety.max_lock_impact` |
 | 6 | a shadow-table migration is waiting for its cutover to be confirmed |
 
-`--json` turns every command's output, and every failure, into one JSON document per stream.
+Every failure says what failed and why, then what to do about it on a line of its own:
+
+```console
+$ migr down
+migr: 20261023T171330_add_users.sql: this migration declares that it cannot be undone: the rows are gone
+  next: roll back only what is newer with migr down --to <its version>; only a backup taken before it ran reaches further
+```
+
+`--json` turns every command's output, and every failure, into one JSON document per stream. A
+failure's document carries the same remedy as `next`.
 
 ## Next
 

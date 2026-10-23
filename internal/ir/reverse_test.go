@@ -637,8 +637,9 @@ func TestReverseAllFailsWholeOnAnIrreversibleOperation(t *testing.T) {
 		t.Errorf("a partial reversal is worse than refusing, got %d operations", len(reversed))
 	}
 
-	if !strings.Contains(err.Error(), "operation 1") {
-		t.Errorf("the error should name the offending position, got %q", err)
+	if !strings.Contains(err.Error(), "operation 2 (raw)") {
+		t.Errorf("the error should name the offending position, counting from one, got %q", err)
+		t.Log("Every other message, and every golden file, counts operations from one.")
 	}
 
 	if !errors.Is(err, ErrIrreversible) {

@@ -13,6 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/remedy"
 	"github.com/emrebdr/migr/internal/schema"
 )
 
@@ -358,8 +359,8 @@ func TestAnInterruptedChunkedRunResumesAfterTheLastCommittedChunk(t *testing.T) 
 		t.Errorf("the checkpoint says %+v, want 2 chunks through key 20", *stopped.Checkpoint)
 	}
 
-	if !strings.Contains(err.Error(), "next migr up carries on") {
-		t.Errorf("the failure does not say what carries the run on:\n%v", err)
+	if !strings.Contains(remedy.Of(err), "run migr up again to carry on") {
+		t.Errorf("the failure does not say what carries the run on: %q", remedy.Of(err))
 	}
 
 	result, err := Apply(t.Context(), conn, opts)

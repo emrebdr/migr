@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // program is the toolchain binary this adapter looks for and runs, and the only one it knows.
@@ -36,7 +38,8 @@ type toolchain struct {
 func find() (string, error) {
 	path, err := exec.LookPath(program)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrNoToolchain, err)
+		return "", remedy.With(fmt.Errorf("%w: %w", ErrNoToolchain, err),
+			"install Go and put go on the PATH migr runs with: a Go migration is built by it")
 	}
 
 	return path, nil
@@ -68,12 +71,13 @@ func identify(ctx context.Context, root string) (toolchain, error) {
 func (t toolchain) locate(ctx context.Context, root string) (module, error) {
 	reported, err := run(ctx, t.path, root, "list", "-m", "-f", "{{.Path}}\n{{.Dir}}")
 	if err != nil {
-		return module{}, fmt.Errorf("%w: %w", ErrNoModule, err)
+		return module{}, remedy.With(fmt.Errorf("%w: %w", ErrNoModule, err), noModule)
 	}
 
 	path, dir, found := strings.Cut(reported, "\n")
 	if !found || strings.TrimSpace(path) == "" || strings.TrimSpace(dir) == "" {
-		return module{}, fmt.Errorf("%w: go list -m reported %q", ErrNoModule, reported)
+		return module{}, remedy.With(fmt.Errorf("%w: go list -m reported %q", ErrNoModule, reported),
+			noModule)
 	}
 
 	return module{path: strings.TrimSpace(path), dir: strings.TrimSpace(dir)}, nil
@@ -83,12 +87,13 @@ func (t toolchain) locate(ctx context.Context, root string) (module, error) {
 func (m module) importPath(dir string) (string, error) {
 	relative, err := filepath.Rel(m.dir, dir)
 	if err != nil {
-		return "", fmt.Errorf("%w: %s is not under %s", ErrOutsideModule, dir, m.dir)
+		return "", remedy.With(fmt.Errorf("%w: %s is not under %s", ErrOutsideModule, dir, m.dir),
+			outsideModule)
 	}
 
 	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%w: %s is not under %s, so module %s cannot import it",
-			ErrOutsideModule, dir, m.dir, m.path)
+		return "", remedy.With(fmt.Errorf("%w: %s is not under %s, so module %s cannot import it",
+			ErrOutsideModule, dir, m.dir, m.path), outsideModule)
 	}
 
 	if relative == "." {

@@ -38,7 +38,12 @@ import (
 	"syscall"
 
 	"github.com/emrebdr/migr/internal/cli"
+	"github.com/emrebdr/migr/internal/remedy"
 )
+
+// buildDefect is what to do about a registry this binary built wrong, which no flag or file can fix.
+const buildDefect = "this binary was built wrong, and no flag or file fixes that: report it at " +
+	"https://github.com/emrebdr/migr/issues with the release you installed, and install another meanwhile"
 
 func main() {
 	os.Exit(run())
@@ -48,14 +53,16 @@ func main() {
 func run() int {
 	engines, err := drivers()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "migr: %v\n", err)
+		err = remedy.With(err, buildDefect)
+		fmt.Fprint(os.Stderr, cli.Rendered(err))
 
 		return cli.ExitCode(err)
 	}
 
 	languages, err := runtimes()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "migr: %v\n", err)
+		err = remedy.With(err, buildDefect)
+		fmt.Fprint(os.Stderr, cli.Rendered(err))
 
 		return cli.ExitCode(err)
 	}

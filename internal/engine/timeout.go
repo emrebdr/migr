@@ -41,10 +41,15 @@ type TimeoutError struct {
 	Err error
 }
 
-// Error renders the limit that was reached and the key that raises it.
+// Error renders the limit that was reached and what stopping at it left.
 func (e *TimeoutError) Error() string {
 	return fmt.Sprintf("ran past %s (%s), so the server was told to stop it and nothing it was doing "+
-		"is still holding a lock; raise %s if it needs longer: %v", e.Bound, e.Limit, e.Bound, e.Err)
+		"is still holding a lock: %v", e.Bound, e.Limit, e.Err)
+}
+
+// Next names the key that raises the bound.
+func (e *TimeoutError) Next() string {
+	return fmt.Sprintf("raise %s in migr.yaml if the work needs longer, then run the command again", e.Bound)
 }
 
 // Unwrap reports what was stopped, so the statement and the migration stay reachable.

@@ -13,6 +13,7 @@ import (
 	"github.com/emrebdr/migr/internal/history"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/migration"
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // ErrNothingToRun marks a migration that compiled to no statements at all, for errors.Is.
@@ -52,15 +53,16 @@ var ErrNoReason = errors.New("a resolution records the operator's reason for it"
 
 // missingReasonError refuses an asserted repair that records no account of what was actually done.
 func missingReasonError(mode RepairMode) error {
-	return fmt.Errorf("%w, and --%s records one: the history row is the only thing that will still "+
-		"say why this migration reads as settled when nobody remembers the incident", ErrNoReason, mode)
+	return remedy.With(fmt.Errorf("%w, and --%s records one: the history row is the only thing that "+
+		"will still say why this migration reads as settled when nobody remembers the incident",
+		ErrNoReason, mode), fmt.Sprintf("run it again with --%s --reason \"<what you did>\"", mode))
 }
 
 // unwantedReasonError refuses a reason on a resume, which records what it ran rather than a claim.
 func unwantedReasonError(mode RepairMode) error {
-	return fmt.Errorf("%w, and --%s is not one: it runs the statements the dirty run never reached, "+
-		"so what it records is what it did rather than an account of what somebody else did",
-		ErrNoReason, mode)
+	return remedy.With(fmt.Errorf("%w, and --%s is not one: it runs the statements the dirty run never "+
+		"reached, so what it records is what it did rather than an account of what somebody else did",
+		ErrNoReason, mode), fmt.Sprintf("drop --reason: --%s records what it runs", mode))
 }
 
 // ErrDestructive marks a migration that destroys what this run was not allowed to destroy, for errors.Is.
@@ -83,23 +85,22 @@ const destructiveTemplate = `%s: %s
 
 %s
 
-%s
+%s`
 
-Permit it for one run with --allow-destructive, or for this project by naming the kinds in
-migr.yaml, which is a decision a review can see:
-
-  validation:
-    allow_destructive: [%s]`
-
-// Error names the migration, every operation that destroys something, and the two ways to allow it.
+// Error names the migration, every operation that destroys something, and what this project permits.
 func (e *DestructiveError) Error() string {
 	return fmt.Sprintf(destructiveTemplate,
 		describeMigration(e.Migration, e.Version),
 		describeHeadline(e.Found),
 		describeDestruction(e.Found),
 		describeAllowed(e.Allowed),
-		strings.Join(kindNames(Needed(e.Found)), ", "),
 	)
+}
+
+// Next names the two ways to permit what the migration destroys, the second being one a review sees.
+func (e *DestructiveError) Next() string {
+	return fmt.Sprintf("permit it for this run with --allow-destructive, or for the project by adding "+
+		"%s to validation.allow_destructive in migr.yaml", strings.Join(kindNames(Needed(e.Found)), ", "))
 }
 
 // The two things a refusal can honestly lead with, which depend on whether it found raw alone.
@@ -204,6 +205,12 @@ func (e *UnsupportedError) Error() string {
 	)
 }
 
+// Next says what can change the answer, which is the migration or the server and never a flag.
+func (e *UnsupportedError) Next() string {
+	return "rewrite the operations above as ones this server performs, or run against a server that " +
+		"performs them; migr validate --connect lists every such operation before anything runs"
+}
+
 // Unwrap reports the sentinel so errors.Is(err, ErrUnsupported) succeeds, and nothing else.
 func (e *UnsupportedError) Unwrap() error {
 	return ErrUnsupported
@@ -267,6 +274,12 @@ func (e *UnrestorableError) Error() string {
 	)
 }
 
+// Next points at the findings, each of which names the operation that resolves it.
+func (e *UnrestorableError) Next() string {
+	return "change the migration so it records what this database holds -- each finding above names " +
+		"the operation that does -- or author a down that undoes it as you mean it to"
+}
+
 // Unwrap reports the sentinel so errors.Is(err, ErrUnrestorable) succeeds, and nothing else.
 func (e *UnrestorableError) Unwrap() error {
 	return ErrUnrestorable
@@ -277,10 +290,12 @@ var ErrSeveralDirty = errors.New("this database carries more than one migration 
 
 // severalDirtyError refuses a resolution rather than picking which of several dirty migrations to settle.
 func severalDirtyError(dirty []history.Status) error {
-	return fmt.Errorf("%w: %s -- no migr run can produce that, since a dirty migration refuses "+
-		"both directions before anything else runs, so these were not all left by this tool. "+
+	return remedy.With(fmt.Errorf("%w: %s -- no migr run can produce that, since a dirty migration "+
+		"refuses both directions before anything else runs, so these were not all left by this tool. "+
 		"Settling one would be a guess at which",
-		ErrSeveralDirty, describeDirty(dirty))
+		ErrSeveralDirty, describeDirty(dirty)),
+		"find out what wrote the extra rows to the history table, and settle the schema by hand before "+
+			"migr runs against this database again")
 }
 
 // describeDirty lists the migrations a database left between states, by the names a message renders.
@@ -348,6 +363,12 @@ func (e *DeclaredIrreversibleError) Error() string {
 	return ErrDeclaredIrreversible.Error() + ": " + e.Reason
 }
 
+// Next says how far a rollback can still go, and what reaches past it.
+func (e *DeclaredIrreversibleError) Next() string {
+	return "roll back only what is newer with migr down --to <its version>; only a backup taken " +
+		"before it ran reaches further"
+}
+
 // Unwrap reports the sentinel so errors.Is(err, ErrDeclaredIrreversible) succeeds.
 func (e *DeclaredIrreversibleError) Unwrap() error {
 	return ErrDeclaredIrreversible
@@ -408,6 +429,15 @@ type StatementError struct {
 // Error names the failing statement's position, its text, and what went wrong with it.
 func (e *StatementError) Error() string {
 	return fmt.Sprintf("statement %d: %s: %v", e.Position, e.Statement.SQL, e.Err)
+}
+
+// Next says what the cause beneath says to do, else to fix the statement or what the server objected to.
+func (e *StatementError) Next() string {
+	if next := remedy.Of(e.Err); next != "" {
+		return next
+	}
+
+	return "fix the statement, or what the server objected to in it, then run the command again"
 }
 
 // Unwrap reports the cause, so errors.Is and errors.As reach what the driver returned.
@@ -482,7 +512,6 @@ The recorded IR half is what that run emitted, and nothing here recomputes it: d
 needs a language runtime and a live database, and a migration may branch on live query
 results, so a mismatch there would not be drift.
 
-%s
 No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
 first statement.%s`
 
@@ -494,10 +523,10 @@ const (
 
 // driftAdvice says what to do about it, which differs because only one of the two can be resumed.
 const (
-	rewriteOrReauthor = "Restore the file to the bytes that were applied, or write a new " +
-		"migration for the change."
-	rewriteOrAssert = "Restore the file to the bytes that ran and resume, or record what you did\n" +
-		"about it yourself with --applied or --rolled-back."
+	rewriteOrReauthor = "restore the file to the bytes that were applied, from version control, and " +
+		"make the change in a new migration with migr create"
+	rewriteOrAssert = "restore the file to the bytes that ran and run migr resolve --resume, or record " +
+		"what you did yourself with migr resolve --applied or --rolled-back --reason <why>"
 )
 
 // undoingDrift is the further reason a rollback refuses, which an apply has no equivalent of.
@@ -514,9 +543,13 @@ func (e *DriftError) Error() string {
 		e.Batch,
 		e.Ordinal,
 		e.Source.String(),
-		describeRemedy(e.Resuming),
 		describeDirection(e.Direction),
 	)
+}
+
+// Next says what to do about the edit, which only a resumable migration may resume from.
+func (e *DriftError) Next() string {
+	return describeRemedy(e.Resuming)
 }
 
 // describeEdited says what the run that recorded this file left behind, which is not one thing.
@@ -624,9 +657,7 @@ before the one that stopped committed, with a checkpoint saying how far it got.
   got to      %s
   recorded    batch %d, ordinal %d, dirty at operation %d
 
-migr down refuses against this database until it is settled. The next migr up carries on from the
-checkpoint, after the last row it names; migr resolve --resume does the same, and --applied or
---rolled-back record what you did yourself.`
+migr down refuses against this database until it is settled.`
 
 // Error names how far the run got, what stopped it, and what the row it wrote says.
 func (e *DirtyError) Error() string {
@@ -645,6 +676,18 @@ func (e *DirtyError) Error() string {
 		describeAtomicity(e.TransactionalDDL, e.Split),
 		describeUncompiled(e.Deferred),
 	)
+}
+
+// Next says how to settle the run, which a chunked one can simply carry on from.
+func (e *DirtyError) Next() string {
+	if e.Checkpoint != nil {
+		return "run migr up again to carry on after the last committed chunk, or record what you did " +
+			"yourself with migr resolve --applied or --rolled-back --reason <why>"
+	}
+
+	return fmt.Sprintf("find out what the statement after %d left behind, then run migr resolve "+
+		"--resume to go on from it, or record what you did with migr resolve --applied or "+
+		"--rolled-back --reason <why>", e.LastStatement)
 }
 
 // describeTotal renders how many statements the migration had, marking a count that is not all of them.
@@ -721,8 +764,7 @@ const dirtyStateTemplate = `%s: this migration's last run left the schema betwee
 
 Neither up nor down runs against this database until the dirty state is resolved explicitly, and
 nothing here undoes it -- nothing here knows what the statement that failed left behind. migr
-status and migr history print this row without failing, and migr resolve is what settles it:
---resume runs on from statement %d, and --applied or --rolled-back record what you did yourself.`
+status and migr history print this row without failing.`
 
 // chunkedStateTemplate is the refusal over a migration that stopped running in chunks.
 const chunkedStateTemplate = `%s: this migration's last %s run stopped partway through running in
@@ -732,16 +774,14 @@ chunks.
   stopped by   %s
   recorded     batch %d, ordinal %d, at %s
 
-Neither up nor down runs against this database until it is settled. migr resolve --resume carries
-the %s run on from the checkpoint, after the last row it names, and --applied or --rolled-back
-record what you did yourself.`
+Neither up nor down runs against this database until it is settled.`
 
 // Error names what survived the run that stopped, what stopped it, and what the row does not say.
 func (e *DirtyStateError) Error() string {
 	if e.Checkpoint != nil {
 		return fmt.Sprintf(chunkedStateTemplate, describeMigration(e.Migration, e.Version),
 			e.Direction, DescribeCheckpoint(*e.Checkpoint), describeStopped(e.Cause), e.Batch,
-			e.Ordinal, e.RecordedAt.UTC().Format(stamp), e.Direction)
+			e.Ordinal, e.RecordedAt.UTC().Format(stamp))
 	}
 
 	return fmt.Sprintf(dirtyStateTemplate,
@@ -752,8 +792,18 @@ func (e *DirtyStateError) Error() string {
 		e.Batch,
 		e.Ordinal,
 		e.RecordedAt.UTC().Format(stamp),
-		e.LastStatement,
 	)
+}
+
+// Next names the three ways to settle the migration, of which only the first runs anything.
+func (e *DirtyStateError) Next() string {
+	if e.Checkpoint != nil {
+		return fmt.Sprintf("run migr resolve --resume to carry the %s run on from its checkpoint, or "+
+			"record what you did with migr resolve --applied or --rolled-back --reason <why>", e.Direction)
+	}
+
+	return fmt.Sprintf("run migr resolve --resume to go on from statement %d, or record what you did "+
+		"yourself with migr resolve --applied or --rolled-back --reason <why>", e.LastStatement)
 }
 
 // DescribeCheckpoint says how far a chunked operation got, in the words every report uses.
@@ -821,18 +871,21 @@ func dirtyError(st history.Status, cps []history.Checkpoint) error {
 
 // waitingError refuses a rollback while a shadow-table migration is held in sync, waiting for its cutover.
 func waitingError(st history.Status) error {
-	return fmt.Errorf("%w: %s is held in sync through a shadow table, and nothing is undone while it "+
-		"waits -- confirm it with migr cutover --confirm %s and let migr up cut it over, or abandon it "+
-		"with migr resolve --rolled-back, which drops the copy and releases the change stream",
-		ErrWaiting, describeVersion(st), st.Version)
+	return remedy.With(fmt.Errorf("%w: %s is held in sync through a shadow table, and nothing is "+
+		"undone while it waits", ErrWaiting, describeVersion(st)),
+		fmt.Sprintf("confirm it with migr cutover --confirm %s and let migr up cut it over, or abandon "+
+			"it with migr resolve --rolled-back, which drops the copy and releases the change stream",
+			st.Version))
 }
 
 // missingError refuses the whole rollback, naming a version the database carries and no file does.
 func missingError(st history.Status) error {
-	return fmt.Errorf("%w: %s -- a rollback runs newest first, so stepping around it would undo "+
-		"the migrations applied after it and leave a schema nothing describes. migr up skips such "+
-		"a version because it has nothing to run for it, and this run has",
-		ErrMissing, describeVersion(st))
+	return remedy.With(fmt.Errorf("%w: %s -- a rollback runs newest first, so stepping around it "+
+		"would undo the migrations applied after it and leave a schema nothing describes. migr up "+
+		"skips such a version, having nothing to run for it, but a rollback has to undo it",
+		ErrMissing, describeVersion(st)),
+		"restore that migration's file to the migrations directory from version control, then run "+
+			"migr down again")
 }
 
 // DirectIrreversibleError reports a migration whose own statements no derived undo can invert.
@@ -877,44 +930,48 @@ func directIrreversibleError(direct []driver.Query) error {
 
 // irreversibleError refuses the whole rollback, naming what has no inverse and why nothing ran.
 func irreversibleError(cause error) error {
-	return fmt.Errorf("nothing here can undo it: %w -- and the whole rollback is refused before "+
-		"anything runs, because one that stopped at an operation with no inverse would leave a "+
-		"schema no migration describes; author a down for this migration to roll it back",
-		cause)
+	return remedy.With(fmt.Errorf("nothing here can undo it: %w -- and the whole rollback is refused "+
+		"before anything runs, because one that stopped at an operation with no inverse would leave a "+
+		"schema no migration describes", cause),
+		"author a down for this migration, or declare it irreversible with a reason; until then "+
+			"migr down --to <its version> rolls back only what is newer")
 }
 
 // stepsError refuses a step count that names no migration, which is a typo rather than a request.
 func stepsError(steps int32) error {
-	return fmt.Errorf("%w, and %d names none -- a run that would act on nothing is a mistyped "+
-		"count rather than a request for one, and omitting the flag is how you ask for everything",
-		ErrNoSteps, steps)
+	return remedy.With(fmt.Errorf("%w, and %d names none -- a run that would act on nothing is a "+
+		"mistyped count rather than a request for one", ErrNoSteps, steps),
+		"pass --step 1 or more, or leave the flag out to act on every migration")
 }
 
 // blankVersionError refuses a version to stop at that names nothing, before anything is compared.
 func blankVersionError() error {
-	return fmt.Errorf("%w: the version to stop at is blank", ErrUnknownVersion)
+	return remedy.With(fmt.Errorf("%w: the version to stop at is blank", ErrUnknownVersion),
+		"pass --to a version, as migr status prints them")
 }
 
 // unknownVersionError refuses a version to stop at that this run reconciled to nothing at all.
 func unknownVersionError(version string, reconciled []string) error {
-	return fmt.Errorf("%w: %q -- this run reconciled %s. A version that is not one of those is "+
-		"either a typo or a migration this run was never given, and applying every migration or "+
-		"none of them are both worse answers than stopping",
-		ErrUnknownVersion, version, describeVersions(reconciled))
+	return remedy.With(fmt.Errorf("%w: %q -- this run reconciled %s. A version that is not one of "+
+		"those is either a typo or a migration this run was never given, and applying every migration "+
+		"or none of them are both worse answers than stopping",
+		ErrUnknownVersion, version, describeVersions(reconciled)),
+		"pass --to one of the versions above, as migr status prints them")
 }
 
 // notAppliedError refuses leaving a database at a version it does not carry, which it cannot do.
 func notAppliedError(version string, applied []string) error {
-	return fmt.Errorf("%w: %q, so it cannot be left at it -- this database carries %s. Rolling "+
-		"back to a version that is not applied would have to guess whether you meant to stop "+
+	return remedy.With(fmt.Errorf("%w: %q, so it cannot be left at it -- this database carries %s. "+
+		"Rolling back to a version that is not applied would have to guess whether you meant to stop "+
 		"before it or to undo everything",
-		ErrNotApplied, version, describeVersions(applied))
+		ErrNotApplied, version, describeVersions(applied)),
+		"pass --to a version this database carries, as migr status lists them, or --step to count back")
 }
 
 // noBatchError refuses a batch selector on an apply, where nothing queued has been in a batch.
 func noBatchError() error {
-	return fmt.Errorf("%w: a pending migration has never run, so it belongs to no batch and there "+
-		"is no last one to act on. Going up, --step and --to are what narrow a run", ErrNoBatch)
+	return remedy.With(fmt.Errorf("%w: a pending migration has never run, so it belongs to no batch "+
+		"and there is no last one to act on", ErrNoBatch), "narrow an apply with --step or --to")
 }
 
 // unknownScopeError refuses a run rather than guessing at a selector this build has no rule for.

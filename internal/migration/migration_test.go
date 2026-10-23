@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/emrebdr/migr/internal/remedy"
 )
 
 // valid is every filename this package accepts, with what each one parses to.
@@ -217,10 +219,14 @@ func checkNamesTheFile(t *testing.T, err error, filename string) {
 
 	message := err.Error()
 
-	for _, want := range []string{filename, grammar, example, remedy} {
+	for _, want := range []string{filename, grammar, example} {
 		if !strings.Contains(message, want) {
 			t.Errorf("the refusal does not contain %q:\n  %v", want, err)
 		}
+	}
+
+	if got := remedy.Of(err); got != renameOrMove {
+		t.Errorf("the refusal says to %q next, want %q", got, renameOrMove)
 	}
 
 	if !strings.HasPrefix(message, filename) {

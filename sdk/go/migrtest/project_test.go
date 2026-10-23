@@ -360,6 +360,12 @@ func TestAFailingCommandIsReportedWithTheDocumentItWrote(t *testing.T) {
 	if !failure.Says("does not carry that version") {
 		t.Errorf("the failure says %q", failure.Error)
 	}
+
+	if !strings.Contains(failure.Next, "--to") {
+		t.Errorf("the failure says to %q next, want a version this database carries for --to",
+			failure.Next)
+		t.Log("Every failure says what to do next, and a test asserting it reads it here.")
+	}
 }
 
 func TestEachProjectRecordsItsRunsInATableOfItsOwn(t *testing.T) {

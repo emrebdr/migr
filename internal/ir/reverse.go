@@ -42,7 +42,7 @@ func ReverseAll(ops Operations) (Operations, error) {
 	for i, op := range ops {
 		inverse, err := op.Reverse()
 		if err != nil {
-			return nil, fmt.Errorf("operation %d (%s): %w", i, op.Kind(), err)
+			return nil, fmt.Errorf("operation %d (%s): %w", i+1, op.Kind(), err)
 		}
 
 		reversed[len(ops)-1-i] = inverse

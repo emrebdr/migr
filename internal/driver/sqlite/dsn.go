@@ -12,6 +12,14 @@ const uriScheme = "file:"
 // pragmaParam is the query parameter modernc.org/sqlite applies as a PRAGMA on every connection.
 const pragmaParam = "_pragma"
 
+// txLockParam is the query parameter modernc.org/sqlite begins every transaction with, which this driver sets.
+const txLockParam = "_txlock"
+
+// txLockImmediate begins a transaction holding the write lock, waited for under busy_timeout. A
+// deferred one reads first and fails at once with SQLITE_BUSY_SNAPSHOT where another connection wrote
+// in between, which in WAL is every busy database (M13-T12, ADR 0096).
+const txLockImmediate = txLockParam + "=immediate"
+
 // parseDSN reports the connection string to open, or why this driver will not open the one it was given.
 func parseDSN(dsn string) (string, error) {
 	if strings.TrimSpace(dsn) == "" {
@@ -24,7 +32,42 @@ func parseDSN(dsn string) (string, error) {
 		return "", err
 	}
 
-	return dsn, nil
+	mode, set := txLockOf(dsn)
+
+	switch {
+	case !set:
+		return withTxLock(dsn), nil
+	case mode == "immediate" || mode == "exclusive":
+		return dsn, nil
+	default:
+		return "", &DSNError{Detail: "it sets " + txLockParam + "=" + mode + ", and this driver begins every " +
+			"transaction holding the write lock: a deferred one fails at once in WAL where another " +
+			"connection wrote, waiting out no busy_timeout, so it is refused rather than ignored"}
+	}
+}
+
+// txLockOf reads the transaction mode a connection string sets, lowercased, and whether it sets one.
+func txLockOf(dsn string) (string, bool) {
+	_, query, found := strings.Cut(dsn, "?")
+	if !found {
+		return "", false
+	}
+
+	params, err := url.ParseQuery(query)
+	if err != nil || !params.Has(txLockParam) {
+		return "", false
+	}
+
+	return strings.ToLower(strings.TrimSpace(params.Get(txLockParam))), true
+}
+
+// withTxLock adds the transaction mode this driver begins with to a connection string.
+func withTxLock(dsn string) string {
+	if strings.Contains(dsn, "?") {
+		return dsn + "&" + txLockImmediate
+	}
+
+	return dsn + "?" + txLockImmediate
 }
 
 // checkPragmas refuses a connection string that sets a session pragma this driver owns.

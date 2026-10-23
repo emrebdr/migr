@@ -109,3 +109,21 @@ func TestARefusalNeverRendersTheConnectionStringItself(t *testing.T) {
 		t.Log("that printed one would undo that at the first bad character (M3-T1's DSNError).")
 	}
 }
+
+func TestEveryTransactionBeginsHoldingTheWriteLockUnlessTheStringAlreadySaysSo(t *testing.T) {
+	for dsn, want := range map[string]string{
+		"app.db":                         "app.db?_txlock=immediate",
+		"app.db?_pragma=cache_size(100)": "app.db?_pragma=cache_size(100)&_txlock=immediate",
+		"file:app.db?_txlock=EXCLUSIVE":  "file:app.db?_txlock=EXCLUSIVE",
+	} {
+		if got, err := parseDSN(dsn); err != nil || got != want {
+			t.Errorf("parseDSN(%q) = %q, %v; want %q", dsn, got, err, want)
+		}
+	}
+
+	if _, err := parseDSN("app.db?_txlock=deferred"); !errors.Is(err, ErrDSN) {
+		t.Errorf("a deferred transaction mode was accepted (%v)", err)
+		t.Log("Measured under the zero-downtime suite: in WAL a deferred transaction that reads and then")
+		t.Log("writes fails at once with SQLITE_BUSY_SNAPSHOT (517) where another connection committed.")
+	}
+}

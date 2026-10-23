@@ -155,6 +155,12 @@ jobs:
       - name: Integration tests
         run: make test-integration
 
+      # The zero-downtime suite (M13-T12, ADR 0096): every operation against every server under
+      # client load, each held to the lock cost it declares. Here, after the integration tests,
+      # because it needs the same containers and the target leaves them running.
+      - name: Zero-downtime suite
+        run: make test-zerodowntime
+
       # Four containers now, and a driver's live tests fail rather than skip when their
       # server is absent -- so a failure here is either the SQL or a server that never
       # came healthy, and nothing in the Go output tells those apart.

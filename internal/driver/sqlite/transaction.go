@@ -66,7 +66,7 @@ func (c *sqliteConn) begin(ctx context.Context) (*sql.Tx, error) {
 
 	tx, err := c.conn.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: beginning it: %w", ErrTransaction, err)
+		return nil, fmt.Errorf("%w: beginning it: %w", ErrTransaction, classifyBusy(err))
 	}
 
 	c.tx = tx

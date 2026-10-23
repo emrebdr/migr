@@ -65,6 +65,14 @@
 // change to the operator's database file rather than a session setting a migration tool may make on
 // their behalf.
 //
+// Every transaction begins IMMEDIATE, through modernc's _txlock=immediate, which parseDSN adds where the
+// connection string names no _txlock (M13-T12, ADR 0096). A deferred transaction reads first and takes
+// the write lock on its first write, and in WAL that upgrade fails at once with SQLITE_BUSY_SNAPSHOT
+// (517) where another connection committed in between -- waiting out no busy_timeout, measured under
+// the zero-downtime suite's writers on every rebuild and every chunk. IMMEDIATE takes the lock at BEGIN,
+// under busy_timeout, and a BEGIN that spends it is a lock wait the engine retries like any other. A
+// string asking for deferred is refused; immediate or exclusive is kept as given.
+//
 // An empty connection string is refused. SQLite reads an empty filename as a private temporary
 // database that is deleted when the process exits, so every migration would apply to a file nobody
 // can find afterwards -- and report success.

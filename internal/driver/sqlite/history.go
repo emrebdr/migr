@@ -339,5 +339,12 @@ func hasCode(err error, code int) bool {
 	return errors.As(err, &reported) && reported.Code() == code
 }
 
+// hasPrimaryCode reports an error whose result code is code or one of its extended codes, which share its low byte.
+func hasPrimaryCode(err error, code int) bool {
+	var reported *lib.Error
+
+	return errors.As(err, &reported) && reported.Code()&0xff == code
+}
+
 // compile-time proof that this store satisfies the contract every driver's store is held to.
 var _ history.Store = sqliteHistory{}

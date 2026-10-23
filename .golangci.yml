@@ -18,10 +18,14 @@ version: "2"
 #
 # conformance joined at M7-T7, which is the tag's first use: internal/runtime/node carries the
 # cross-language proof, which needs Node and so cannot be part of `make test`.
+#
+# zerodowntime joined at M13-T12: each driver's run of test/conformance/zerodowntime, which needs
+# every compose server under load. Its files' names are prefixed zd so the three tags build together.
 run:
   build-tags:
     - integration
     - conformance
+    - zerodowntime
 
 linters:
   default: none

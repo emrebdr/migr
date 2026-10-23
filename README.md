@@ -453,6 +453,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0093](docs/adr/0093-operator-confirmed-cutover.md) | A held shadow table is a sixth state, its lag is recorded by the run holding it, and `migr cutover` confirms it |
 | [0094](docs/adr/0094-postgres-logical-shadow.md) | PostgreSQL keeps a shadow table current through a replication slot, and no slot outlives the migration that made it |
 | [0095](docs/adr/0095-mariadb-binlog-shadow.md) | MariaDB keeps a shadow table current from its binary log, and swaps it in through a rename queued behind a write lock |
+| [0096](docs/adr/0096-zero-downtime-suite.md) | Every operation's lock verdict is held to what a client under load actually waits |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

@@ -54,9 +54,9 @@ func (c *sqliteConn) Exec(ctx context.Context, stmt driver.Statement) error {
 	return nil
 }
 
-// classifyBusy marks a wait for the write lock that spent busy_timeout, so the engine can retry it.
+// classifyBusy marks a wait for the write lock that spent busy_timeout, or any other BUSY, so the engine can retry it.
 func classifyBusy(err error) error {
-	if hasCode(err, sqlite3.SQLITE_BUSY) {
+	if hasPrimaryCode(err, sqlite3.SQLITE_BUSY) {
 		return fmt.Errorf("%w: %w", driver.ErrStatementLockTimeout, err)
 	}
 

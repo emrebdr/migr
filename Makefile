@@ -27,7 +27,7 @@ GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 
 FUZZTIME         ?= 30s
 
-.PHONY: help build test test-integration test-conformance fuzz lint golden-update tools fmt vet \
+.PHONY: help build test test-integration test-conformance test-zerodowntime fuzz lint golden-update tools fmt vet \
         tidy check clean
 
 # Run a command in every Go module. The subshell cd means any tool path passed in
@@ -84,6 +84,7 @@ help:
 	@echo "  test              unit + golden tests, no Docker required"
 	@echo "  test-integration  Docker-backed tests (build tag: integration)"
 	@echo "  test-conformance  cross-language SDK proof (build tag: conformance; needs Node)"
+	@echo "  test-zerodowntime every operation under client load, held to a latency budget (tag: zerodowntime)"
 	@echo "  fuzz              run each fuzz target for $(FUZZTIME) (make test runs the seeds)"
 	@echo "  lint              comment rules + golangci-lint across both modules"
 	@echo "  golden-update     regenerate golden files -- read the diff before committing"
@@ -133,6 +134,18 @@ test-integration:
 	@docker compose -f $(COMPOSE) up -d --wait
 	$(call ts_run,npm run build)
 	$(call go_each,go test -tags=integration ./...)
+	@echo "    containers left running; 'make clean' tears them down"
+
+# The zero-downtime proof (M13-T12, ADR 0096): every operation against every compose server and
+# SQLite, up and down, while eight readers and eight writers work the table, each held to its own
+# lock-impact verdict against MIGR_ZERODOWNTIME_BUDGET (1.5s unset). It brings the databases up for
+# test-integration's reason, and runs only the packages that carry the tag -- the three drivers, each
+# running test/conformance/zerodowntime from its own package, as every conformance suite is run.
+test-zerodowntime:
+	@echo "==> docker compose up  ($(COMPOSE))"
+	@docker compose -f $(COMPOSE) up -d --wait
+	@go test -tags=zerodowntime -count=1 -timeout 60m -run TestEveryOperationKeepsItsLockPromiseUnderLoad \
+	  ./internal/driver/postgres/ ./internal/driver/mysql/ ./internal/driver/sqlite/
 	@echo "    containers left running; 'make clean' tears them down"
 
 # The cross-language proof: every SDK emits byte-identical IR for the fixtures in

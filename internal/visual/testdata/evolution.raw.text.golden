@@ -1,0 +1,20 @@
+1  20261101T085900_create_tags.sql
+   raw               CREATE TABLE tags (id integer);
+   ? the schema after this cannot be read from the migrations: operation 1 (raw) is engine SQL, and what it does to the schema cannot be read
+
+2  20261101T090000_create_authors.go
+   create_table      authors
+   ? not projected
+
+3  20261101T090100_create_books.go
+   create_table      books
+   add_foreign_key   fk_books_author
+   ! sends 1 statement itself, which the schema here does not read
+   ? not projected
+
+4  20261101T090200_add_books_isbn.ts
+   add_column        books.isbn
+   add_unique        uq_books_isbn
+   ? not projected
+
+The schema after 20261101T090200_add_books_isbn.ts cannot be read from the migrations: 20261101T085900_create_tags.sql ended the projection.

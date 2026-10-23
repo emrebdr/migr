@@ -1,0 +1,12 @@
+5 migrations in run order:
+
+  1  20261101T090000_create_users.go
+        online      shadow_table
+  2  20261101T090100_expand_user_email.go
+        step        users.email: expand
+  3  20261101T090300_contract_user_email.go
+        step        users.email: contract, a deploy after 20261101T090100_expand_user_email.go
+  4  20261101T090400_create_products.sql
+  5  20261101T090200_add_orders.ts
+        depends on  20261101T090000_create_users.go
+        depends on  20261101T090400_create_products.sql

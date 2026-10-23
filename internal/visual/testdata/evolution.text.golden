@@ -1,0 +1,39 @@
+1  20261101T090000_create_authors.go
+   create_table      authors
+   + table       authors
+   + column      authors.id int64 not null
+   + column      authors.name string(100) not null
+   + column      authors.rating decimal(3,1) null
+   + primary_key authors.<unnamed> (id)
+
+2  20261101T090100_create_books.go
+   create_table      books
+   add_foreign_key   fk_books_author
+   ! sends 1 statement itself, which the schema here does not read
+   + table       books
+   + column      books.author_id int64 null
+   + column      books.id int64 not null
+   + column      books.status enum(draft,published) not null
+   + foreign_key books fk_books_author (author_id) -> authors(id) on delete no_action on update no_action
+   + primary_key books.<unnamed> (id)
+
+3  20261101T090200_add_books_isbn.ts
+   add_column        books.isbn
+   add_unique        uq_books_isbn
+   + column      books.isbn string(13) null
+   + unique      books uq_books_isbn (isbn)
+
+The schema after 20261101T090200_add_books_isbn.ts:
+  table       authors
+  column      authors.id int64 not null
+  column      authors.name string(100) not null
+  column      authors.rating decimal(3,1) null
+  primary_key authors.<unnamed> (id)
+  table       books
+  column      books.author_id int64 null
+  column      books.id int64 not null
+  column      books.isbn string(13) null
+  column      books.status enum(draft,published) not null
+  foreign_key books fk_books_author (author_id) -> authors(id) on delete no_action on update no_action
+  primary_key books.<unnamed> (id)
+  unique      books uq_books_isbn (isbn)

@@ -280,6 +280,8 @@ golden-update:
 	@go test ./internal/driver/... -update
 	@echo "==> go test ./internal/cli -run TestEveryFailureSaysWhatToDoNext -update"
 	@go test ./internal/cli -run TestEveryFailureSaysWhatToDoNext -update
+	@echo "==> go test ./internal/visual -update"
+	@go test ./internal/visual -update
 
 tools:
 	@mkdir -p bin

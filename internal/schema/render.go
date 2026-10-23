@@ -181,15 +181,22 @@ func quoted(text string) string {
 func Difference(want, got string) string {
 	var out strings.Builder
 
-	for _, line := range absentFrom(want, got) {
+	removed, added := Changes(want, got)
+
+	for _, line := range removed {
 		out.WriteString("  - " + line + "\n")
 	}
 
-	for _, line := range absentFrom(got, want) {
+	for _, line := range added {
 		out.WriteString("  + " + line + "\n")
 	}
 
 	return out.String()
+}
+
+// Changes returns the lines of one rendering the next no longer holds, and the lines it gained.
+func Changes(before, after string) ([]string, []string) {
+	return absentFrom(before, after), absentFrom(after, before)
 }
 
 // absentFrom returns the lines of one rendering the other does not hold, blanks apart.

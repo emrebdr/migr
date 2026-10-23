@@ -1,0 +1,16 @@
+digraph migrations {
+  rankdir=TB;
+  node [shape=box];
+  "20261101T090000" [label="20261101T090000_create_users.go\nshadow_table"];
+  "20261101T090100" [label="20261101T090100_expand_user_email.go\nstep users.email: expand"];
+  "20261101T090300" [label="20261101T090300_contract_user_email.go\nstep users.email: contract"];
+  "20261101T090400" [label="20261101T090400_create_products.sql"];
+  "20261101T090200" [label="20261101T090200_add_orders.ts"];
+  "20261101T090000" -> "20261101T090100" [style=invis];
+  "20261101T090100" -> "20261101T090300" [style=invis];
+  "20261101T090300" -> "20261101T090400" [style=invis];
+  "20261101T090400" -> "20261101T090200" [style=invis];
+  "20261101T090000" -> "20261101T090200";
+  "20261101T090400" -> "20261101T090200";
+  "20261101T090100" -> "20261101T090300" [style=dashed, label="next deploy"];
+}

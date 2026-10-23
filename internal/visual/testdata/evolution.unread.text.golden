@@ -1,0 +1,17 @@
+1  20261101T090000_create_authors.go
+   create_table      authors
+   + table       authors
+   + column      authors.id int64 not null
+   + column      authors.name string(100) not null
+   + column      authors.rating decimal(3,1) null
+   + primary_key authors.<unnamed> (id)
+
+2  20261101T090100_create_books.go
+   ? the schema after this cannot be read from the migrations: it reaches the database, and migr graph opens none
+
+3  20261101T090200_add_books_isbn.ts
+   add_column        books.isbn
+   add_unique        uq_books_isbn
+   ? not projected
+
+The schema after 20261101T090200_add_books_isbn.ts cannot be read from the migrations: 20261101T090100_create_books.go ended the projection.

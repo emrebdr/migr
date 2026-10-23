@@ -83,6 +83,7 @@ export default defineConfig({
           { text: "Go", link: "/guides/go" },
           { text: "TypeScript", link: "/guides/typescript" },
           { text: "SQL", link: "/guides/sql" },
+          { text: "Visualizing migrations", link: "/visualizing" },
         ],
       },
       {

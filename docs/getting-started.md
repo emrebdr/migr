@@ -178,6 +178,8 @@ failure's document carries the same remedy as `next`.
 
 - Gate CI on what a migration costs a live database, change a column across deploys, and run large
   changes through a shadow table: the [zero-downtime guide](zero-downtime.md).
+- Draw the dependency DAG and the schema each migration builds, as text, Mermaid or Graphviz:
+  [visualizing migrations](visualizing.md).
 - Four complete projects, each with tests and a CI workflow to copy:
   [Go on PostgreSQL](../examples/go-postgres/README.md),
   [TypeScript on MySQL](../examples/ts-mysql/README.md),

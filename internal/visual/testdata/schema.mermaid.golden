@@ -1,0 +1,13 @@
+erDiagram
+  authors {
+    int64 id PK
+    string(100) name
+    decimal rating "decimal(3,1), null"
+  }
+  books {
+    int64 author_id FK "null"
+    int64 id PK
+    string(13) isbn UK "null"
+    enum status "enum(draft,published)"
+  }
+  books }o--o| authors : "author_id"

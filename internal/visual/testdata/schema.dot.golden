@@ -1,0 +1,7 @@
+digraph schema {
+  rankdir=LR;
+  node [shape=record];
+  "authors" [label="{authors|id\ :\ int64\ [PK]|name\ :\ string(100)|rating\ :\ decimal(3,1)\ null}"];
+  "books" [label="{books|author_id\ :\ int64\ null\ [FK]|id\ :\ int64\ [PK]|isbn\ :\ string(13)\ null\ [UK]|status\ :\ enum(draft,published)}"];
+  "books" -> "authors" [label="author_id"];
+}

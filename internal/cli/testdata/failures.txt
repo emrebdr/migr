@@ -1,0 +1,451 @@
+== migr config --config absent.yaml: a config file that is not there (exit 2)
+migr: no config file at absent.yaml: open absent.yaml: no such file or directory
+  next: create one with migr init, or pass --config the path of the one you mean
+
+== migr init: init over a config already there (exit 1)
+migr: migr.yaml already exists, and init will not overwrite it: that file names your databases, and no flag here replaces one
+  next: delete it, or pass --config to write the new project's config elsewhere
+
+== migr create add-repos: a name the grammar refuses (exit 2)
+migr: 20260727T153000_add-repos.sql is not a migration: its name "add-repos" is not snake_case: "-" is not a lowercase letter or digit. Migrations are named <YYYYMMDDThhmmss>_<snake_case name>.<ext>, as 20260727T153000_add_users.sql
+  next: name it in lowercase words joined by underscores, as add_users
+
+== migr create add_users: a version another file already claims (exit 1)
+migr: 20260727T153000_add_users.sql already claims version 20260727T153000: versions have second resolution, so two migrations created in one second collide, and nothing could then say which one a history row records or which one --to names
+  next: run the command again in a second, which stamps the next version
+
+== migr up --step -1: a step count naming nothing (exit 2)
+migr: a step count must name at least one migration, and -1 names none -- a run that would act on nothing is a mistyped count rather than a request for one
+  next: pass --step 1 or more, or leave the flag out to act on every migration
+
+== migr up --to 20990101T000000: a version to stop at that nothing carries (exit 2)
+migr: no migration in this run carries that version: "20990101T000000" -- this run reconciled 20260727T153000, 20260727T153001. A version that is not one of those is either a typo or a migration this run was never given, and applying every migration or none of them are both worse answers than stopping
+  next: pass --to one of the versions above, as migr status prints them
+
+== migr up --step 1 --to 20260727T153000: --step with --to (exit 2)
+migr: --step and --to select differently, so a run takes one of them
+  next: pass --step or --to, not both
+
+== migr up: a runtime that will not start (exit 1)
+migr: starting the go runtime: preparing the go runtime: this fake adapter starts nothing
+  next: check that the go toolchain is installed and on PATH and that the project builds, then run the command again; -v shows everything the runtime printed
+
+== migr up: a migration nothing here reads (exit 2)
+migr: 20260727T153002_add_other.py: nothing here reads .py files, and a migrations directory holds migrations one of them runs (.go, .js, .mjs, .sql, .ts)
+  next: rename the file to one of those extensions, or move it out of the directory
+
+== migr up: a filename the grammar refuses (exit 2)
+migr: not-a-migration.sql is not a migration: it has no _ separating a version from a name. Migrations are named <YYYYMMDDThhmmss>_<snake_case name>.<ext>, as 20260727T153000_add_users.sql
+  next: rename it, or move it out of the migrations directory
+
+== migr up: a README in the migrations directory (exit 2)
+migr: README.md is not a migration: it has no _ separating a version from a name. Migrations are named <YYYYMMDDThhmmss>_<snake_case name>.<ext>, as 20260727T153000_add_users.sql
+  next: rename it, or move it out of the migrations directory
+
+== migr up: a migrations directory that is not there (exit 1)
+migr: the migrations directory does not exist: open .: no such file or directory
+  next: create it with migr init, or point migrations.dir in migr.yaml at the directory that holds the migrations
+
+== migr up: a migration file that will not open (exit 1)
+migr: reading 20260727T153002_add_repos.sql: open 20260727T153002_add_repos.sql: no such file or directory
+  next: make the file readable by the user migr runs as, or move it out of the migrations directory
+
+== migr up: a database left between states (exit 1)
+migr: 20260727T153000_add_users.sql: this migration's last run left the schema between states.
+
+  applied      statement 1 of the up run, and nothing rolled them back
+  stopped by   the server refused this statement
+  not applied  whatever that run had left after statement 1 -- the row records how far it got,
+               not how far it had to go, and nothing here recomputes that: the statements were
+               the ones that run emitted, and a migration may branch on live query results
+               
+  recorded     batch 1, ordinal 1, at 2026-07-27 15:30:00 UTC
+
+Neither up nor down runs against this database until the dirty state is resolved explicitly, and
+nothing here undoes it -- nothing here knows what the statement that failed left behind. migr
+status and migr history print this row without failing.
+  next: run migr resolve --resume to go on from statement 1, or record what you did yourself with migr resolve --applied or --rolled-back --reason <why>
+
+== migr up: the migration lock (exit 3)
+migr: gave up waiting for the migration lock
+  next: another migr run holds the migration lock: let it finish and run the command again, or wait longer with lock.timeout in migr.yaml or --lock-timeout
+
+== migr up: a table lock still held after every retry (exit 3)
+migr: 20260727T153001_add_teams.sql (raw): still waiting for a lock after 3 attempts and <jittered> of backoff between them, so the run stopped rather than queue behind whoever holds it: statement 1: CREATE TABLE teams (id bigint);: a statement gave up waiting for a lock: another session holds the table
+  next: find the session holding the table and let it finish, then run the command again; safety.lock_retries and safety.lock_timeout in migr.yaml set how long a run waits
+
+== migr up: a statement past safety.statement_timeout (exit 1)
+migr: 20260727T153001_add_teams.sql (raw): statement 1: CREATE TABLE teams (id bigint);: ran past safety.statement_timeout (50ms), so the server was told to stop it and nothing it was doing is still holding a lock: the fake server stopped the statement: context deadline exceeded
+  next: raise safety.statement_timeout in migr.yaml if the work needs longer, then run the command again
+
+== migr up: a migration past safety.migration_timeout while backing off from a lock (exit 3)
+migr: 20260727T153001_add_teams.sql (raw): ran past safety.migration_timeout (100ms), so the server was told to stop it and nothing it was doing is still holding a lock: statement 1: CREATE TABLE teams (id bigint);: a statement gave up waiting for a lock: another session holds the table
+backing off before retry 1: context deadline exceeded
+  next: raise safety.migration_timeout in migr.yaml if the work needs longer, then run the command again
+
+== migr up --dry-run: the migration lock, on a dry run (exit 3)
+migr: gave up waiting for the migration lock
+  next: another migr run holds the migration lock: let it finish and run the command again, or wait longer with lock.timeout in migr.yaml or --lock-timeout
+
+== migr up --dry-run --step -1: a step count naming nothing, on a dry run (exit 2)
+migr: a step count must name at least one migration, and -1 names none -- a run that would act on nothing is a mistyped count rather than a request for one
+  next: pass --step 1 or more, or leave the flag out to act on every migration
+
+== migr up: a migration edited after it was applied (exit 4)
+migr: 20260727T153000_add_users.sql: an applied migration has been edited since it was applied.
+The source half of its checksum moved, and it is the only half drift is decided on:
+
+  recorded   migr1:dce0f7febe74eb53ae191be848050ddf08d4ae40282d52cd1fb534de82e19329:312b5a7de385ca36602e16ed4dff4236c34959a50b62d32812df486265804ba4
+             recorded 2026-07-27 15:30:00 UTC, batch 1 ordinal 1
+  on disk    source 1d6f5f65caad6f0e218f99014dd2077f7c04345fb4cfb38335318be7b439f216
+
+The recorded IR half is what that run emitted, and nothing here recomputes it: doing so
+needs a language runtime and a live database, and a migration may branch on live query
+results, so a mismatch there would not be drift.
+
+No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
+first statement.
+  next: restore the file to the bytes that were applied, from version control, and make the change in a new migration with migr create
+
+== migr up: a step of a change across deploys, with no release (exit 2)
+migr: this run reaches a step of a change carried out across deploys, and names no release: 20260727T153000_swap_email.go declares a step of "users.email", which runs only a deploy after the step before it
+  next: name the deploy this run belongs to: migr up --release <build id>, or MIGR_RELEASE set
+
+== migr up --release r1: a step waiting on one nothing declares (exit 2)
+migr: these migrations declare phases that cannot be carried out in order:
+20260727T153000_swap_email.go: its phase "step0" of "users.email" waits on "nothing", and no migration here declares that step
+20260727T153001_contract_email.go: its phase "step1" of "users.email" waits on "nothing", and no migration here declares that step
+  next: make each phase wait on a step another migration of the same change declares, in the order the steps run
+
+== migr down --to 20260727T153000: a version this database does not carry (exit 1)
+migr: this database does not carry that version: "20260727T153000", so it cannot be left at it -- this database carries no migrations at all. Rolling back to a version that is not applied would have to guess whether you meant to stop before it or to undo everything
+  next: pass --to a version this database carries, as migr status lists them, or --step to count back
+
+== migr down: a migration declared irreversible (exit 1)
+migr: 20260727T153000_drop_sessions.sql: this migration declares that it cannot be undone: the rows are gone
+  next: roll back only what is newer with migr down --to <its version>; only a backup taken before it ran reaches further
+
+== migr down: the migration lock (exit 3)
+migr: gave up waiting for the migration lock
+  next: another migr run holds the migration lock: let it finish and run the command again, or wait longer with lock.timeout in migr.yaml or --lock-timeout
+
+== migr down: a table lock still held after every retry (exit 3)
+migr: 20260727T153001_add_teams.sql (raw): still waiting for a lock after 3 attempts and <jittered> of backoff between them, so the run stopped rather than queue behind whoever holds it: statement 1: DROP TABLE teams;: a statement gave up waiting for a lock: another session holds the table
+  next: find the session holding the table and let it finish, then run the command again; safety.lock_retries and safety.lock_timeout in migr.yaml set how long a run waits
+
+== migr status: a migrations directory that is not there (exit 1)
+migr: the migrations directory does not exist: open .: no such file or directory
+  next: create it with migr init, or point migrations.dir in migr.yaml at the directory that holds the migrations
+
+== migr plan --step 1 --to 20260727T153000: --step with --to (exit 2)
+migr: --step and --to select differently, so a run takes one of them
+  next: pass --step or --to, not both
+
+== migr plan --step -1: a step count naming nothing (exit 2)
+migr: a step count must name at least one migration, and -1 names none -- a run that would act on nothing is a mistyped count rather than a request for one
+  next: pass --step 1 or more, or leave the flag out to act on every migration
+
+== migr plan: the migration lock (exit 3)
+migr: gave up waiting for the migration lock
+  next: another migr run holds the migration lock: let it finish and run the command again, or wait longer with lock.timeout in migr.yaml or --lock-timeout
+
+== migr plan --require-safe: an operation over safety.max_lock_impact (exit 5)
+migr: 1 operation exceeds safety.max_lock_impact (brief_exclusive):
+
+  20260727T153000_add_users.sql (up), operation 2 (raw) on "CREATE INDEX idx_users ON users (id);": table_rewrite, having read the table
+
+Each would block a live database's reads or writes for longer than this project allows. A raw
+statement is unknown, which counts as table_rewrite.
+  next: make each operation cheaper -- a rewrite, an expand and contract, a shadow table, or a smaller step -- or raise safety.max_lock_impact in migr.yaml
+
+== migr up: a migration nothing permits (exit 2)
+migr: 20260727T153000_add_users.sql: migr cannot read what this migration does, so it cannot say that it destroys nothing.
+
+  operation 1 (raw) is engine SQL, and migr cannot read what it does: CREATE TABLE users (id bigint);
+  operation 2 (raw) is engine SQL, and migr cannot read what it does: CREATE INDEX idx_users ON users (id);
+
+This project permits no destructive operation at all.
+  next: permit it for this run with --allow-destructive, or for the project by adding raw to validation.allow_destructive in migr.yaml
+
+== migr up: an operation this server cannot perform (exit 1)
+migr: 20260727T153001_add_teams.sql: driver "fake" against server 0.0-fake will not perform 1 operation in this migration's up run,
+so nothing in it ran and nothing was recorded for it:
+
+  operation 1 (raw) on "CREATE TABLE teams (id bigint);": this release accepts the statement and discards it, so refusing is the only answer that is not a lie
+
+The declaration is resolved against the connected server rather than read from documentation
+(invariant #13), so another server may answer differently.
+  next: rewrite the operations above as ones this server performs, or run against a server that performs them; migr validate --connect lists every such operation before anything runs
+
+== migr validate: a migration nothing permits (exit 2)
+migr: this project has migrations that will not do what they say
+  next: fix each problem listed above, then run migr validate again
+
+== migr validate --connect: an operation this server cannot perform (exit 2)
+migr: this project has migrations that will not do what they say
+  next: fix each problem listed above, then run migr validate again
+
+== migr validate --connect: a database that cannot be reached (exit 1)
+migr: connecting to database "default": connection refused
+  next: check that the server is up and that databases.default.dsn in migr.yaml reaches it; migr config prints the DSN as resolved, secret redacted
+
+== migr validate --require-safe: an operation over safety.max_lock_impact (exit 5)
+migr: an operation exceeds the lock ceiling: 1 operation exceeds safety.max_lock_impact, each listed above
+  next: make each operation cheaper -- a rewrite, an expand and contract, a shadow table, or a smaller step -- or raise safety.max_lock_impact in migr.yaml
+
+== migr validate: a rule this build does not ship (exit 2)
+migr: migr.yaml has 1 problem:
+  validation.rules.no-such-rule  no rule is called "no-such-rule" (expected one of: missing-down, missing-primary-key, mixed-data-migration, not-null-without-default, unbounded-string)
+  next: fix each key listed in migr.yaml; migr config prints the file as resolved, defaults included
+
+== migr up: a config value that will not decode (exit 2)
+migr: loading migr.yaml:
+invalid duration "soon": a duration is a number and a unit, as "30s" or "500ms"
+  next: fix the value named above in migr.yaml; migr config prints the file as resolved once it loads
+
+== migr validate: a migration nothing can undo (exit 2)
+migr: this project has migrations that will not do what they say
+  next: fix each problem listed above, then run migr validate again
+
+== migr resolve --resume: a database with no migration history at all (exit 1)
+migr: this database has no migration history table, so nothing here is between states -- and a resolution creates nothing, since a command whose whole job is repair may not be the one that invents the record it repairs
+  next: check that --database names the database you mean; migr up is what creates a history table
+
+== migr resolve: no repair at all (exit 2)
+migr: say what to do about the migration: one of --resume, --applied, --rolled-back
+  next: pass one of them: migr status shows the migration between states, and --dry-run prints what each would do
+
+== migr resolve --resume --applied: two repairs at once (exit 2)
+migr: a resolution does one of --resume, --applied, --rolled-back, so it takes one
+  next: pass only one of them
+
+== migr resolve --applied: an asserted repair with no reason (exit 2)
+migr: a resolution records the operator's reason for it, and --applied records one: the history row is the only thing that will still say why this migration reads as settled when nobody remembers the incident
+  next: run it again with --applied --reason "<what you did>"
+
+== migr resolve --resume: the migration lock (exit 3)
+migr: gave up waiting for the migration lock
+  next: another migr run holds the migration lock: let it finish and run the command again, or wait longer with lock.timeout in migr.yaml or --lock-timeout
+
+== migr resolve --resume: a migration edited since the run that stopped (exit 4)
+migr: 20260727T153000_add_users.sql: this migration stopped partway, and its file has been edited since.
+The source half of its checksum moved, and it is the only half drift is decided on:
+
+  recorded   migr1:7e8c5445a14b1c56d6faab89b46a2dba3a380be596b112cda93322a136960919:937cebd9aa0edeb310dd50fc076efdcf2af7aab728b344f5b1c8994dd6f689d5
+             recorded 2026-07-27 15:30:00 UTC, batch 1 ordinal 1
+  on disk    source 434c7f49314f170490a7fbcfc94829c3344a51286141c651f37f8ea401bc8ca6
+
+The recorded IR half is what that run emitted, and nothing here recomputes it: doing so
+needs a language runtime and a live database, and a migration may branch on live query
+results, so a mismatch there would not be drift.
+
+No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
+first statement.
+  next: restore the file to the bytes that ran and run migr resolve --resume, or record what you did yourself with migr resolve --applied or --rolled-back --reason <why>
+
+== migr diff: a language nothing writes a generated migration in (exit 2)
+migr: migrations.language: sql: nothing here writes a generated migration in that language (expected one of: go, typescript). Nor would there be anything to write about: every statement in a .sql migration reaches the database as a raw operation, whose effect on the schema migr cannot read, so the schema those migrations describe cannot be read off them at all
+  next: write the migration by hand: migr diff reads Go and TypeScript projects only
+
+== migr diff: a diff over a database with migrations still to run (exit 1)
+migr: this database is not the one the migrations describe -- nothing says which of them it already holds, and a diff folds every migration forward: this database has no migration history table
+  next: run migr up first, which creates the history table and applies every migration
+
+== migr diff Not-A-Name: a name the filename grammar refuses (exit 2)
+migr: 20260727T153000_Not-A-Name.go is not a migration: its name "Not-A-Name" is not snake_case: "N" is not a lowercase letter or digit. Migrations are named <YYYYMMDDThhmmss>_<snake_case name>.<ext>, as 20260727T153000_add_users.sql
+  next: name it in lowercase words joined by underscores, as add_users
+
+== migr diff: the migration lock a diff takes to read (exit 3)
+migr: gave up waiting for the migration lock
+  next: another migr run holds the migration lock: let it finish and run the command again, or wait longer with lock.timeout in migr.yaml or --lock-timeout
+
+== migr seed: a seed run over migrations still to run (exit 1)
+migr: this database is not ready to seed -- none of the 2 migrations has run, and a seed runs against the schema every migration leaves, never between two of them: this database has no migration history table
+  next: run migr up first
+
+== migr seed: a seeds directory no environment runs (exit 2)
+migr: seeds/prodution: a subdirectory of the seeds directory holds the seeds of the environment it is named for, and no database in migr.yaml runs under "prodution" (environments: default, production)
+  next: rename the directory to one of those environments, or set databases.<name>.environment in migr.yaml to its name
+
+== migr seed --step 1 --to 20260727T153000: both selectors at once (exit 2)
+migr: --step and --to select differently, so a run takes one of them
+  next: pass --step or --to, not both
+
+== migr seed: the migration lock a seed run takes (exit 3)
+migr: gave up waiting for the migration lock
+  next: another migr run holds the migration lock: let it finish and run the command again, or wait longer with lock.timeout in migr.yaml or --lock-timeout
+
+== migr seed: a seed edited since it ran (exit 4)
+migr: 20260727T153030_countries.sql: an applied seed has been edited since it ran.
+The source half of its checksum moved, and it is the only half drift is decided on:
+
+  recorded   migr1:d966e60067f631d40b45f8d0172a7836791cfa11198f2d8ad574e5fb1553249c:5b6c9d7c7909737645e3192ddf19b389e7c0390821be6ea3f9148ef56d1f6453
+             recorded 2026-07-27 15:30:00 UTC, batch 1 ordinal 1
+  on disk    source 77d7a1850f5cf5de899d5360a9763c808f7a15bb51c8f0535737757045717cb6
+
+The recorded IR half is what that run emitted, and nothing here recomputes it: doing so
+needs a language runtime and a live database, and a seed may branch on live query
+results, so a mismatch there would not be drift.
+
+No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
+first statement.
+  next: restore the file to the bytes that were applied, from version control, and make the change in a new seed
+
+== migr seed status: seed status with no seeds directory (exit 1)
+migr: the seeds directory does not exist: seeds.dir is seeds, so there is nothing to seed
+  next: create the directory, or point seeds.dir in migr.yaml at the one that holds the seeds
+
+== migr seed status: seed status naming a directory no environment runs (exit 2)
+migr: seeds/prodution: a subdirectory of the seeds directory holds the seeds of the environment it is named for, and no database in migr.yaml runs under "prodution" (environments: default, production)
+  next: rename the directory to one of those environments, or set databases.<name>.environment in migr.yaml to its name
+
+== migr seed history: seed history over a database that will not answer (exit 1)
+migr: connecting to database "default": connection refused
+  next: check that the server is up and that databases.default.dsn in migr.yaml reaches it; migr config prints the DSN as resolved, secret redacted
+
+== migr seed down: seed down over migrations still to run (exit 1)
+migr: this database is not ready to seed -- none of the 2 migrations has run, and a seed runs against the schema every migration leaves, never between two of them: this database has no migration history table
+  next: run migr up first
+
+== migr seed down: seed down over a seed that declares it cannot be undone (exit 1)
+migr: 20260727T153030_imported.sql: this seed declares that it cannot be undone: the rows came from a dump
+  next: roll back only what is newer with migr seed down --to <its version>; only a backup taken before it ran reaches further
+
+== migr seed down --step 1 --to 20260727T153000: seed down given both selectors (exit 2)
+migr: --step and --to select differently, so a run takes one of them
+  next: pass --step or --to, not both
+
+== migr seed down: the migration lock a seed rollback takes (exit 3)
+migr: gave up waiting for the migration lock
+  next: another migr run holds the migration lock: let it finish and run the command again, or wait longer with lock.timeout in migr.yaml or --lock-timeout
+
+== migr seed down: seed down over a seed edited since it ran (exit 4)
+migr: 20260727T153030_countries.sql: an applied seed has been edited since it ran.
+The source half of its checksum moved, and it is the only half drift is decided on:
+
+  recorded   migr1:d966e60067f631d40b45f8d0172a7836791cfa11198f2d8ad574e5fb1553249c:5b6c9d7c7909737645e3192ddf19b389e7c0390821be6ea3f9148ef56d1f6453
+             recorded 2026-07-27 15:30:00 UTC, batch 1 ordinal 1
+  on disk    source 77d7a1850f5cf5de899d5360a9763c808f7a15bb51c8f0535737757045717cb6
+
+The recorded IR half is what that run emitted, and nothing here recomputes it: doing so
+needs a language runtime and a live database, and a seed may branch on live query
+results, so a mismatch there would not be drift.
+
+No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
+first statement.
+
+A rollback refuses for a stronger reason than an apply does: the undo about to run
+would be authored by bytes that are not the ones that ran.
+  next: restore the file to the bytes that were applied, from version control, and make the change in a new seed
+
+== migr seed resolve: seed resolve with no repair (exit 2)
+migr: say what to do about the seed: one of --resume, --applied, --rolled-back
+  next: pass one of them: migr seed status shows the seed between states, and --dry-run prints what each would do
+
+== migr seed resolve --resume: seed resolve over migrations still to run (exit 1)
+migr: this database is not ready to seed -- none of the 2 migrations has run, and a seed runs against the schema every migration leaves, never between two of them: this database has no migration history table
+  next: run migr up first
+
+== migr graph --schema --format dot: a diagram of a schema the migrations cannot say (exit 1)
+migr: the schema after 20260727T153001_add_teams.sql cannot be read from the migrations, so there is no schema to draw -- 20260727T153000_add_users.sql: operation 1 (raw) is engine SQL, and what it does to the schema cannot be read
+  next: run migr graph --schema to see each migration's operations as text: the first migration ends the projection, so no moment of this schema can be drawn
+
+== migr graph --format svg: a rendering migr graph does not know (exit 2)
+migr: --format "svg" is not a rendering migr graph knows
+  next: pass --format text, mermaid or dot
+
+== migr graph --json --format dot: --json beside --format (exit 2)
+migr: --json and --format each choose what is written, so a graph takes one
+  next: pass --json or --format, not both
+
+== migr graph --to 20260727T153000: --to with no schema to stop (exit 2)
+migr: --to stops the schema at a version, and without --schema there is no schema drawn
+  next: add --schema, or drop --to: the dependency DAG always draws every migration
+
+== migr graph --schema --to 20990101T000000: a version to stop the schema at that nothing carries (exit 2)
+migr: --to "20990101T000000" names no migration in this project, which holds 20260727T153000, 20260727T153001
+  next: pass --to one of the versions above, as migr status prints them
+
+== migr graph: dependencies that form a cycle (exit 2)
+migr: the declared dependencies cannot be ordered (1 problem):
+  a cycle, each depending on the next: 20260727T153000_swap_email.go → 20260727T153001_contract_email.go → 20260727T153000_swap_email.go
+  next: make each dependency name the version of a migration in this directory, and break each cycle by removing one of its dependencies
+
+== migr graph: a migrations directory that is not there (exit 1)
+migr: the migrations directory does not exist: open .: no such file or directory
+  next: create it with migr init, or point migrations.dir in migr.yaml at the directory that holds the migrations
+
+== migr cutover --confirm 20990101T000000: a cutover confirmed of a version nothing carries (exit 2)
+migr: no migration carries this version: "20990101T000000"
+  next: pass --confirm one of the versions migr cutover lists
+
+== migr cutover --confirm 20260727T153000: a cutover confirmed of a migration with no shadow table held (exit 1)
+migr: this migration is not waiting for a cutover: 20260727T153000_add_users.sql has no shadow table held in sync
+  next: run migr cutover to list what waits, and migr status for the state this one is in
+
+== migr cutover: a cutover over a database that will not answer (exit 1)
+migr: connecting to database "default": connection refused
+  next: check that the server is up and that databases.default.dsn in migr.yaml reaches it; migr config prints the DSN as resolved, secret redacted
+
+== migr down: a migration nothing can undo (exit 1)
+migr: 20260727T153000_one_way.sql: nothing here can undo it: operation 1 (raw): raw is irreversible: its effect is opaque to the framework; write the undo as a raw operation in Down -- and the whole rollback is refused before anything runs, because one that stopped at an operation with no inverse would leave a schema no migration describes
+  next: author a down for this migration, or declare it irreversible with a reason; until then migr down --to <its version> rolls back only what is newer
+
+== migr down: a migration declared irreversible (exit 1)
+migr: 20260727T153000_drop_sessions.sql: this migration declares that it cannot be undone: the rows are gone
+  next: roll back only what is newer with migr down --to <its version>; only a backup taken before it ran reaches further
+
+== migr up: a statement the server refused (exit 1)
+migr: 20260727T153000_add_users.sql (raw): statement 1: CREATE TABLE users (id bigint);: the server refused this statement
+  next: fix the statement, or what the server objected to in it, then run the command again
+
+== migr up: an operation the driver will not compile (exit 1)
+migr: 20260727T153000_add_users.sql: driver "fake" against server 0.0-fake will not perform 1 operation in this migration's up run,
+so nothing in it ran and nothing was recorded for it:
+
+  operation 1 (raw) on "CREATE TABLE users (id bigint);": this fake engine has no such thing
+
+The declaration is resolved against the connected server rather than read from documentation
+(invariant #13), so another server may answer differently.
+  next: rewrite the operations above as ones this server performs, or run against a server that performs them; migr validate --connect lists every such operation before anything runs
+
+== migr up: a migration edited after it was applied (exit 4)
+migr: 20260727T153000_add_users.sql: an applied migration has been edited since it was applied.
+The source half of its checksum moved, and it is the only half drift is decided on:
+
+  recorded   migr1:dce0f7febe74eb53ae191be848050ddf08d4ae40282d52cd1fb534de82e19329:312b5a7de385ca36602e16ed4dff4236c34959a50b62d32812df486265804ba4
+             recorded 2026-07-27 15:30:00 UTC, batch 1 ordinal 1
+  on disk    source 1d6f5f65caad6f0e218f99014dd2077f7c04345fb4cfb38335318be7b439f216
+
+The recorded IR half is what that run emitted, and nothing here recomputes it: doing so
+needs a language runtime and a live database, and a migration may branch on live query
+results, so a mismatch there would not be drift.
+
+No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
+first statement.
+  next: restore the file to the bytes that were applied, from version control, and make the change in a new migration with migr create
+
+== migr up: a database left between states (exit 1)
+migr: 20260727T153000_add_users.sql: this migration's last run left the schema between states.
+
+  applied      statement 1 of the up run, and nothing rolled them back
+  stopped by   the server refused this statement
+  not applied  whatever that run had left after statement 1 -- the row records how far it got,
+               not how far it had to go, and nothing here recomputes that: the statements were
+               the ones that run emitted, and a migration may branch on live query results
+               
+  recorded     batch 1, ordinal 1, at 2026-07-27 15:30:00 UTC
+
+Neither up nor down runs against this database until the dirty state is resolved explicitly, and
+nothing here undoes it -- nothing here knows what the statement that failed left behind. migr
+status and migr history print this row without failing.
+  next: run migr resolve --resume to go on from statement 1, or record what you did yourself with migr resolve --applied or --rolled-back --reason <why>
+
+== migr down: a version the database carries and no file describes (exit 1)
+migr: the database carries a version no migration file describes: version 20260727T153000 -- a rollback runs newest first, so stepping around it would undo the migrations applied after it and leave a schema nothing describes. migr up skips such a version, having nothing to run for it, but a rollback has to undo it
+  next: restore that migration's file to the migrations directory from version control, then run migr down again
+
+== migr up: a migration this format cannot read (exit 1)
+migr: 20260727T153000_add_users.sql: asking what this migration does: 20260727T153000_add_users.sql: it has no "-- migr:up" line, so nothing here can say which of its statements are the migration and which are the undo. A file whose marker is misspelled would otherwise run its down section during an apply
+  next: put a "-- migr:up" line of its own above the statements that apply the migration
+

@@ -343,9 +343,19 @@ func (s *Session) await(ctx context.Context, id int64, replies chan *protocol.Me
 	case answer := <-replies:
 		return answer, nil
 	case <-s.done:
-		return nil, s.reason()
+		return s.delivered(replies)
 	case <-ctx.Done():
 		return nil, s.abandon(id, replies, ctx.Err())
+	}
+}
+
+// delivered reports an answer the loop handed over before the stream ended, and why it ended if none.
+func (s *Session) delivered(replies chan *protocol.Message) (*protocol.Message, error) {
+	select {
+	case answer := <-replies:
+		return answer, nil
+	default:
+		return nil, s.reason()
 	}
 }
 

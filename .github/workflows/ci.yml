@@ -77,12 +77,15 @@ jobs:
         id: tools
         run: echo "version=$(awk '/^GOLANGCI_VERSION/ {print $3}' Makefile)" >> "$GITHUB_OUTPUT"
 
+      # The tool alone, never the whole of bin: that directory also holds the bin/migr
+      # `make build` writes, and a cache saved after one run restored that run's migr into
+      # every later one -- which the SDK test helpers, running before Build, then drove.
       - name: Cache dev tools
         id: cache-tools
         uses: actions/cache@v4
         with:
-          path: bin
-          key: tools-${{ runner.os }}-${{ steps.tools.outputs.version }}
+          path: bin/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ steps.tools.outputs.version }}
 
       - name: Install dev tools
         if: steps.cache-tools.outputs.cache-hit != 'true'

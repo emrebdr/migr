@@ -618,3 +618,17 @@ func TestAnAppliedMigrationsOwnStatementsRunAndAreNotHeld(t *testing.T) {
 		t.Fatalf("apply mode reached the database %d times, want once", len(c.performed))
 	}
 }
+
+func TestAnAnswerThatArrivedBeforeTheStreamEndedIsTheAnswer(t *testing.T) {
+	for range 200 {
+		s := &Session{done: make(chan struct{})}
+		close(s.done)
+
+		replies := make(chan *protocol.Message, 1)
+		replies <- &protocol.Message{}
+
+		if _, err := s.await(t.Context(), 1, replies, protocol.NoTimeout); err != nil {
+			t.Fatalf("a runtime that answered and then exited was reported as having ended: %v", err)
+		}
+	}
+}

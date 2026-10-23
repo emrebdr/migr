@@ -190,6 +190,42 @@ jobs:
         if: failure()
         run: docker compose -f test/docker-compose.yml ps
 
+  # The release images (M14-T4, ADR 0101), run as a pipeline runs them: each built from the release's
+  # own Dockerfile over this commit's binary, a project mounted at /work, against compose's postgres17.
+  # The TypeScript half needs the SDK built, so this job sets up Node too.
+  docker:
+    name: docker images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            **/go.mod
+            **/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: sdk/typescript/.nvmrc
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: sdk/typescript
+
+      - name: Image tests
+        run: make test-docker
+
+      - name: Report server state
+        if: failure()
+        run: docker compose -f test/docker-compose.yml ps
+
   # The zero-downtime suite (M13-T12, ADR 0096): every operation against every server under client
   # load, each held to the lock cost it declares. A job of its own, one runner per driver, because it
   # judges latency: sharing a runner with the integration tests, or with another driver's suite, put

@@ -33,7 +33,7 @@ GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 FUZZTIME         ?= 30s
 
 .PHONY: help build test test-integration test-conformance test-zerodowntime fuzz lint golden-update tools fmt vet \
-        tidy check clean release-check release-snapshot npm-snapshot
+        tidy check clean release-check release-snapshot npm-snapshot docker-image test-docker
 
 # Run a command in every Go module. The subshell cd means any tool path passed in
 # must be absolute -- a relative ./bin/tool resolves at the root and vanishes in sdk/go.
@@ -102,6 +102,8 @@ help:
 	@echo "  release-check     validate .goreleaser.yaml (needs goreleaser $(GORELEASER_VERSION))"
 	@echo "  release-snapshot  build every release archive into dist/, unsigned, publishing nothing"
 	@echo "  npm-snapshot      release-snapshot, then the seven npm packages packed into dist/npm"
+	@echo "  docker-image      build both release images for this machine, as migr:test and migr:test-node"
+	@echo "  test-docker       run both images against compose's postgres17 as a pipeline would (Docker)"
 
 # `go build` stamps VCS info from git by default. If .git is present but git
 # refuses to read it -- a container copy whose ownership does not match the build
@@ -122,7 +124,26 @@ release-check:
 
 release-snapshot:
 	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser not found: go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)"; exit 1; }
-	@goreleaser release --snapshot --clean --skip=sign
+	@goreleaser release --snapshot --clean --skip=sign,docker
+
+# The release's two Dockerfiles over a binary for this machine's architecture, laid out as
+# goreleaser's dockers_v2 lays out its context, so what is tested is what is released (ADR 0101).
+DOCKER_ARCH := $(shell go env GOARCH)
+DOCKER_CTX  := dist/docker
+
+docker-image:
+	@mkdir -p $(DOCKER_CTX)/linux/$(DOCKER_ARCH)
+	@echo "==> go build linux/$(DOCKER_ARCH)  ($(VERSION))"
+	@CGO_ENABLED=0 GOOS=linux GOARCH=$(DOCKER_ARCH) go build -trimpath -ldflags "$(LDFLAGS)" \
+	  -o $(DOCKER_CTX)/linux/$(DOCKER_ARCH)/migr ./cmd/migr
+	@docker buildx build --quiet --load --platform linux/$(DOCKER_ARCH) -f docker/Dockerfile -t migr:test $(DOCKER_CTX)
+	@docker buildx build --quiet --load --platform linux/$(DOCKER_ARCH) -f docker/node.Dockerfile -t migr:test-node $(DOCKER_CTX)
+
+test-docker: docker-image
+	$(call ts_run,npm run build)
+	@docker compose -f $(COMPOSE) up -d --wait postgres17
+	@MIGR_IMAGE=migr:test MIGR_NODE_IMAGE=migr:test-node MIGR_VERSION=$(VERSION) COMPOSE=$(COMPOSE) \
+	  SDK_DIR=$(TSDIR) test/docker/run.sh
 
 npm-snapshot: release-snapshot
 	@node $(NPMCLI)/build.mjs dist dist/npm

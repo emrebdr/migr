@@ -26,7 +26,9 @@ This page is for maintainers. Releases are built, signed and published by
       step, so `brew install` only ever gets a final release;
    7. builds the seven npm packages, checks that the runner's binary reports their version, and
       publishes them: the six `@migr/cli-<os>-<arch>` first, then `@migr/cli`. A pre-release is
-      published under the `next` tag, so `npx @migr/cli` only ever gets a final release.
+      published under the `next` tag, so `npx @migr/cli` only ever gets a final release;
+   8. pushes both images to `ghcr.io/emrebdr/migr` for `linux/amd64` and `linux/arm64`, and signs
+      each with cosign. `latest` and `latest-node` move only on a final release.
 4. Check one download against the commands in the README's **Installing** section.
 
 A failed run publishes nothing, or leaves a partial release. Delete the release and its tag, fix
@@ -90,6 +92,17 @@ workflow rehearses every publish with `--dry-run` and uploads the tarballs.
 **The unscoped name.** `migr` on npm belongs to an unrelated package from 2013. npm's name-dispute
 process can transfer an abandoned name. If it does, `migr` can be published as a package that
 depends on `@migr/cli` at the same version, so `npx migr` works too.
+
+## Images
+
+The release logs in to `ghcr.io` with the job's own `GITHUB_TOKEN` (`packages: write`), so the
+images need no secret (ADR 0101). **After the first tag, make the package public once**: on GitHub,
+open **Packages → migr → Package settings → Change visibility**. A new package is private until then,
+and a pipeline elsewhere can't pull it.
+
+A hand-run snapshot builds every image for both platforms and pushes none. Locally,
+`make docker-image` builds both from the same Dockerfiles for this machine, and `make test-docker`
+runs them against compose's postgres17. The CI job `docker images` runs that on every change.
 
 ## The Go SDK is released separately
 

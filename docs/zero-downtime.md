@@ -565,35 +565,54 @@ first queued migration's table-dependent costs are read from the table, so this 
 
 ### A GitHub Actions job
 
+The release images run migr with nothing to install (ADR 0101). Use
+`ghcr.io/emrebdr/migr:<version>-node` for a TypeScript project, and the minimal
+`ghcr.io/emrebdr/migr:<version>` for a `.sql` one. Both run `migr` as their entrypoint, as a
+non-root user, in `/work`, so the job mounts the checkout there. The project's own `node_modules`,
+with `@migr/sdk` in it, comes along in the mount.
+
 ```yaml
+env:
+  MIGR: ghcr.io/emrebdr/migr:0.1.0-node   # pin the version your migrations were written against
+
 jobs:
   migrations:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        image: postgres:17                # the engine and major version production runs
         env: { POSTGRES_PASSWORD: postgres }
         ports: ["5432:5432"]
         options: --health-cmd pg_isready --health-interval 2s --health-retries 30
-    env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
-      - run: migr validate --require-safe
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci
+      - name: Gate on lock cost
+        run: >-
+          docker run --rm --network host -v "$PWD:/work"
+          -e DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+          "$MIGR" validate --require-safe
 
   deploy:
     needs: migrations
     runs-on: ubuntu-latest
     environment: production
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
-      - run: migr plan --require-safe --release "$GITHUB_SHA"
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci
+      - name: Plan against production, gated
+        run: >-
+          docker run --rm -v "$PWD:/work" -e DATABASE_URL="${{ secrets.DATABASE_URL }}"
+          "$MIGR" plan --require-safe --release "$GITHUB_SHA"
       - name: migr up
         run: |
           set +e
-          migr up --release "$GITHUB_SHA"
+          docker run --rm -v "$PWD:/work" -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            "$MIGR" up --release "$GITHUB_SHA"
           code=$?
           if [ "$code" -eq 6 ]; then
             echo "::warning::a shadow-table cutover is waiting: run migr cutover --confirm"
@@ -601,6 +620,25 @@ jobs:
           fi
           exit "$code"
 ```
+
+A few things to know about this job:
+- **The exit status is the container's**, so `--require-safe`'s **5** fails the step, and the
+  exit-6 branch reads the same code a bare `migr` would return.
+- **`--network host`** lets the container reach the service on `localhost`, the way a step on the
+  runner does.
+- **`npm ci` runs on the runner**, which is Linux, so esbuild's binary inside `@migr/sdk` matches the
+  container's platform.
+- **The gate needs typed migrations.** A `.sql` project passes `--require-safe` only at
+  `table_rewrite`, because every raw statement is `unknown`. For one, use the minimal image, drop
+  both `npm ci` steps, and gate on `migr plan` output in review instead.
+- **A Go project** builds a runner with the Go toolchain, so it copies the binary into the image it
+  already builds with:
+
+  ```dockerfile
+  COPY --from=ghcr.io/emrebdr/migr:0.1.0 /usr/local/bin/migr /usr/local/bin/migr
+  ```
+- **Where migr writes into the mount**, which is SQLite's database file and a Go project's `.migr/`,
+  run the container as the runner's user: `--user "$(id -u):$(id -g)"`.
 
 Destructive operations are refused by `migr up` as well as by `migr validate`, exit **2**, unless
 the kind is named in `validation.allow_destructive` or the run passes `--allow-destructive`. Keep

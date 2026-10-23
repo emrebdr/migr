@@ -70,6 +70,44 @@ signs:
       - --output-certificate=${certificate}
       - ${artifact}
 
+# The images (M14-T4, ADR 0101), both for linux/amd64 and linux/arm64 on ghcr.io: the minimal one
+# for .sql projects, and one on Node for TypeScript projects. `latest` and `latest-node` move only on
+# a final release; an empty tag is dropped.
+dockers_v2:
+  - id: minimal
+    ids: [migr]
+    dockerfile: docker/Dockerfile
+    images: [ghcr.io/emrebdr/migr]
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    labels: &labels
+      org.opencontainers.image.source: https://github.com/emrebdr/migr
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.title: migr
+  - id: node
+    ids: [migr]
+    dockerfile: docker/node.Dockerfile
+    images: [ghcr.io/emrebdr/migr]
+    tags:
+      - "{{ .Version }}-node"
+      - "{{ if not .Prerelease }}latest-node{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    labels: *labels
+
+# Each image is signed keyless as the checksum file is, by its digest, in the transparency log.
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args:
+      - sign
+      - --yes
+      - ${artifact}@${digest}
+
 # The tap behind `brew install emrebdr/tap/migr` (M14-T2, ADR 0099): a cask, since goreleaser deprecated
 # the formula generator, committed to emrebdr/homebrew-tap with a token scoped to that repository alone.
 # A pre-release never reaches it, and a snapshot only writes it under dist/homebrew.

@@ -1,8 +1,8 @@
 # Releases (M14-T1, ADR 0098). Pushing a tag vX.Y.Z builds the six binaries .goreleaser.yaml names,
 # signs checksums.txt keyless through this job's OIDC token, attests every archive's provenance,
 # publishes a GitHub release, commits the Homebrew cask to emrebdr/homebrew-tap, and publishes
-# @migr/cli and its six platform packages to npm. sdk/go's own tags are sdk/go/vX.Y.Z, which `v*`
-# does not match.
+# @migr/cli and its six platform packages to npm, and pushes and signs the two images on ghcr.io.
+# sdk/go's own tags are sdk/go/vX.Y.Z, which `v*` does not match.
 #
 # Run by hand, it builds a snapshot through the same signing and attestation steps and uploads dist/
 # as a workflow artifact instead of publishing, so the path can be proven before a real tag.
@@ -18,6 +18,7 @@ permissions:
   contents: write
   id-token: write
   attestations: write
+  packages: write
 
 # One release per ref, never cancelled: a release stopped halfway leaves a tag with half its assets.
 concurrency:
@@ -61,6 +62,22 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
+
+      # The images are built for linux/amd64 and linux/arm64 (ADR 0101), the second under emulation.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # A snapshot pushes no image, so only a tag logs in.
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # The version is the Makefile's GORELEASER_VERSION, which `make release-check` names.
       - name: GoReleaser

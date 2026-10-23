@@ -134,13 +134,14 @@ fuzz:
 # the end-to-end suite runs a TypeScript project, and the runtime it starts is the file
 # `npm run build` writes. A target that cannot run itself is a target nobody runs.
 #
-# -timeout 30m because go test's default is ten minutes a package, and on a CI runner, every package
-# running at once, internal/driver/postgres and internal/driver/mysql each take about that long.
+# -p 1 runs one package at a time. Every tagged package drives the same compose servers, and run all
+# at once on a CI runner they slowed each other ~4x: internal/driver/postgres took 812s beside mysql,
+# against 180s alone. One at a time keeps each well inside go test's ten-minute default.
 test-integration:
 	@echo "==> docker compose up  ($(COMPOSE))"
 	@docker compose -f $(COMPOSE) up -d --wait
 	$(call ts_run,npm run build)
-	$(call go_each,go test -tags=integration -timeout 30m ./...)
+	$(call go_each,go test -tags=integration -p 1 ./...)
 	@echo "    containers left running; 'make clean' tears them down"
 
 # The zero-downtime proof (M13-T12, ADR 0096): every operation against every compose server and

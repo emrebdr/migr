@@ -402,7 +402,7 @@ func (c *pgConn) copyBound(ctx context.Context, shape chunkShape, s driver.Shado
 	return keyValues(driver.Slice{Op: ir.DataCopy{From: s.Table}, Key: s.Key}, values)
 }
 
-// ApplyChanges writes captured changes to the shadow inside the open transaction, each by its key.
+// ApplyChanges writes captured changes to the shadow inside the open transaction, each by its key, in one round trip.
 func (c *pgConn) ApplyChanges(ctx context.Context, s driver.Shadow, changes []capture.Change) (err error) {
 	defer func() { err = stoppedBy(ctx, err) }()
 
@@ -411,20 +411,12 @@ func (c *pgConn) ApplyChanges(ctx context.Context, s driver.Shadow, changes []ca
 		return err
 	}
 
-	for start := 0; start < len(changes); {
-		end := start + 1
-		for end < len(changes) && replayKind(changes[end]) == replayKind(changes[start]) && end-start < copyGroup {
-			end++
-		}
-
-		if err := c.applyRun(ctx, s, p, changes[start:end]); err != nil {
-			return err
-		}
-
-		start = end
+	statements, err := replayStatements(s, p, changes)
+	if err != nil || len(statements) == 0 {
+		return err
 	}
 
-	return nil
+	return c.sendReplay(ctx, s, statements)
 }
 
 // replayKind is how a change is written: an upsert, an update of the columns it carries, or a delete.
@@ -441,40 +433,91 @@ func replayKind(change capture.Change) string {
 	}
 }
 
-// applyRun writes a run of changes of one kind.
-func (c *pgConn) applyRun(ctx context.Context, s driver.Shadow, p shadowPair, run []capture.Change) error {
-	switch replayKind(run[0]) {
-	case "delete":
-		return c.replay(ctx, s, run, func() (string, []any, error) { return deleteStatement(s, p, run) })
-	case "partial", "move":
-		for _, change := range run {
-			if err := c.replay(ctx, s, run, func() (string, []any, error) {
-				if change.From != nil {
-					return moveStatement(s, p, change)
-				}
+// replayed is one statement of a replay, and how many captured changes it writes.
+type replayed struct {
+	// sql is the statement.
+	sql string
+	// args are its bound arguments.
+	args []any
+	// changes counts what it writes, for the message a failure carries.
+	changes int
+}
 
-				return partialStatement(s, p, change)
-			}); err != nil {
-				return err
-			}
+// replayStatements renders every change in capture order, a run of one kind sharing a statement where it can.
+func replayStatements(s driver.Shadow, p shadowPair, changes []capture.Change) ([]replayed, error) {
+	var statements []replayed
+
+	for start := 0; start < len(changes); {
+		end := start + 1
+		for end < len(changes) && replayKind(changes[end]) == replayKind(changes[start]) && end-start < copyGroup {
+			end++
 		}
 
-		return nil
+		rendered, err := runStatements(s, p, changes[start:end])
+		if err != nil {
+			return nil, err
+		}
+
+		statements = append(statements, rendered...)
+		start = end
+	}
+
+	return statements, nil
+}
+
+// runStatements renders a run of changes of one kind: one statement for the run, or one a change where each needs its own.
+func runStatements(s driver.Shadow, p shadowPair, run []capture.Change) ([]replayed, error) {
+	switch replayKind(run[0]) {
+	case "delete":
+		return oneStatement(deleteStatement(s, p, run))(len(run))
+	case "partial", "move":
+		statements := make([]replayed, 0, len(run))
+
+		for _, change := range run {
+			render := partialStatement
+			if change.From != nil {
+				render = moveStatement
+			}
+
+			rendered, err := oneStatement(render(s, p, change))(1)
+			if err != nil {
+				return nil, err
+			}
+
+			statements = append(statements, rendered...)
+		}
+
+		return statements, nil
 	default:
-		return c.replay(ctx, s, run, func() (string, []any, error) { return upsertStatement(s, p, latest(s, run)) })
+		return oneStatement(upsertStatement(s, p, latest(s, run)))(len(run))
 	}
 }
 
-// replay renders one statement and runs it, naming the shadow where it fails.
-func (c *pgConn) replay(ctx context.Context, s driver.Shadow, run []capture.Change,
-	render func() (string, []any, error)) error {
-	statement, args, err := render()
-	if err != nil || statement == "" {
-		return err
+// oneStatement keeps a rendered statement, and none where the rendering produced nothing to run.
+func oneStatement(sql string, args []any, err error) func(changes int) ([]replayed, error) {
+	return func(changes int) ([]replayed, error) {
+		if err != nil || sql == "" {
+			return nil, err
+		}
+
+		return []replayed{{sql: sql, args: args, changes: changes}}, nil
+	}
+}
+
+// sendReplay sends every statement in one batch, in order, and reports the first the server refused.
+func (c *pgConn) sendReplay(ctx context.Context, s driver.Shadow, statements []replayed) (err error) {
+	batch := &pgx.Batch{}
+	for _, statement := range statements {
+		batch.Queue(statement.sql, statement.args...)
 	}
 
-	if _, err := c.runner().Exec(ctx, statement, args...); err != nil {
-		return fmt.Errorf("replaying %d captured changes into %s: %w", len(run), s.Shadow, classifyExec(err))
+	results := c.runner().SendBatch(ctx, batch)
+	defer func() { err = errors.Join(err, results.Close()) }()
+
+	for _, statement := range statements {
+		if _, err := results.Exec(); err != nil {
+			return fmt.Errorf("replaying %d captured changes into %s: %w", statement.changes, s.Shadow, classifyExec(err))
+		}
 	}
 
 	return nil

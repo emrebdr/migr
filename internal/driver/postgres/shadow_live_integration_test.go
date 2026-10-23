@@ -39,7 +39,7 @@ const (
 )
 
 // shadowCopyBound is how long a copy may take before a case fails naming why, well inside go test's own timeout.
-const shadowCopyBound = 5 * time.Minute
+const shadowCopyBound = 2 * time.Minute
 
 // logicalServer is the compose server that permits logical decoding.
 const logicalServer = 1

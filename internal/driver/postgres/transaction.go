@@ -25,6 +25,8 @@ type runner interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	// Query runs a query returning any number of rows.
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	// SendBatch sends queued statements in one round trip, their results read back in order.
+	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 }
 
 // runner returns the open transaction when there is one, so nothing can bypass it unnoticed.

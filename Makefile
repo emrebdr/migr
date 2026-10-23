@@ -105,9 +105,13 @@ build:
 	@go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/migr
 	$(call ts_run,npm run build)
 
+# The TypeScript side runs first because `npm test` builds sdk/typescript/dist, and a Go test --
+# internal/source/typescript's typecheck of what migr diff renders -- resolves @migr/sdk through that
+# package's exports map, which names dist. A fresh checkout has no dist, so run the other way round the
+# Go test fails on CI and passes on any machine that built once.
 test:
-	$(call go_each,go test ./...)
 	$(call ts_run,npm test)
+	$(call go_each,go test ./...)
 
 # `go test -fuzz` drives exactly ONE target per run -- a pattern matching two is an
 # error, not a sweep -- so this discovers them and loops. `make test` already runs
@@ -129,11 +133,14 @@ fuzz:
 # The SDK is built here for the same reason the databases are started here: since M7-T8
 # the end-to-end suite runs a TypeScript project, and the runtime it starts is the file
 # `npm run build` writes. A target that cannot run itself is a target nobody runs.
+#
+# -timeout 30m because go test's default is ten minutes a package, and on a CI runner, every package
+# running at once, internal/driver/postgres and internal/driver/mysql each take about that long.
 test-integration:
 	@echo "==> docker compose up  ($(COMPOSE))"
 	@docker compose -f $(COMPOSE) up -d --wait
 	$(call ts_run,npm run build)
-	$(call go_each,go test -tags=integration ./...)
+	$(call go_each,go test -tags=integration -timeout 30m ./...)
 	@echo "    containers left running; 'make clean' tears them down"
 
 # The zero-downtime proof (M13-T12, ADR 0096): every operation against every compose server and

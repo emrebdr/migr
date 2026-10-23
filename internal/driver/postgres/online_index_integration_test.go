@@ -154,6 +154,21 @@ func TestAUniqueBuildOverDuplicatesLeavesNoInvalidIndexAndResumesOnceTheRowsAreF
 	}
 }
 
+// releasingRepairer ends what holds a build back the moment the engine asks to repair the build it stopped.
+type releasingRepairer struct {
+	driver.Repairer
+	// release ends the holder, and is safe to call more than once.
+	release func()
+}
+
+// Repair releases the holder, then repairs as the session does.
+func (r releasingRepairer) Repair(ctx context.Context, op ir.Operation, stmt driver.Statement, when driver.RepairTime,
+	cause error) (driver.Repaired, error) {
+	r.release()
+
+	return r.Repairer.Repair(ctx, op, stmt, when, cause)
+}
+
 func TestABuildThatGivesUpOnALockIsRepairedAndTriedAgain(t *testing.T) {
 	for at, server := range servers {
 		t.Run(server.name, func(t *testing.T) {
@@ -168,19 +183,20 @@ func TestABuildThatGivesUpOnALockIsRepairedAndTriedAgain(t *testing.T) {
 
 			defer func() { _ = holder.Close(context.WithoutCancel(t.Context())) }()
 
-			held := make(chan struct{})
-
-			go func() {
-				defer close(held)
-				_, _ = holder.Exec(context.Background(), "SELECT count(*) FROM "+quote(target)+".people, pg_sleep(2.5)")
-			}()
-
-			time.Sleep(300 * time.Millisecond)
-			defer func() { <-held }()
-
 			opts := online(t, session, ir.AddIndex{Table: "people", Name: "people_v", Columns: []string{"v"}})
 			opts.Backoff = engine.Exponential{Base: 200 * time.Millisecond, Cap: time.Second, Retries: 5,
 				Jitter: func(time.Duration) time.Duration { return 0 }}
+
+			for _, stmt := range []string{"BEGIN ISOLATION LEVEL REPEATABLE READ",
+				"SELECT count(*) FROM " + quote(target) + ".people"} {
+				if _, err := holder.Exec(t.Context(), stmt); err != nil {
+					t.Fatalf("holding a snapshot the build must wait out: %v", err)
+				}
+			}
+
+			opts.Repairer = releasingRepairer{Repairer: session, release: func() {
+				_, _ = holder.Exec(context.WithoutCancel(t.Context()), "COMMIT")
+			}}
 
 			result, err := engine.Apply(t.Context(), session, opts)
 			if err != nil {

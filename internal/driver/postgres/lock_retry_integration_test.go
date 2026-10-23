@@ -343,12 +343,10 @@ func TestAnAlterThatGetsItsLockOnARetryApplies(t *testing.T) {
 
 			holder := holdTable(t, dsn, table)
 
-			released := time.AfterFunc(350*time.Millisecond, func() {
-				_ = holder.Rollback(context.WithoutCancel(t.Context()))
-			})
-			defer released.Stop()
+			opts := retried(t, 5, 300*time.Millisecond)
+			opts.Retried = func(engine.Retry) { _ = holder.Rollback(context.WithoutCancel(t.Context())) }
 
-			result, err := engine.Apply(t.Context(), session, retried(t, 5, 300*time.Millisecond))
+			result, err := engine.Apply(t.Context(), session, opts)
 			if err != nil {
 				t.Fatalf("Apply: %v", err)
 			}

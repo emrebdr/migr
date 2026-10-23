@@ -32,9 +32,11 @@ go.work.sum
 # .vscode/
 
 # Build output
-bin/
+# Anchored to the root: an unanchored bin/ also ignored npm/cli/bin/, so @migr/cli's launcher was
+# never committed and CI found no npm/cli/bin/migr.js.
+/bin/
 dist/
-completions/
+/completions/
 .migr/
 
 # Node dependencies. package-lock.json is committed: npm ci is what the Makefile and CI

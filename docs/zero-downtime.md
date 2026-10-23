@@ -380,6 +380,12 @@ Every missing prerequisite is named at once. migr never sets one.
 - **PostgreSQL** keeps a replication slot for the migration, and the slot retains WAL until the
   migration finishes. An abandoned slot fills the disk. `migr status`, `migr plan` and `migr cutover`
   name every orphaned `migr_` slot with its retained WAL, and `migr up` drops this project's own.
+- **On PostgreSQL 16 and later, grant `EXECUTE ON FUNCTION pg_log_standby_snapshot()`** to the
+  migr user (a superuser has it already). Each read of the slot decodes WAL from the slot's restart
+  point, which the server moves on only about every 15 s. With the grant, migr moves it on after
+  every batch, so a read decodes only what is new. Without it the copy still works, but on a busy
+  server each read re-decodes up to 15 s of WAL, and a copy can fall behind writes it would
+  otherwise keep up with.
 - **MySQL and MariaDB** keep nothing for a reader. A run stopped for longer than
   `binlog_expire_logs_seconds` cannot resume, because its position has been purged. `migr plan`
   prints that retention.

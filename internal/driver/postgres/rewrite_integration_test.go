@@ -100,13 +100,23 @@ func (w *writer) finish() (int, int, error) {
 	return w.writes, w.blocked, w.err
 }
 
+// schemaRows is how many rows a table holds where only the schema an operation leaves is compared.
+const schemaRows = 1000
+
 // people fills a table the rewrites change, its rows numbered so a foreign key over them holds.
 func people(t *testing.T, session *pgConn) {
 	t.Helper()
 
+	peopleOf(t, session, rewriteRows)
+}
+
+// peopleOf fills the table the rewrites change with a number of rows.
+func peopleOf(t *testing.T, session *pgConn, rows int) {
+	t.Helper()
+
 	for _, sql := range []string{
 		"CREATE TABLE people (id int PRIMARY KEY, v int, parent int)",
-		fmt.Sprintf("INSERT INTO people SELECT i, i, i FROM generate_series(1, %d) i", rewriteRows),
+		fmt.Sprintf("INSERT INTO people SELECT i, i, i FROM generate_series(1, %d) i", rows),
 		"ANALYZE people",
 	} {
 		if err := session.Exec(t.Context(), driver.Statement{SQL: sql}); err != nil {
@@ -202,7 +212,7 @@ func TestARewriteLeavesTheSchemaThePlainOperationWouldHave(t *testing.T) {
 			for i, rewrites := range [][]driver.RewriteName{nil, driver.RewriteNames()} {
 				t.Run([]string{"plain", "rewritten"}[i], func(t *testing.T) {
 					session, _ := splitSession(t, at, 30*time.Second)
-					people(t, session)
+					peopleOf(t, session, schemaRows)
 
 					opts := queueOptions(t, staged{version: "20260727T153000", name: "make_safer", ops: ops})
 					opts.Planner.Rewriter, opts.Planner.Rewrites = session, rewrites

@@ -103,6 +103,8 @@ type slotStream struct {
 	acknowledged pglogrepl.LSN
 	// consumed is how many messages past the slot's position the cursor already stands beyond, which a read asks for on top.
 	consumed int
+	// unsnapped reports a server that would not log a running-transactions snapshot on demand, which is then not asked again.
+	unsnapped bool
 	// decoder carries the relations read and the cursor every read skips to.
 	decoder *decoder
 	// gone reports a resumed stream whose slot no longer exists, which can still be dropped and read nothing.
@@ -350,6 +352,8 @@ func (s *slotStream) Acknowledge(ctx context.Context, through capture.Position) 
 		return nil
 	}
 
+	s.snapshot(ctx)
+
 	if _, err := s.conn.Exec(ctx, "SELECT pg_replication_slot_advance($1, $2::pg_lsn)", s.name, at.String()); err != nil {
 		return fmt.Errorf("advancing the replication slot %s to %s: %w", s.name, at, err)
 	}
@@ -360,6 +364,17 @@ func (s *slotStream) Acknowledge(ctx context.Context, through capture.Position) 
 	}
 
 	return nil
+}
+
+// snapshot logs where the running transactions stand, so the next advance can move the slot's restart point up to it.
+func (s *slotStream) snapshot(ctx context.Context) {
+	if s.unsnapped {
+		return
+	}
+
+	if _, err := s.conn.Exec(ctx, "SELECT pg_log_standby_snapshot()"); err != nil && ctx.Err() == nil {
+		s.unsnapped = true
+	}
 }
 
 // Close stops reading and keeps the slot and the publication, so a later stream resumes from a recorded position.

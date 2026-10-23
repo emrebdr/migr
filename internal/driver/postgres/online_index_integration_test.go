@@ -387,7 +387,7 @@ func TestTheConcurrentFormsLeaveTheSchemaThePlainStatementsWould(t *testing.T) {
 			for i, rewrites := range [][]driver.RewriteName{nil, driver.RewriteNames()} {
 				t.Run([]string{"plain", "rewritten"}[i], func(t *testing.T) {
 					session, _ := splitSession(t, at, 30*time.Second)
-					people(t, session)
+					peopleOf(t, session, schemaRows)
 					execBare(t, session, "ALTER TABLE people DROP CONSTRAINT people_pkey")
 					execBare(t, session, "CREATE INDEX people_v ON people (v)")
 

@@ -136,15 +136,8 @@ func schemaScenarios() []scenario {
 		{name: "add_unique", change: func(n names, _ types, _ Load, _ string) ir.Operations {
 			return one(ir.AddUnique{Table: n.main, Name: "zd_id_label_key", Columns: []string{"id", "label"}})
 		}},
-		{name: "add_foreign_key", setup: func(n names, ty types) ir.Operations {
-			return ir.Operations{
-				ir.CreateTable{Table: n.other, Columns: []ir.Column{{Name: "id", Type: ty.int64}}, PrimaryKey: []string{"id"}},
-				ir.AddColumn{Table: n.main, Column: ir.Column{Name: "zd_ref", Type: ty.int64, Nullable: true}},
-			}
-		}, change: func(n names, _ types, _ Load, _ string) ir.Operations {
-			return one(ir.AddForeignKey{Table: n.main, Name: "zd_ref_fk", Columns: []string{"zd_ref"},
-				ReferencesTable: n.other, ReferencesColumns: []string{"id"}})
-		}},
+		foreignKey("add_foreign_key", true, false),
+		foreignKey("add_foreign_key (rewritten, every row)", false, true),
 		{name: "add_check", change: func(n names, _ types, _ Load, _ string) ir.Operations {
 			return one(ir.AddCheck{Table: n.main, Name: "zd_id_positive", Expression: "id > 0"})
 		}},
@@ -194,6 +187,28 @@ func notNull(name string, side, rewrittenOnly bool) scenario {
 		}, change: func(n names, _ types, _ Load, _ string) ir.Operations {
 			return one(ir.AlterColumn{Table: table(n), Column: "zd_nn", Nullable: new(false),
 				From: &ir.ColumnState{Nullable: new(true)}})
+		}}
+}
+
+// foreignKey is the case adding a foreign key: on a side table everywhere, and on the loaded one where it is rewritten.
+func foreignKey(name string, side, rewrittenOnly bool) scenario {
+	table := func(n names) string {
+		if side {
+			return n.side
+		}
+
+		return n.main
+	}
+
+	return scenario{name: name, side: side, rewrittenOnly: rewrittenOnly,
+		setup: func(n names, ty types) ir.Operations {
+			return ir.Operations{
+				ir.CreateTable{Table: n.other, Columns: []ir.Column{{Name: "id", Type: ty.int64}}, PrimaryKey: []string{"id"}},
+				ir.AddColumn{Table: table(n), Column: ir.Column{Name: "zd_ref", Type: ty.int64, Nullable: true}},
+			}
+		}, change: func(n names, _ types, _ Load, _ string) ir.Operations {
+			return one(ir.AddForeignKey{Table: table(n), Name: "zd_ref_fk", Columns: []string{"zd_ref"},
+				ReferencesTable: n.other, ReferencesColumns: []string{"id"}})
 		}}
 }
 

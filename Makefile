@@ -137,11 +137,29 @@ fuzz:
 # -p 1 runs one package at a time. Every tagged package drives the same compose servers, and run all
 # at once on a CI runner they slowed each other ~4x: internal/driver/postgres took 812s beside mysql,
 # against 180s alone. One at a time keeps each well inside go test's ten-minute default.
+#
+# Three variables narrow it, which is how CI runs it as parallel jobs. INT_ONLY runs just those
+# root-module packages, building no SDK, since only the end-to-end suite starts one; INT_EXCLUDE
+# leaves out every package whose whole import path matches a grep -E pattern; INT_SERVICES starts
+# only those containers.
+INT_ONLY     ?=
+INT_EXCLUDE  ?=
+INT_SERVICES ?=
 test-integration:
-	@echo "==> docker compose up  ($(COMPOSE))"
-	@docker compose -f $(COMPOSE) up -d --wait
+	@echo "==> docker compose up  ($(COMPOSE)) $(INT_SERVICES)"
+	@docker compose -f $(COMPOSE) up -d --wait $(INT_SERVICES)
+ifeq ($(INT_ONLY),)
 	$(call ts_run,npm run build)
-	$(call go_each,go test -tags=integration -p 1 ./...)
+	@for m in $(MODULES); do \
+	  echo "==> go test -tags=integration -p 1  ($$m)"; \
+	  ( cd $$m && pkgs=$$(go list -tags=integration ./...) && \
+	    if [ -n "$(INT_EXCLUDE)" ]; then pkgs=$$(echo "$$pkgs" | grep -vxE '$(INT_EXCLUDE)'); fi && \
+	    go test -tags=integration -p 1 $$pkgs ) || exit 1; \
+	done
+else
+	@echo "==> go test -tags=integration -p 1 $(INT_ONLY)"
+	@go test -tags=integration -p 1 $(INT_ONLY)
+endif
 	@echo "    containers left running; 'make clean' tears them down"
 
 # The zero-downtime proof (M13-T12, ADR 0096): every operation against every compose server and

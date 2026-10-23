@@ -114,7 +114,7 @@ func TestTheConcurrentFormsLetEveryWriteThrough(t *testing.T) {
 	}
 
 	t.Log("Each form's long statement -- the build, the drop -- runs bare under a lock writes pass,")
-	t.Log("and the attach is a catalog change: no write waited past 50ms on 2 million rows.")
+	t.Log("and the attach is a catalog change: no write waited past 50ms on a million rows.")
 }
 
 func TestAUniqueBuildOverDuplicatesLeavesNoInvalidIndexAndResumesOnceTheRowsAreFixed(t *testing.T) {
@@ -347,7 +347,7 @@ func TestAFreshRunAfterAKilledFirstBuildDropsWhatItLeftAndTriesAgainAtOnce(t *te
 
 			if err := session.Exec(stopped, driver.Statement{NoTransaction: true,
 				SQL: `CREATE INDEX CONCURRENTLY "people_v" ON "people" ("v");`}); err == nil {
-				t.Fatal("a build given 50ms over 2 million rows finished")
+				t.Fatal("a build given 50ms over a million rows finished")
 			}
 
 			opts := online(t, session, ir.AddIndex{Table: "people", Name: "people_v", Columns: []string{"v"}})

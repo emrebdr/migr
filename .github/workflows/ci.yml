@@ -122,15 +122,26 @@ jobs:
   # nothing. It does need Node from M7-T8 on: the suite runs a TypeScript project, and
   # the target builds the SDK it starts.
   #
-  # All four servers, and still no strategy.matrix over them (M9-T7). One invocation of
-  # that target runs every tagged package against every server already: each driver
-  # holds its own table-driven list -- two PostgreSQL majors, MySQL 8.0 and MariaDB 11.4
-  # -- so a per-engine matrix would repeat the whole suite four times for the same
-  # assertions, and would need compose profiles and new Makefile surface no local gate
-  # uses. A server that never came healthy is identified by the last step instead.
+  # Three parallel legs, one per slice of the packages, each starting only the servers it drives. This
+  # is not the per-engine matrix M9-T7 rejected, which would repeat the whole suite per server: each
+  # driver package still holds its own list of servers, and each leg runs different packages. The
+  # postgres package alone outlasted go test's ten-minute default with every package queued on one
+  # runner. Only the rest -- the end-to-end suite, which runs a TypeScript project -- needs Node.
   integration:
-    name: integration (postgres 16/17, mysql 8.0, mariadb 11.4)
+    name: integration (${{ matrix.slice }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slice: postgres
+            only: ./internal/driver/postgres/
+            services: postgres16 postgres16standby postgres17
+          - slice: mysql
+            only: ./internal/driver/mysql/
+            services: mysql80 mysql80replica mysql80gtid mariadb114 mariadb114binlog
+          - slice: rest
+            exclude: .*/internal/driver/(postgres|mysql)
 
     steps:
       - name: Checkout
@@ -145,6 +156,7 @@ jobs:
             **/go.sum
 
       - name: Set up Node
+        if: matrix.slice == 'rest'
         uses: actions/setup-node@v4
         with:
           node-version-file: sdk/typescript/.nvmrc
@@ -152,15 +164,18 @@ jobs:
           cache-dependency-path: sdk/typescript/package-lock.json
 
       - name: Install SDK dependencies
+        if: matrix.slice == 'rest'
         run: npm ci
         working-directory: sdk/typescript
 
       - name: Integration tests
-        run: make test-integration
+        run: >-
+          make test-integration INT_ONLY="${{ matrix.only }}"
+          INT_EXCLUDE="${{ matrix.exclude }}" INT_SERVICES="${{ matrix.services }}"
 
-      # Four containers now, and a driver's live tests fail rather than skip when their
-      # server is absent -- so a failure here is either the SQL or a server that never
-      # came healthy, and nothing in the Go output tells those apart.
+      # A driver's live tests fail rather than skip when their server is absent -- so a failure here
+      # is either the SQL or a server that never came healthy, and nothing in the Go output tells
+      # those apart.
       - name: Report server state
         if: failure()
         run: docker compose -f test/docker-compose.yml ps

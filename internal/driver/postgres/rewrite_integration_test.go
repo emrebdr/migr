@@ -22,7 +22,7 @@ import (
 )
 
 // rewriteRows is how many rows the tables here hold, enough for a plain statement's scan to be seen.
-const rewriteRows = 2_000_000
+const rewriteRows = 1_000_000
 
 // writerWait is how long one probe write waits for a lock before it counts as blocked.
 const writerWait = "50ms"

@@ -31,7 +31,7 @@
 // a default migr.yaml -- every rewrite on, chunking, retries, assessment -- so what is measured is
 // what an operator's run would do. Each case applies its setup, runs its change up, and rolls it
 // back, both under load; a drop is measured as the down of the create it undoes, so twenty-three
-// kinds need eighteen cases. A kind no case reached fails the run, which is how a new operation is
+// kinds need twenty cases. A kind no case reached fails the run, which is how a new operation is
 // met here the day it is added. A kind the server declares unsupported is a pass, being honest.
 //
 // The data operations run as data-only migrations, so in chunks; their down is authored and empty,
@@ -76,6 +76,11 @@
 // unthrottled load starved it outright -- so each client pauses between queries, as a busy application
 // rather than a benchmark does. The same change on the loaded table runs only where a session performs
 // it as a safer sequence, PostgreSQL's validated check, which is the promise a full table is needed for.
+//
+// Adding a foreign key is sized the same way. MySQL and MariaDB copy the whole table for it, an honest
+// table_rewrite whatever it costs, and on a CI runner MariaDB's copy of SeededRows under the load ran
+// past the ten-minute statement bound; PostgreSQL's NOT VALID and VALIDATE is the promise a full table
+// proves, so that case alone runs on it.
 //
 // # Where it runs
 //

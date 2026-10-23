@@ -1,6 +1,7 @@
 # Releases (M14-T1, ADR 0098). Pushing a tag vX.Y.Z builds the six binaries .goreleaser.yaml names,
-# signs checksums.txt keyless through this job's OIDC token, attests every archive's provenance, and
-# publishes a GitHub release. sdk/go's own tags are sdk/go/vX.Y.Z, which `v*` does not match.
+# signs checksums.txt keyless through this job's OIDC token, attests every archive's provenance,
+# publishes a GitHub release, and commits the Homebrew cask to emrebdr/homebrew-tap. sdk/go's own
+# tags are sdk/go/vX.Y.Z, which `v*` does not match.
 #
 # Run by hand, it builds a snapshot through the same signing and attestation steps and uploads dist/
 # as a workflow artifact instead of publishing, so the path can be proven before a real tag.
@@ -67,6 +68,9 @@ jobs:
           args: release --clean ${{ github.event_name == 'workflow_dispatch' && '--snapshot' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The job's own token cannot push to emrebdr/homebrew-tap; this one is scoped to that repository
+          # alone (ADR 0099). A snapshot pushes nothing and needs none.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
       - name: Attest provenance
         uses: actions/attest-build-provenance@v2
@@ -85,3 +89,4 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt*
+            dist/homebrew/Casks/migr.rb

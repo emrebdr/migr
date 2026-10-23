@@ -12,6 +12,9 @@ project_name: migr
 before:
   hooks:
     - go mod tidy -diff
+    # Shell completions ship in every archive, so the Homebrew cask installs them and no user's machine
+    # has to run the binary to make them. Hooks are not run through a shell, hence sh -c.
+    - sh -c 'mkdir -p completions && go run ./cmd/migr completion bash > completions/migr.bash && go run ./cmd/migr completion zsh > completions/_migr && go run ./cmd/migr completion fish > completions/migr.fish'
 
 builds:
   - id: migr
@@ -45,6 +48,9 @@ archives:
       - src: README.md
         info:
           mtime: "{{ .CommitDate }}"
+      - src: completions/*
+        info:
+          mtime: "{{ .CommitDate }}"
 
 checksum:
   name_template: checksums.txt
@@ -63,6 +69,41 @@ signs:
       - --output-signature=${signature}
       - --output-certificate=${certificate}
       - ${artifact}
+
+# The tap behind `brew install emrebdr/tap/migr` (M14-T2, ADR 0099): a cask, since goreleaser deprecated
+# the formula generator, committed to emrebdr/homebrew-tap with a token scoped to that repository alone.
+# A pre-release never reaches it, and a snapshot only writes it under dist/homebrew.
+homebrew_casks:
+  - name: migr
+    ids: [migr]
+    binaries: [migr]
+    homepage: https://github.com/emrebdr/migr
+    description: Polyglot, database-agnostic schema migrations, safe on a live database
+    license: MIT
+    completions:
+      bash: completions/migr.bash
+      zsh: completions/_migr
+      fish: completions/migr.fish
+    repository:
+      owner: emrebdr
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    commit_author:
+      name: migr-release
+      email: migr-release@users.noreply.github.com
+    commit_msg_template: "migr {{ .Tag }}"
+    skip_upload: auto
+    # The binary is not notarized (ADR 0098), and Homebrew carries a download's quarantine onto the binary,
+    # so Gatekeeper would refuse its first run. Written as postflight_steps by hand: goreleaser's hooks
+    # render a `postflight` block, which Homebrew 7 deprecates with a warning on every load of the cask.
+    custom_block: |
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "migr"], chdir: "."
+        end
+      end
 
 # sdk/go is a module of its own, tagged sdk/go/vX.Y.Z; none of those is a release of this binary.
 git:

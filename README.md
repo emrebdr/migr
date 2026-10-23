@@ -280,10 +280,22 @@ against that same one exits 4, and `migr validate` exits 2. They answer differen
 
 ## Installing
 
+On macOS or Linux, with [Homebrew](https://brew.sh):
+
+```console
+$ brew install emrebdr/tap/migr
+```
+
+That installs the binary and its bash, zsh and fish completions, and `brew upgrade` keeps it current.
+Naming the cask in full is what trusts it under Homebrew's
+[tap trust](https://docs.brew.sh/Tap-Trust); a short `brew install migr` needs
+`brew trust --cask emrebdr/tap/migr` first.
+
 Every release on [GitHub Releases](https://github.com/emrebdr/migr/releases) carries one archive per
 platform — `linux`, `darwin` and `windows`, each on `amd64` and `arm64` — named
 `migr_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows), plus a `checksums.txt`. The binary is static,
-needing no C library and no installer: unpack it and put `migr` on your `PATH`.
+needing no C library and no installer: unpack it and put `migr` on your `PATH`. Shell completions
+are in its `completions/` directory.
 
 **Verify what you downloaded.** `checksums.txt` is signed keyless with
 [cosign](https://docs.sigstore.dev/cosign/), by a certificate issued to this repository's release
@@ -302,7 +314,8 @@ Each archive also carries a build-provenance attestation, which the GitHub CLI c
 `gh attestation verify migr_<version>_<os>_<arch>.tar.gz --repo emrebdr/migr`.
 
 The macOS binaries are not notarized. One downloaded through a browser is quarantined, and
-`xattr -d com.apple.quarantine ./migr` releases it; `curl` sets no quarantine.
+`xattr -d com.apple.quarantine ./migr` releases it; `curl` sets no quarantine, and the Homebrew cask
+releases it as it installs.
 
 ---
 
@@ -490,6 +503,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0096](docs/adr/0096-zero-downtime-suite.md) | Every operation's lock verdict is held to what a client under load actually waits |
 | [0097](docs/adr/0097-unattended-cutover-lag.md) | An unattended cutover counts a stream within safety.cutover_lag as caught up, and the guide's lock tables are generated |
 | [0098](docs/adr/0098-release-signing.md) | A release is signed once, keyless, on its checksum file, and every archive carries a provenance attestation |
+| [0099](docs/adr/0099-homebrew-cask.md) | Homebrew installs migr from a cask in emrebdr/homebrew-tap, written by each release with a token scoped to that repository |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

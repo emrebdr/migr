@@ -207,7 +207,7 @@ func (f *folder) addForeignKey(at int32, op ir.AddForeignKey) {
 
 // A referenced table this schema does not hold is refused rather than ignored, which is the one
 // place this projection is stricter than the differ. internal/diff leaves such a reference alone
-// because a snapshot is one namespace and a cross-schema reference is real (ADR 0070); here the
+// because a snapshot is one namespace and a cross-schema reference is real; here the
 // schema is everything the operations built, so a name nothing built is a name nothing will have.
 
 // referenceable reports what stops the far end of a foreign key from being there.

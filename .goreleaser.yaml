@@ -1,4 +1,4 @@
-# Release builds (M14-T1, ADR 0098). Tagging vX.Y.Z on main runs .github/workflows/release.yml, which
+# Release builds (M14-T1). Tagging vX.Y.Z on main runs .github/workflows/release.yml, which
 # runs this. The binary is pure Go -- SQLite is modernc.org/sqlite -- so CGO stays off and all six
 # targets cross-compile from one Linux runner.
 #
@@ -70,7 +70,7 @@ signs:
       - --output-certificate=${certificate}
       - ${artifact}
 
-# The images (M14-T4, ADR 0101), both for linux/amd64 and linux/arm64 on ghcr.io: the minimal one
+# The images (M14-T4), both for linux/amd64 and linux/arm64 on ghcr.io: the minimal one
 # for .sql projects, and one on Node for TypeScript projects. `latest` and `latest-node` move only on
 # a final release; an empty tag is dropped.
 dockers_v2:
@@ -108,7 +108,7 @@ docker_signs:
       - --yes
       - ${artifact}@${digest}
 
-# The tap behind `brew install emrebdr/tap/migr` (M14-T2, ADR 0099): a cask, since goreleaser deprecated
+# The tap behind `brew install emrebdr/tap/migr` (M14-T2): a cask, since goreleaser deprecated
 # the formula generator, committed to emrebdr/homebrew-tap with a token scoped to that repository alone.
 # A pre-release never reaches it, and a snapshot only writes it under dist/homebrew.
 homebrew_casks:
@@ -133,7 +133,7 @@ homebrew_casks:
       email: migr-release@users.noreply.github.com
     commit_msg_template: "migr {{ .Tag }}"
     skip_upload: auto
-    # The binary is not notarized (ADR 0098), and Homebrew carries a download's quarantine onto the binary,
+    # The binary is not notarized, and Homebrew carries a download's quarantine onto the binary,
     # so Gatekeeper would refuse its first run. Written as postflight_steps by hand: goreleaser's hooks
     # render a `postflight` block, which Homebrew 7 deprecates with a warning on every load of the cask.
     custom_block: |

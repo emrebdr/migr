@@ -91,7 +91,7 @@ type Rewritten struct {
 
 // An operation the compiler answers with driver.ErrNeedsSession becomes a deferred step rather than
 // an expansion, because an expansion is rendered from the catalog and the operations before it have
-// not run yet (ADR 0071). Expand is what fills one in, and the caller is what knows when -- which is
+// not run yet. Expand is what fills one in, and the caller is what knows when -- which is
 // what puts compilation back to needing no database at all, and says so in the signature.
 
 // Compile turns one migration's operations into an ordered plan, naming any it cannot compile.
@@ -123,7 +123,7 @@ func (p Planner) Compile(m migration.Migration, dir ir.Direction,
 	return Plan{Migration: m, Direction: dir, Steps: p.chunk(steps)}, nil
 }
 
-// A migration runs in chunks only where it holds nothing but data operations (ADR 0078). Each chunk
+// A migration runs in chunks only where it holds nothing but data operations. Each chunk
 // commits on its own, so a migration that also changed the schema could no longer be the one
 // transaction it runs in -- and splitting one around its data is M13-T4's. A data-only migration
 // needs no such split: no step of it reads what another left uncommitted.
@@ -156,8 +156,8 @@ func DataOnly(steps []Step) bool {
 	return true
 }
 
-// A rewrite replaces what one operation compiles to with a safer sequence the session answers with
-// (ADR 0085). It is skipped on a table this migration created: nothing can be waiting on a table that
+// A rewrite replaces what one operation compiles to with a safer sequence the session answers with.
+// It is skipped on a table this migration created: nothing can be waiting on a table that
 // did not exist when the migration began, and the bare statements a rewrite adds would split the
 // migration for nothing but lost atomicity.
 

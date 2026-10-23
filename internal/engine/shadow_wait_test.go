@@ -269,7 +269,7 @@ func TestUnattendedCutsOverUnderSustainedWritesOnceTheStreamIsWithinTheLag(t *te
 	if len(result.Runs) != 1 || result.Runs[0].Shadow == nil || !result.Runs[0].Shadow.Unattended {
 		t.Errorf("the run cut over after %d reads without saying it was unattended: %+v", *polls, result.Runs)
 		t.Log("Every read here carries a write, so a run waiting for a read of nothing new never cuts")
-		t.Log("over by itself -- ADR 0096 measured exactly that under eight writers.")
+		t.Log("over by itself -- the zero-downtime suite measured exactly that under eight writers.")
 
 		return
 	}

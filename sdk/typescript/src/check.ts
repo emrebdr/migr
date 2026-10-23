@@ -1,7 +1,7 @@
 // docs/ir.md §9.1, run again on this side.
 //
 // The host decodes every operation as an IR document and runs all of this a second time, so a check
-// here is not what makes a bad operation safe. It is here for ADR 0038 C's two reasons, neither of
+// here is not what makes a bad operation safe. It is here for two reasons, neither of
 // which is safety: the failure names the call that built it rather than a JSON document, and two
 // SDKs must refuse the same operations before M7-T7's byte-for-byte comparison can mean anything.
 //

@@ -67,7 +67,7 @@ func TestAnyIRVersionAnEngineStatesIsAcceptedAndOnlyNoneIsRefused(t *testing.T) 
 
 		if refused := e.answer(id, nil); refused.Error != nil {
 			t.Errorf("an engine stating irVersion %d was refused: %v", stated, refused.Error)
-			t.Log("Each version is a superset of the one before (ADR 0077), so an engine that reads")
+			t.Log("Each version is a superset of the one before, so an engine that reads")
 			t.Log("an older one still reads every operation this SDK emits but the newer ones, and a")
 			t.Log("newer engine reads all of them. What is refused is an operation, not a session.")
 		}
@@ -191,7 +191,7 @@ func TestTheReaderIsSpentAndNeverReadsPastTheLineItCouldNotFrame(t *testing.T) {
 	written, _ := replay(t, handshake(t)+"{\n"+
 		line(t, wire.NewRequest(2, wire.MigrationDiscover, discover)))
 
-	t.Log("ADR 0031, A: the reader is spent. A session that skipped the bad line and read on")
+	t.Log("The reader is spent. A session that skipped the bad line and read on")
 	t.Log("would answer request 2, and whoever was waiting on the line it could not read waits")
 	t.Log("forever with the migration lock held.")
 

@@ -172,7 +172,7 @@ func TestEnvelopeStaysOutsideTheChecksumBoundary(t *testing.T) {
 
 	if strings.Contains(string(hashable), "irVersion") {
 		t.Error("the hashable unit must not carry the version")
-		t.Log("ADR 0003 recorded that a version bump would change every applied migration's")
+		t.Log("A version bump inside the hashable unit would change every applied migration's")
 		t.Log("checksum and fire drift detection everywhere. Keeping the envelope outside the")
 		t.Log("boundary narrows that to bumps that genuinely reshape operations.")
 	}

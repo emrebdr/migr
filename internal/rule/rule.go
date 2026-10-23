@@ -39,7 +39,7 @@ const (
 type Half struct {
 	// Operations are what the migration emitted, in the order it emitted them.
 	Operations ir.Operations
-	// Direct are the statements it sends itself, which no rollback reaches (ADR 0032, ADR 0036).
+	// Direct are the statements it sends itself, which no rollback reaches.
 	Direct []driver.Query
 }
 

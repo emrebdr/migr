@@ -80,7 +80,7 @@ func TestAnOperationTheCompilerCannotProduceIsDeferredRatherThanExpanded(t *test
 	}
 
 	t.Log("An expansion is rendered from the catalog, so compiling one before the operations ahead")
-	t.Log("of it have run renders it from a schema that is about to change (ADR 0071). Compile")
+	t.Log("of it have run renders it from a schema that is about to change. Compile")
 	t.Log("therefore needs no database at all any more, which its signature now says.")
 }
 
@@ -140,7 +140,7 @@ func TestWithoutASessionTheOperationIsReportedRatherThanCompiled(t *testing.T) {
 
 	t.Log("This is what migr validate sees, since it opens no database: the operation is not")
 	t.Log("refused and it is not judged either, and the sentinel is what lets validate tell those")
-	t.Log("apart and report it unchecked rather than as a problem (ADR 0040's shape). Deferring it")
+	t.Log("apart and report it unchecked rather than as a problem (the unchecked shape). Deferring it")
 	t.Log("instead would hand validate a step nothing could ever fill in.")
 }
 

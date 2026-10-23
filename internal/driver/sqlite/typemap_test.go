@@ -125,7 +125,7 @@ func TestAnEnumIsTextHeldToItsLabels(t *testing.T) {
 		t.Errorf("an enum column renders as\n  %s\nwant\n  %s", definition, want)
 	}
 
-	t.Log("PostgreSQL refuses an enum because a CREATE TYPE object leaks (ADR 0015). SQLite's")
+	t.Log("PostgreSQL refuses an enum because a CREATE TYPE object leaks. SQLite's")
 	t.Log("check is part of the column, so nothing leaks and no IR operation needs to name it --")
 	t.Log("this engine supports a type the other cannot. What is lost is declared label ordering,")
 	t.Log("which docs/ir.md 5.3 says is part of the type: ORDER BY here is lexicographic.")
@@ -147,7 +147,7 @@ func TestAnEnumDefaultThatIsNotALabelIsRefused(t *testing.T) {
 		t.Errorf("the refusal does not name the default: %s", problem)
 	}
 
-	t.Log("This one is a payload refusal in ADR 0015's shape and the ADD COLUMN rules are not:")
+	t.Log("This one is a payload refusal like PostgreSQL's and the ADD COLUMN rules are not:")
 	t.Log("no table contents can make a default that is not a label correct. SQLite does refuse")
 	t.Log("it -- at apply, or at the first insert that relies on the default -- and migr validate")
 	t.Log("opens no database, so catching it here is a whole deploy earlier.")

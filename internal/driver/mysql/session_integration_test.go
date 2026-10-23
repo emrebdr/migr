@@ -137,7 +137,7 @@ func TestTheSessionHoldsTheOneConnectionThePoolWillHandOut(t *testing.T) {
 			t.Error("the pool handed out a second connection while the session held one")
 		}
 
-		t.Log("ADR 0011 requires one pinned session, and M9-T4's GET_LOCK is connection-scoped:")
+		t.Log("The contract requires one pinned session, and M9-T4's GET_LOCK is connection-scoped:")
 		t.Log("acquiring on one pooled connection and releasing on another silently fails to")
 		t.Log("release. SetMaxOpenConns(1) is what makes that structural rather than remembered.")
 	})

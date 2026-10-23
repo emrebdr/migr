@@ -3,7 +3,7 @@
 //
 // esbuild emits the bundles and tsc emits the types, which is the split the package already pays
 // for: it ships esbuild as a runtime dependency to transpile a user's own .ts migrations, so nothing
-// here is a dependency the package would not carry anyway (ADR 0041). That dependency is external to
+// here is a dependency the package would not carry anyway. That dependency is external to
 // both bundles -- it is loaded dynamically, from the hook that needs it, and bundling a transpiler
 // into a library is not what "bundle" is for.
 

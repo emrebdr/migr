@@ -68,7 +68,7 @@ func TestUpRefusesAMigrationThisDatabasesSchemaContradicts(t *testing.T) {
 		t.Errorf("the run recorded %d rows for a migration it refused", len(f.runs))
 	}
 
-	t.Log("Exit 1 rather than 2, which is ADR 0029's rule: the same command line succeeds against")
+	t.Log("Exit 1 rather than 2: the same command line succeeds against")
 	t.Log("a database that does not contradict the migration, so the world is what is not ready.")
 }
 
@@ -179,10 +179,10 @@ func TestPlanJSONCarriesTheDisagreementsAsFields(t *testing.T) {
 
 // M10-T2 asserted the opposite of this: that migr validate --connect never introspects, because the
 // projection that makes reading the live schema honest had no task. M10-T3 is that task, so the
-// command does read it now (ADR 0075) -- and the half that mattered is unchanged. A migration whose
+// command does read it now -- and the half that mattered is unchanged. A migration whose
 // create_table the live schema contradicts is still not reported, because the contradiction is in
-// the live projection alone and the project's own beginning folds it cleanly. That is ADR 0064's C2
-// held by the mechanism rather than by not looking.
+// the live projection alone and the project's own beginning folds it cleanly. That is the
+// live-catalog problem held by the mechanism rather than by not looking.
 
 func TestValidateDoesNotJudgeAMigrationTheLiveSchemaAloneContradicts(t *testing.T) {
 	dir, f, drivers := contradicting(t)
@@ -193,7 +193,7 @@ func TestValidateDoesNotJudgeAMigrationTheLiveSchemaAloneContradicts(t *testing.
 		if strings.Contains(stdout, unwanted) {
 			t.Errorf("migr validate judged a migration against the live schema alone:\n%s", stdout)
 			t.Log("A check reading the live catalog alone calls a correct migration broken whenever")
-			t.Log("the migration that creates its table has not run yet (ADR 0064 C2). Reporting")
+			t.Log("the migration that creates its table has not run yet. Reporting")
 			t.Log("only what both projections refuse is what makes reading it safe at all.")
 		}
 	}

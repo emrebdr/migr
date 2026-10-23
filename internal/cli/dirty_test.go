@@ -102,7 +102,7 @@ func TestTheRowARunWroteIsTheRowTheNextRunIsRefusedWith(t *testing.T) {
 
 	t.Log("Every dirty refusal tested before this one read a hand-written fixture. This one reads")
 	t.Log("the row the run on the line above wrote, which is the only way the two halves of")
-	t.Log("ADR 0024 are held to each other.")
+	t.Log("a dirty run are held to each other.")
 }
 
 func TestTheRowARunWroteNamesTheStatementRatherThanTheWindow(t *testing.T) {
@@ -151,7 +151,7 @@ func TestEveryRunAgainstADirtyDatabaseIsRefusedTheSameWay(t *testing.T) {
 	}
 
 	t.Log("A dirty migration refuses before any selector narrows the run, so no --step or --to")
-	t.Log("steps around one (ADR 0024), and a preview classifies the same way a run does.")
+	t.Log("steps around one, and a preview classifies the same way a run does.")
 }
 
 func TestAReportOverTheDatabaseARunLeftDirtyStillSucceeds(t *testing.T) {

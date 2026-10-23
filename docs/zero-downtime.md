@@ -67,7 +67,7 @@ So **set `safety.lock_timeout` below the longest wait your clients can tolerate.
 against every compose server and SQLite. It works a 1M-row table with eight readers and eight
 writers, and fails any operation declared `lock_free` or `brief_exclusive` that makes a client wait
 past the budget (1.5 s). The run that set these numbers
-(ADR 0096) measured:
+measured:
 
 - the worst of 106 kept promises: 206 ms, PostgreSQL's concurrent `add_index`;
 - every shadow-table cutover: 21–74 ms, with no committed write lost;
@@ -451,7 +451,7 @@ The run then says *cut over unattended, 0s behind the log*.
 - `cutover_lag` defaults to 1 s, or half of `lock_timeout` where that is shorter, and must be shorter
   than `lock_timeout`, since the catch-up under the cutover's lock has to fit in that bound.
 - Until this release, unattended waited for a read that found nothing new, which a table under
-  sustained writes never produces (ADR 0097).
+  sustained writes never produces.
 
 **When CI should pass `--unattended`:** in a pipeline with nobody to confirm — staging, preview
 environments, a deploy you have decided to trust to the lag. Leave it off for production deploys
@@ -565,7 +565,7 @@ first queued migration's table-dependent costs are read from the table, so this 
 
 ### A GitHub Actions job
 
-The release images run migr with nothing to install (ADR 0101). Use
+The release images run migr with nothing to install. Use
 `ghcr.io/emrebdr/migr:<version>-node` for a TypeScript project, and the minimal
 `ghcr.io/emrebdr/migr:<version>` for a `.sql` one. Both run `migr` as their entrypoint, as a
 non-root user, in `/work`, so the job mounts the checkout there. The project's own `node_modules`,

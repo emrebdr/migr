@@ -197,8 +197,8 @@ func TestAStampNothingCanSubtractIsNoAgeRatherThanAWrongOne(t *testing.T) {
 
 	t.Log("julianday answers NULL for a stamp it cannot read and a negative number for one in")
 	t.Log("the future -- measured, both. An unlabeled zero is what LockHolder renders as an age")
-	t.Log("this connection could not determine, and leaving the label off is what says so: since")
-	t.Log("ADR 0060 the label rather than the duration carries that, because zero is a real answer")
+	t.Log("this connection could not determine, and leaving the label off is what says so: the")
+	t.Log("label rather than the duration carries that, because zero is a real answer")
 	t.Log("on MySQL.")
 }
 

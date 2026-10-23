@@ -22,13 +22,12 @@
 //
 // What it will not compare is what this server rewrites: a check condition asked for as "n" > 0
 // reads back as (n > 0), and a view asked for as SELECT * comes back with an expanded column list.
-// Both are carried as the engine text ADR 0065 says they are. See
-// docs/adr/0069-per-driver-introspection.md.
+// Both are carried as the engine text the snapshot model says they are.
 //
 // # The migration lock
 //
 // One session-level advisory lock, taken on the session that will release it — which is why a
-// Conn is one pinned connection and never a pool (ADR 0011). The key is two int4s:
+// Conn is one pinned connection and never a pool. The key is two int4s:
 //
 //	pg_advisory_lock(<a constant identifying migr>, <digest of schema + history table>)
 //
@@ -76,10 +75,10 @@
 // and its reason does not transfer: an ALTER TABLE blocked behind a long-running query blocks every
 // later query on that table, so staying queued is itself the outage. An advisory lock blocks
 // nothing but other migr runs. safety.lock_retries belongs to that per-statement bound, which is why
-// it sits in the safety block beside safety.lock_timeout rather than beside lock.timeout. See ADR
-// 0020. Since M13-T2 a statement whose lock_timeout expires is 55P03 wrapped in
-// driver.ErrStatementLockTimeout, and internal/engine reruns the migration's transaction after a
-// jittered backoff -- the rollback having released every lock its earlier statements took (ADR 0082).
+// it sits in the safety block beside safety.lock_timeout rather than beside lock.timeout. Since
+// M13-T2 a statement whose lock_timeout expires is 55P03 wrapped in driver.ErrStatementLockTimeout,
+// and internal/engine reruns the migration's transaction after a jittered backoff -- the rollback
+// having released every lock its earlier statements took.
 //
 // # A canceled statement is canceled on the server
 //
@@ -89,7 +88,7 @@
 // holding the advisory lock and writing the failed run's row -- was gone. pinCancellation sets the
 // cancel-request handler instead, which sends the request first and waits for 57014, with a 5s
 // socket deadline as the fallback for a server that never answers. 57014 says nothing about why, so
-// stoppedBy joins the context's ending to it (ADR 0083).
+// stoppedBy joins the context's ending to it.
 //
 // # A duration is spelled to the server, not printed
 //
@@ -160,7 +159,7 @@
 // tempting wrong one: it is NULL for an idle holder, which is exactly what a session holding a
 // lock and doing nothing is, so it would render "held for 0s" for a hold of an hour.
 //
-// That is what this driver labels its duration, since ADR 0060: the three engines measure three
+// That is what this driver labels its duration: the three engines measure three
 // different things and only the one that measured can say which. A session age is also why the label
 // is set only where a number was read -- a backend opened this instant is genuinely zero milliseconds
 // old, and an unlabeled zero is what renders as an age this connection could not determine.
@@ -177,7 +176,7 @@
 // handle to hold, so a transaction cannot outlive the call or be paired with another session, and
 // the rollback covers a returned error and a panic through one mechanism. It runs on a context
 // stripped of cancellation, for the reason the release path is: the context that caused the
-// failure is the one already canceled. See ADR 0017.
+// failure is the one already canceled.
 //
 // A second transaction on one session is refused, and so is one this driver did not open — the
 // session is asked, not just the tx field. PostgreSQL answers a second BEGIN with a warning and
@@ -189,7 +188,7 @@
 // and taking it for success would report a migration applied whose every statement was discarded.
 //
 // While a transaction is open, every statement goes through it rather than around it, and so does
-// every query the history store makes. That is what makes ADR 0013's "recorded before the
+// every query the history store makes. That is what makes "recorded before the
 // transaction commits" true by construction rather than true because pgx happens to send both
 // down one connection.
 //
@@ -256,7 +255,7 @@
 //
 // The four verdicts describe how long a lock is held, not which lock is taken. Nearly every
 // ALTER TABLE here takes ACCESS EXCLUSIVE, which blocks readers as well as writers, so "which
-// lock" would sort a catalog update alongside an index build. See ADR 0016.
+// lock" would sort a catalog update alongside an index build.
 //
 //	lock_free        create_table; create_view without or_replace -- nothing existing is touched
 //	brief_exclusive  rename_table, drop_column, rename_column, drop_foreign_key, drop_check,
@@ -270,7 +269,7 @@
 // The four drops that delete a table's or an index's files hold their lock while the files go:
 // PostgreSQL unlinks at commit and releases locks after it. Measured on 16 and 17 at M13-T1, DROP
 // TABLE took 2.5 ms at 224 kB and 22 ms at 471 MB, and DROP INDEX 1.6 ms at 136 kB and 30 ms at
-// 760 MB, so the hold scales with the relation (ADR 0081). drop_column only marks the column dropped,
+// 760 MB, so the hold scales with the relation. drop_column only marks the column dropped,
 // and a constraint that is not an index deletes nothing, so those stay brief.
 //
 // raw is the case unknown exists for and the one that never resolves: the framework cannot know
@@ -320,8 +319,7 @@
 // Callers are unaffected: migr validate and migr plan read the declaration before anything
 // touches a database, so the declaration is still what is consulted. Which of the two is derived
 // is an implementation detail of this driver, and it does not generalize — SQLite must declare
-// Emulated with a named strategy, and a Compile that succeeded says nothing about how. See
-// ADR 0015.
+// Emulated with a named strategy, and a Compile that succeeded says nothing about how.
 //
 // rules() needs no connection, so the conformance suite runs untagged against a session double
 // carrying the same declaration, and the agreement is a make test and CI gate rather than one
@@ -337,7 +335,7 @@
 //   - an enum type, which needs a CREATE TYPE object no v1 operation owns — nothing would drop it,
 //     so apply, roll back, and apply again fails on a type that already exists. Permanent: the
 //     blocker is an IR change rather than a driver one, so the reason names what is missing rather
-//     than a task (ADR 0016)
+//     than a task
 //   - a uuid column default on a server with no gen_random_uuid, which the declaration knows and
 //     the version-blind compiler does not
 //   - a nested array, because PostgreSQL declares array dimensions and does not enforce them:
@@ -371,7 +369,7 @@
 //
 // Neither is fixable by widening a from payload: the first destroys more than the operation
 // names, and the second inverts by name, where a name says nothing about what the constraint
-// implied. Both are ADR 0008's open trust problem, and both closed the same way — M11-T2 reads the
+// implied. Both are the recorded-state trust problem, and both closed the same way — M11-T2 reads the
 // live schema before either operation runs and refuses it, because by rollback time the index is
 // gone and the nullability was never recorded anywhere. What this driver owes that refusal is
 // Introspect: the engine reasons about what the IR records against what the snapshot holds, and
@@ -405,14 +403,14 @@
 // The first three are SQL-standard keywords rather than functions and are stable by definition, so
 // they are not looked up; the fourth is, because both its existence and its volatility vary by
 // server. Compile is pure by contract and cannot know which server a session reached, so the
-// version-dependent refusal lives in the declaration. ADR 0015 recorded the asymmetry; ADR 0016
-// narrowed it to a refusal an operator sees before anything runs.
+// version-dependent refusal lives in the declaration. That asymmetry is
+// narrowed to a refusal an operator sees before anything runs.
 //
 // # What this driver does not emit
 //
 // No USING clause on ALTER COLUMN ... TYPE: a cast that does not exist should fail loudly rather
 // than be coerced into one that silently loses data. Compile emits no CONCURRENTLY and no NOT VALID:
-// it is pure and version-blind, and both are the session's to choose (M13-T5, ADR 0085).
+// it is pure and version-blind, and both are the session's to choose (M13-T5).
 //
 // # What a session rewrites
 //
@@ -423,7 +421,7 @@
 //   - alter_column narrowing to NOT NULL with no retype becomes, on 12 and later, a NOT VALID
 //     IS NOT NULL check, its VALIDATE bare, SET NOT NULL, and the check dropped;
 //   - add_index becomes CREATE INDEX CONCURRENTLY, bare;
-//   - drop_index becomes DROP INDEX CONCURRENTLY, bare (M13-T11, ADR 0092);
+//   - drop_index becomes DROP INDEX CONCURRENTLY, bare (M13-T11);
 //   - add_unique becomes CREATE UNIQUE INDEX CONCURRENTLY, bare, then ADD CONSTRAINT ... UNIQUE
 //     USING INDEX, a catalog change;
 //   - add_primary_key becomes, on 12 and later, a validated IS NOT NULL check per key column, the
@@ -440,18 +438,18 @@
 // behind a validated check against 367ms without one.
 //
 // A concurrent build that fails leaves its index INVALID, and a concurrent drop that fails leaves its
-// index in place and INVALID. Exec reads pg_index afterwards on the session that is still alive (ADR
-// 0083) and returns InvalidIndexError naming the index. repair.go is the driver.Repairer the engine
-// asks next (M13-T11, ADR 0092): after a failure it drops a build's leftover so the build can run
-// again, and lets a drop or a VALIDATE simply run again; before a resume, which may follow a killed run
-// that repaired nothing, it rebuilds a leftover with REINDEX INDEX CONCURRENTLY where the leftover is
-// exactly the index the operation builds -- its table, its columns in order, its uniqueness -- drops
-// any other, and skips a build or drop it finds already done. A failed REINDEX leaves <name>_ccnew
-// INVALID beside the original, and both are dropped. InvalidIndexes lists every INVALID index the
-// namespace holds, and Introspect marks each one -- schema.Index.Invalid and a marker -- so a name it
-// holds is not taken and migr diff declines to compare it. Only a raw operation declaring
-// no_transaction (ADR 0084) and these rewrites set Statement.NoTransaction, and a raw one's concurrent
-// statement is repaired too, never reindexed, since nothing says which index it builds.
+// index in place and INVALID. Exec reads pg_index afterwards on the session that is still alive and
+// returns InvalidIndexError naming the index. repair.go is the driver.Repairer the engine asks next
+// (M13-T11): after a failure it drops a build's leftover so the build can run again, and lets a
+// drop or a VALIDATE simply run again; before a resume, which may follow a killed run that repaired
+// nothing, it rebuilds a leftover with REINDEX INDEX CONCURRENTLY where the leftover is exactly the
+// index the operation builds -- its table, its columns in order, its uniqueness -- drops any other,
+// and skips a build or drop it finds already done. A failed REINDEX leaves <name>_ccnew INVALID
+// beside the original, and both are dropped. InvalidIndexes lists every INVALID index the namespace
+// holds, and Introspect marks each one -- schema.Index.Invalid and a marker -- so a name it holds
+// is not taken and migr diff declines to compare it. Only a raw operation declaring no_transaction
+// and these rewrites set Statement.NoTransaction, and a raw one's concurrent statement is repaired
+// too, never reindexed, since nothing says which index it builds.
 //
 // alter_column emits one statement per requested change, in a fixed order: type, then nullability,
 // then default. That is not cosmetic — SET NOT NULL against a column being retyped has to run after
@@ -467,7 +465,7 @@
 // Open returns a single pgx connection. The task that specified this asked for connection
 // pooling, and it does not do that, because nothing would draw from the pool: the engine migrates
 // serially under one lock, and a capture stream is a replication connection opened from the
-// Driver (ADR 0014) which would not share it either. pgxpool defaults to four connections, and
+// Driver which would not share it either. pgxpool defaults to four connections, and
 // holding four backends to use one is a cost operators notice — max_connections is a budget.
 //
 // The contract's rule survives regardless: an advisory lock belongs to a backend, so the session
@@ -525,7 +523,7 @@
 //
 // # Replica lag is read on the primary
 //
-// ReplicaLag reads pg_stat_replication (M13-T8, ADR 0088), and the order its rules are read in was
+// ReplicaLag reads pg_stat_replication (M13-T8), and the order its rules are read in was
 // measured on 16 against a standby replaying three seconds late: a standby with no WAL outstanding is
 // caught up whatever replay_lag says, since that column keeps its last measurement for about ten
 // seconds after the writes stop; with WAL outstanding replay_lag is the answer, and outstanding with
@@ -537,7 +535,7 @@
 // # Whether this server permits log-based capture
 //
 // Open reads wal_level, whether the role is a superuser or has REPLICATION, and how many replication
-// slots max_replication_slots leaves free, into capability.Facts.Capture (M13-T16, ADR 0090). A
+// slots max_replication_slots leaves free, into capability.Facts.Capture (M13-T16). A
 // failed read is read as not permitted. The fact's Retention reads max_slot_wal_keep_size, since that
 // is what bounds carrying a stopped migration on.
 //
@@ -545,7 +543,7 @@
 //
 // Capture opens a stream on a connection of its own: pgoutput through a publication of the one
 // table and a logical slot of the same name, read by polling pg_logical_slot_peek_binary_changes up
-// to where the WAL ended as the read began and parsed with pglogrepl (M13-T15, ADR 0094). The slot
+// to where the WAL ended as the read began and parsed with pglogrepl (M13-T15). The slot
 // is advanced only on Acknowledge, after the engine's record commits; a fresh start drops a slot and
 // publication of its derived name first, which is how a start killed before its record is cleaned.
 // The session is a driver.Shadower -- LIKE ... EXCLUDING INDEXES with every index recreated under a

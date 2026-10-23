@@ -121,7 +121,7 @@ func TestDownWithNoFlagsRollsBackTheLastBatch(t *testing.T) {
 	if !strings.Contains(stdout, "rolled back 2 migrations") {
 		t.Errorf("the summary does not report the whole batch:\n%s", stdout)
 		t.Log("A bare `migr down` rolls back the last batch, not the last single migration. Latest")
-		t.Log("is direction-blind, so the batch a rollback acts on cannot come from it (ADR 0023).")
+		t.Log("is direction-blind, so the batch a rollback acts on cannot come from it.")
 	}
 }
 
@@ -149,7 +149,7 @@ func TestStepNarrowsInBothDirections(t *testing.T) {
 	}
 
 	t.Log("--step 2 means the first two pending going up and the last two applied going down, so")
-	t.Log("the two directions are not one function with a flag (ADR 0023).")
+	t.Log("the two directions are not one function with a flag.")
 }
 
 func TestToLeavesTheDatabaseAtThatVersionInBothDirections(t *testing.T) {
@@ -176,7 +176,7 @@ func TestToLeavesTheDatabaseAtThatVersionInBothDirections(t *testing.T) {
 	}
 
 	t.Log("--to names the state the database should end in, so both up --to X and down --to X")
-	t.Log("leave it at X: inclusive going up, exclusive going down (ADR 0023).")
+	t.Log("leave it at X: inclusive going up, exclusive going down.")
 }
 
 func TestStepAndToTogetherAreRefused(t *testing.T) {
@@ -211,7 +211,7 @@ func TestADryRunExecutesNothingAndCreatesNoHistoryTable(t *testing.T) {
 	if f.asked("ensure") {
 		t.Errorf("a dry run created the migration history table: %q", f.calls)
 		t.Log("Ensure is a write, and a command that says it will touch nothing must not make it.")
-		t.Log("That is why a preview reads the history where an apply ensures it (ADR 0026).")
+		t.Log("That is why a preview reads the history where an apply ensures it.")
 	}
 
 	if !f.asked("lock") || !f.asked("unlock") {
@@ -491,7 +491,7 @@ func TestEveryCommandThatRunsOrChecksMigrationsReadsTwoLanguages(t *testing.T) {
 }
 
 func TestEveryCommandRefusesAMigrationNothingHereReads(t *testing.T) {
-	t.Log("status and history are reports and take no lock (ADR 0027), but a file no runtime could")
+	t.Log("status and history are reports and take no lock, but a file no runtime could")
 	t.Log("ever execute is not one of the five states either -- discovery already fails both for a")
 	t.Log("filename the grammar refuses, and this is the same class of malformed project.")
 
@@ -521,7 +521,7 @@ func TestARuntimeThatWillNotStartIsTheWorldNotBeingReady(t *testing.T) {
 		t.Fatal("up ran migrations through an adapter that starts nothing")
 	}
 
-	t.Log("ADR 0029: the argument is wrong is 2, the world is not ready is 1. A toolchain that")
+	t.Log("The argument is wrong is 2, the world is not ready is 1. A toolchain that")
 	t.Log("is missing or a module that will not build is the second, not the first.")
 
 	if got := ExitCode(err); got != ExitRuntime {
@@ -700,7 +700,7 @@ func TestDownRollsBackOnlyTheLastBatchWhenSeveralExist(t *testing.T) {
 		t.Errorf("the rollback ran %q, want only the batch the second up recorded", f.statements)
 		t.Log("Two invocations mean two batches, and a bare `migr down` reverses the last one.")
 		t.Log("Passing All() here would undo every applied migration instead, which agrees with")
-		t.Log("LastBatch only while the whole project fits in one batch (ADR 0023).")
+		t.Log("LastBatch only while the whole project fits in one batch.")
 	}
 }
 
@@ -779,7 +779,7 @@ func TestEverySessionARunStartedIsShutDownAndNotMerelyKilled(t *testing.T) {
 
 	t.Log("Each scripted runtime writes a marker when it answers shutdown, so a closer that ended")
 	t.Log("only the last session leaves one process to be killed by the process group instead --")
-	t.Log("which is invisible to every other assertion here (ADR 0034, ADR 0048).")
+	t.Log("which is invisible to every other assertion here.")
 
 	for _, lang := range scripted {
 		marker := filepath.Join(dir, shutdownMarker+string(lang))

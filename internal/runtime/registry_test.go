@@ -39,7 +39,7 @@ func TestADuplicateIsReportedRatherThanReplacing(t *testing.T) {
 	var duplicate *DuplicateError
 	if err := r.Register("fake", registered(&fakeRuntime{})); !errors.As(err, &duplicate) {
 		t.Errorf("the second Register returned %v, want a duplicate", err)
-		t.Log("ADR 0011: registration is explicit rather than init()-based precisely so a")
+		t.Log("Registration is explicit rather than init()-based precisely so a")
 		t.Log("duplicate name is reportable. Replacing silently is how two builds of one binary")
 		t.Log("run different code under the same configuration.")
 	}

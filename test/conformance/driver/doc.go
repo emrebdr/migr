@@ -19,7 +19,7 @@
 // declared native passes validation and fails at apply time, which is the direction that reaches
 // production.
 //
-// The other direction is deliberately not asserted, and M10-T2 is where that changed (ADR 0064).
+// The other direction is deliberately not asserted, and M10-T2 is where that changed.
 // A declaration may refuse *more* than Compile does, because it is resolved against a server
 // Compile cannot see: MySQL 8.0.15 compiles a CHECK constraint and discards it, so that driver
 // declares add_check unsupported there (invariant #13). Asserted as a biconditional, this suite
@@ -34,7 +34,7 @@
 //
 // It takes both a Driver and a Conn because neither alone can be asked. Compile lives on the
 // driver and needs no database; the capability set is built inside Open against a detected server
-// version and lives on the session (ADR 0012). A Conn has no Compile method.
+// version and lives on the session. A Conn has no Compile method.
 //
 // An emulation is the third answer on the compiler's side, and the same rule governs it: Compile
 // asking for a session while the declaration says native is a hidden table rebuild and fails,
@@ -54,7 +54,7 @@
 // ceiling at all, so --require-safe and safety.max_lock_impact are both switched off for that one
 // operation while appearing to be on. A value nobody recognizes is a bug and does not pass.
 //
-// LockUnknown passes for raw and for nothing else (M13-T1, ADR 0081). M2-T2 let a driver report it
+// LockUnknown passes for raw and for nothing else (M13-T1). M2-T2 let a driver report it
 // until that task; every other operation says what it does, so a driver can say what it costs, and
 // pessimistically where it cannot tell. A verdict lowered under a condition must name the condition
 // and be cheaper under it, which capability.Verdict.Unless already makes unwritable otherwise.
@@ -87,7 +87,7 @@
 // calls it on every read, reporting -32603 and naming the driver -- so a driver
 // with that bug is found at the first callback rather than never. And the
 // read-only guarantee is each driver's own integration test, because the case
-// that decides it is a data-modifying CTE against a real server (ADR 0032, B).
+// that decides it is a data-modifying CTE against a real server.
 //
 // # No exemptions, structurally
 //

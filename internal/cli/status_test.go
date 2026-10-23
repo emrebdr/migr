@@ -67,7 +67,7 @@ func TestStatusTakesNoLockAndCreatesNothing(t *testing.T) {
 	if !slices.Equal(f.calls, []string{"open", "list", "close"}) {
 		t.Errorf("status asked the session for %q, want it to open, list, and give it back", f.calls)
 		t.Log("A status answers what is, not what will run. Taking the migration lock would make a")
-		t.Log("read-only report block a deploy, and give it an exit code 3 of its own (ADR 0027, A).")
+		t.Log("read-only report block a deploy, and give it an exit code 3 of its own.")
 	}
 
 	if f.table {
@@ -133,7 +133,7 @@ func TestStatusReportsDriftAndDirtWithoutFailing(t *testing.T) {
 	stdout, _, err := runWith(t, dir, noon, drivers, "status")
 	if err != nil {
 		t.Log("The five states are this command's output, not its failure. migr up already exits 4")
-		t.Log("on drift and 1 on dirty; a report that printed correctly did not fail (ADR 0027, E).")
+		t.Log("on drift and 1 on dirty; a report that printed correctly did not fail.")
 		t.Fatalf("status exited %v having reported successfully", err)
 	}
 
@@ -189,7 +189,7 @@ func TestStatusPrintsTheBatchMigrDownWouldActOn(t *testing.T) {
 	if line := lineFor(t, stdout, fileAt(1, "add_teams")); !strings.Contains(line, "batch 2") {
 		t.Errorf("the second migration reads %q, want the batch its own run recorded", line)
 		t.Log("The batch printed is Status.Recorded.Batch, the field LastBatch() reads, so the")
-		t.Log("number an operator sees is the number migr down will act on (M4-T8, ADR 0023).")
+		t.Log("number an operator sees is the number migr down will act on (M4-T8).")
 	}
 
 	if len(f.runs) != 2 {
@@ -237,7 +237,7 @@ func TestStatusOverADatabaseWithNoHistoryTablePrintsThatRatherThanAnEmptyTable(t
 		if strings.Contains(stdout, state.String()) {
 			t.Errorf("status resolved a state over a database with no history table:\n%s", stdout)
 			t.Log("An absent table yields zero statuses, not N pendings. Read as pending, a fully")
-			t.Log("migrated production database looks virgin -- the failure ADR 0019 exists for.")
+			t.Log("migrated production database looks virgin -- the failure history.ErrNoTable exists for.")
 		}
 	}
 
@@ -309,7 +309,7 @@ func TestStatusJSONReportsBothDigestsOfADriftedMigrationAndNoOthers(t *testing.T
 	if drifted.RecordedSource == drifted.CurrentSource {
 		t.Errorf("the drifted row reports one digest twice: %s", drifted.CurrentSource)
 		t.Log("Drift is decided on the source half alone, and the two values are the message's")
-		t.Log("whole job. Nothing compares them again -- the row reads State (ADR 0009, M4-T7).")
+		t.Log("whole job. Nothing compares them again -- the row reads State (M4-T7).")
 	}
 
 	if applied := rowFor(t, report, versionAt(0)); applied.RecordedSource != "" {
@@ -323,7 +323,7 @@ func TestStatusReportsAProjectWithoutAskingForItsRuntime(t *testing.T) {
 	opts := &options{clock: ticking(noon), drivers: drivers, runtimes: runtime.NewRegistry()}
 
 	t.Log("A status compiles nothing and reads no migration body, so it never needs the runtime")
-	t.Log("its migrations are written for (ADR 0027). An empty registry is what proves it: up")
+	t.Log("its migrations are written for. An empty registry is what proves it: up")
 	t.Log("against the same project cannot find an adapter and fails.")
 
 	if _, _, err := runOptions(t, dir, opts, "status"); err != nil {

@@ -30,7 +30,7 @@ func TestACorruptRowIsNotDrift(t *testing.T) {
 
 	if errors.Is(err, ErrIncomplete) {
 		t.Error("a row that cannot be read reported itself as a record that cannot be written")
-		t.Log("ADR 0009: an unknown scheme and a malformed value are different errors -- one")
+		t.Log("An unknown scheme and a malformed value are different errors -- one")
 		t.Log("means upgrade the CLI, the other means this row is corrupt. Neither is drift,")
 		t.Log("and reporting either as exit code 4 is how operators learn to ignore exit code 4.")
 	}

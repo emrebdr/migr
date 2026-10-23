@@ -86,7 +86,7 @@ func TestOnlyTheTwoOperationsThatTouchNothingExistingAreLockFree(t *testing.T) {
 	}
 
 	t.Log("This is where M9-T3's own done-when was corrected: it reads \"INSTANT is LockFree\", and")
-	t.Log("ADR 0016 had already rejected that for PostgreSQL's instant ADD COLUMN ... DEFAULT. An")
+	t.Log("The verdicts had already rejected that for PostgreSQL's instant ADD COLUMN ... DEFAULT. An")
 	t.Log("INSTANT alteration is metadata-only once it holds its lock, and it still requests an")
 	t.Log("exclusive metadata lock and still waits for it -- so it can hold a table hostage for the")
 	t.Log("length of the long-running SELECT ahead of it, which is invariant #12's whole subject.")
@@ -126,8 +126,8 @@ func TestAddingAColumnIsAMetadataChangeOnlyFromTheReleaseThatMadeItOne(t *testin
 	}
 
 	t.Log("8.0.11 is inside the supported range -- the floor is 8.0 -- so this boundary is reachable")
-	t.Log("by a server and unreachable by either container, which is ADR 0052's reading of invariant")
-	t.Log("#13: the version is asked for, never hardcoded, and a branch no available server produces")
+	t.Log("by a server and unreachable by either container, which is how invariant #13")
+	t.Log("reads here: the version is asked for, never hardcoded, and a branch no available server produces")
 	t.Log("is still written and held to a test. MariaDB has added instantly since 10.4.3, below this")
 	t.Log("driver's own floor, so it never reaches the rewrite branch at all.")
 }
@@ -267,10 +267,10 @@ func TestARetypeIsDeclaredARewriteEvenWhereTheServerWouldNotRewrite(t *testing.T
 	t.Log("Measured: MySQL widens a varchar with ALGORITHM=INPLACE and no rebuild, and MariaDB does")
 	t.Log("it instantly -- so this is an over-report, deliberately. Telling a widening from a")
 	t.Log("narrowing needs the column's current type, which the operation carries only as `from`:")
-	t.Log("what an author recorded, not what the column is. ADR 0016 rejected keying the verdict to")
-	t.Log("it on merit rather than cost, because over-reporting costs a flag and under-reporting")
-	t.Log("costs an outage. The expansion does read the real type -- that is the condition ADR 0016")
-	t.Log("names for revisiting -- but Resolve performs no I/O, so the precise answer is reachable")
+	t.Log("what an author recorded, not what the column is. Keying the verdict to it was rejected")
+	t.Log("on merit rather than cost, because over-reporting costs a flag and under-reporting")
+	t.Log("costs an outage. The expansion does read the real type -- that is the condition named")
+	t.Log("for revisiting -- but Resolve performs no I/O, so the precise answer is reachable")
 	t.Log("from the expansion path and not from here. M13-T6 is where a Set becomes a Planner field.")
 }
 
@@ -316,7 +316,7 @@ func TestBuildingAnIndexScalesWithTheTableAndDroppingOneDoesNot(t *testing.T) {
 
 	t.Log("Both halves are ALGORITHM=INPLACE with no rebuild, measured, so the algorithm cannot")
 	t.Log("separate them and the work does: an index build reads every row and a drop is a catalog")
-	t.Log("change. ADR 0016 settled the vocabulary -- add_index is LongExclusive even where readers")
+	t.Log("change. The verdicts settled the vocabulary -- add_index is LongExclusive even where readers")
 	t.Log("are admitted, because there is no verdict for \"blocks writers only\" and a fifth would be")
 	t.Log("one more value in safety.max_lock_impact than an operator can order.")
 }

@@ -6,7 +6,7 @@ import type { Host } from "./schema.ts";
 import { newSchema, operationSince } from "./schema.ts";
 import { IR_VERSION } from "./version.ts";
 
-// raw's no_transaction is irVersion 3's one addition (ADR 0084): a field, not a kind, so the
+// raw's no_transaction is irVersion 3's one addition: a field, not a kind, so the
 // version an operation needs is read from the operation rather than from its kind alone.
 
 /** window opens a migration's window over a sink, against an engine stating one irVersion. */

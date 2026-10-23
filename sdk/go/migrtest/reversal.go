@@ -10,9 +10,9 @@ import (
 // What an SDK is the authority on about a rollback, and what it is not.
 //
 // It knows which of docs/protocol.md §7.4's three answers a migration gives, because that is a fact
-// about the migration's own shape. It knows ADR 0036's refusal, because the capture can see the
+// about the migration's own shape. It knows the escape hatch's refusal, because the capture can see the
 // statements the up sent itself. It does not know whether an operation can be inverted at all: all
-// twenty inverses live in internal/ir, and ADR 0022 put them there precisely so that two SDKs could
+// twenty inverses live in internal/ir, precisely so that two SDKs could
 // not reach two answers for one migration. A copy here would be a third, and the day it drifted it
 // would pass a down the engine refuses.
 //
@@ -83,7 +83,7 @@ func underivable(m migr.Migration, undo migr.Undo, held []Statement) string {
 func reportHeldStatements(r reporter) {
 	r.Helper()
 
-	r.Log("ADR 0036: an exec is committed on its own, before the transaction the operations")
+	r.Log("An exec is committed on its own, before the transaction the operations")
 	r.Log("run in, and a later failure does not undo it. The engine refuses to derive a down")
 	r.Log("over one, so write a Down, or declare the migration irreversible with a reason.")
 }

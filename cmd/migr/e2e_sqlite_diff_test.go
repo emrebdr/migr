@@ -21,7 +21,7 @@ import (
 // it has to leave the database holding the schema the migrations describe.
 //
 // Untagged for the reason this engine's other suites are: a t.TempDir() and the Go toolchain are
-// its whole requirement (ADR 0050, M6-T6). The project is Go rather than .sql because every .sql
+// its whole requirement (M6-T6). The project is Go rather than .sql because every .sql
 // migration reaches the database as ir.Raw, so such a project has no desired schema to fold at all.
 
 // diffHistoryTable keeps this suite's runs out of every other table here.
@@ -138,7 +138,7 @@ func TestADiffOverADatabaseTheMigrationsDescribeProposesNothing(t *testing.T) {
 	t.Log("diff against what the migrations describe, and get nothing. Every one of this fixture's")
 	t.Log("column types is one SQLite resolves exactly or guesses correctly -- int64 and text are")
 	t.Log("ambiguous there and both guess right, where an int32 column would be refused by design")
-	t.Log("(ADR 0070, C1), which is what M11-T6's own note predicts.")
+	t.Log(", which is what M11-T6's own note predicts.")
 }
 
 func TestADiffWritesAMigrationThatCompilesAndClosesTheGap(t *testing.T) {
@@ -212,7 +212,7 @@ func TestAGeneratedMigrationIsReversibleByDerivationAndPassesValidate(t *testing
 
 	t.Log("The generated migration authors no Down, so migr derives one from what Up emitted --")
 	t.Log("which works only because every operation the differ emits carries a complete from")
-	t.Log("payload and the renderer writes every one of them out (ADR 0070, ADR 0073 D). A")
+	t.Log("payload and the renderer writes every one of them out. A")
 	t.Log("renderer that dropped the payloads would fail validate's own reverse check here.")
 }
 
@@ -241,7 +241,7 @@ func TestADiffRefusesADatabaseWithMigrationsStillToRun(t *testing.T) {
 
 			if got := cli.ExitCode(migr(t, config, "diff")); got != cli.ExitRuntime {
 				t.Errorf("migr diff exited %d, want %d", got, cli.ExitRuntime)
-				t.Log("ADR 0029's rule: the same command line succeeds once migr up has run.")
+				t.Log("Exit 1, not 2: the same command line succeeds once migr up has run.")
 			}
 
 			if generated := diffGenerated(t, config); len(generated) != 0 {

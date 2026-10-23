@@ -9,7 +9,7 @@ import (
 
 // M10-T3's done-when through the command: a column added to a table nothing creates, and a foreign
 // key to a column nothing adds, each caught before anything runs. The check needs the database, so
-// every case here passes --connect -- neither of its two bases is sound alone (ADR 0075).
+// every case here passes --connect -- neither of its two bases is sound alone.
 
 func TestValidateConnectCatchesAReferenceNoProjectionSatisfies(t *testing.T) {
 	dir, f, drivers := goProject(t, "add_scripted")
@@ -22,7 +22,7 @@ func TestValidateConnectCatchesAReferenceNoProjectionSatisfies(t *testing.T) {
 
 	if got := ExitCode(err); got != ExitValidation {
 		t.Errorf("migr validate exited %d, want %d: %v", got, ExitValidation, err)
-		t.Log("The argument is wrong rather than the world unready (ADR 0029): the reference is")
+		t.Log("The argument is wrong rather than the world unready: the reference is")
 		t.Log("refused from the project's own beginning too, so it is the migration at fault.")
 	}
 
@@ -76,7 +76,7 @@ func TestValidateOfflineSaysTheReferencesWereNotCheckedEither(t *testing.T) {
 
 	t.Log("A run with one basis has none, so it judges no references and says so -- which is the")
 	t.Log("shape capability already has. Reporting from the project's own beginning alone would")
-	t.Log("have every migration migr diff writes fail this command (ADR 0075, B).")
+	t.Log("have every migration migr diff writes fail this command.")
 }
 
 func TestValidateConnectIsSilentOnAProjectThatBuildsOnWhatTheDatabaseHolds(t *testing.T) {

@@ -115,10 +115,10 @@ func TestTheHoldersAgeComesFromTheEnginesOwnClock(t *testing.T) {
 	}
 
 	t.Log("forbidigo bans time.Now in a driver, so the stamp is SQLite's own and SQLite")
-	t.Log("subtracts it -- ADR 0020 E2's shape, with the in-process library as the server.")
+	t.Log("subtracts it -- PostgreSQL's shape, with the in-process library as the server.")
 	t.Log("")
 	t.Log("What this driver measures is the hold itself, which is the better of the two numbers a")
-	t.Log("report can carry and is not what PostgreSQL measures. Until ADR 0060 the field carrying")
+	t.Log("report can carry and is not what PostgreSQL measures. Until Measured existed the field carrying")
 	t.Log("it rendered as \"whose session has been open for\", which was false here -- a hold is not")
 	t.Log("a session age, and this lock file outlives neither.")
 }

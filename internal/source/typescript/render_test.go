@@ -20,7 +20,7 @@ import (
 //
 // It is untagged and skips out loud, which is internal/runtime/node's own rule: the Node toolchain
 // is a requirement make test does not have, and a tag would hide the test from golangci-lint and
-// from CI's lint and test steps alike (ADR 0047).
+// from CI's lint and test steps alike.
 
 func TestWhatItRendersTypechecksAgainstThePublishedPackage(t *testing.T) {
 	body, err := Render(sampleMigration(t), everyOperation(t))

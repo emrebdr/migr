@@ -41,7 +41,7 @@ func TestValidateChecksNothingAgainstAServerUntilItIsAskedTo(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report does not say %q:\n%s", want, out)
 			t.Log("Reporting no problems without saying that the one check needing a server was")
-			t.Log("never made is the pass ADR 0028 B2 rejected, one milestone later.")
+			t.Log("never made is the unearned pass this command refuses, one milestone later.")
 		}
 	}
 }
@@ -88,8 +88,8 @@ func TestValidateConnectFailsRatherThanSkippingWhenNothingAnswers(t *testing.T) 
 	if _, _, offline := runWith(t, dir, noon, drivers, "validate"); offline != nil {
 		t.Errorf("migr validate without the flag failed over the same unreachable database: %v",
 			offline)
-		t.Log("The flag is what asks for a database, so the no-secret run ADR 0028 B1 built this")
-		t.Log("command for is unchanged by a DSN that points nowhere.")
+		t.Log("The flag is what asks for a database, so the no-secret run validate was built")
+		t.Log("for is unchanged by a DSN that points nowhere.")
 	}
 }
 
@@ -105,7 +105,7 @@ func TestValidateConnectTakesNoMigrationLock(t *testing.T) {
 	if f.asked("lock") {
 		t.Error("migr validate --connect took the migration lock, which no report may")
 		t.Log("It answers what these migrations are, not what will run, and it is the command")
-		t.Log("an operator reaches for during a deploy (ADR 0027).")
+		t.Log("an operator reaches for during a deploy.")
 	}
 }
 
@@ -282,7 +282,7 @@ func TestTheConnectFlagIsRegisteredOnlyWhereItIsRead(t *testing.T) {
 	if len(carried) != 1 || carried[0] != "validate" {
 		t.Errorf("--connect is registered on %v, want validate alone", carried)
 		t.Log("Every other command either opens a database already or is a report that must not,")
-		t.Log("so anywhere else this is a flag accepted and ignored (ADR 0063's rule).")
+		t.Log("so anywhere else this is a flag accepted and ignored.")
 	}
 
 	if found := newRootCmd().PersistentFlags().Lookup("connect"); found != nil {
@@ -308,7 +308,7 @@ func TestARefusedMigrationIsNeverCompiledAgainstTheDatabase(t *testing.T) {
 	if f.asked("expand") {
 		t.Errorf("the refused migration was compiled against the database: %v", f.calls)
 		t.Log("Compiling is pure for most operations, so the gate's place before prepare looks")
-		t.Log("free -- until an emulated one, which is compiled against the live catalog (ADR")
-		t.Log("0053). A migration this server will not perform must not read a schema first.")
+		t.Log("free -- until an emulated one, which is compiled against the live catalog.")
+		t.Log("A migration this server will not perform must not read a schema first.")
 	}
 }

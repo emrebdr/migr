@@ -5,14 +5,14 @@
 // resume model -- and since M9-T5 it is the only engine that has ever produced that state by failing:
 // a three-statement migration stopping at its second records last_statement = 1 on MySQL 8.0 and
 // MariaDB 11.4 alike, with the first statement's table still in the catalog. PostgreSQL and SQLite
-// both declare transactional DDL, so ADR 0024 could describe this half and never run it.
+// both declare transactional DDL, so the dirty-run path could be described and never run there.
 //
 // # The migration lock is a user-level lock, and the name is derived
 //
 // GET_LOCK takes a lock that is global to the *server* rather than scoped to a database, lives on a
 // session, and dies with it. So the name carries the database as well as the history table, or two
 // migr installations on one server would exclude each other: it is migr1: and 32 lowercase hex
-// characters of a digest over the two (M9-T4, ADR 0060). Readable names were measured and rejected --
+// characters of a digest over the two (M9-T4). Readable names were measured and rejected --
 // MySQL refuses a name over 64 characters with error 4163 where MariaDB accepts one, and MySQL
 // compares names case-insensitively where MariaDB does not, so two 64-character identifiers neither
 // fit nor mean one thing. Every failure renders the name, which is what IS_USED_LOCK takes.
@@ -45,15 +45,15 @@
 //
 // The case this cannot bound is a client *host* that vanishes without a FIN. The server then blocks
 // reading for wait_timeout, 28800 seconds on both images, and MySQL has no per-connection server-side
-// keepalive a client can pin -- which is what PostgreSQL's tcp_keepalives_* in the startup packet buys
-// (ADR 0020). Shortening wait_timeout for the session was rejected rather than deferred: this
+// keepalive a client can pin -- which is what PostgreSQL's tcp_keepalives_* in the startup packet buys.
+// Shortening wait_timeout for the session was rejected rather than deferred: this
 // connection is idle whenever a language runtime is deciding what a migration does, so a short bound
 // would disconnect migr mid-run. What a blocked run gets instead is the connection id to KILL.
 //
 // # Lock impact, and the two things this server says about its own ALTER
 //
 // Every operation but raw carries a verdict, resolved from the algorithm the detected server applies
-// (M9-T3, ADR 0059). INSTANT is BriefExclusive and not LockFree: the statement is metadata-only once
+// (M9-T3). INSTANT is BriefExclusive and not LockFree: the statement is metadata-only once
 // it holds its lock and it still requests an exclusive metadata lock and still waits for one, so it
 // can hold a table hostage for the length of the query ahead of it. Only create_table and a
 // create_view that replaces nothing are LockFree, which is PostgreSQL's answer for PostgreSQL's
@@ -77,7 +77,7 @@
 // current type and the operation carries that only as `from` -- what an author recorded rather than
 // what the column is. The expansion does read the real type, and Resolve performs no I/O, so the
 // precise answer lives on a path a verdict cannot reach from here. M13-T6 put the verdict on the
-// planner's step (ADR 0086), which is where it could be refined, and left it declared.
+// planner's step, which is where it could be refined, and left it declared.
 //
 // drop_table is the one verdict reasoned rather than measured. InnoDB evicts the table's buffer-pool
 // pages and unlinks the tablespace under the metadata lock, and the attempt to measure the scaling
@@ -95,7 +95,7 @@
 //
 // Resolve cannot see a table, so those two operations are declared table_rewrite lowerable to
 // brief_exclusive under the condition the table must meet, and Assess -- this session's
-// driver.Assessor -- reads the table and confirms it (ADR 0081). The row format comes from
+// driver.Assessor -- reads the table and confirms it. The row format comes from
 // information_schema.TABLES and the indexes from STATISTICS, which any user may read; the row-version
 // count is in INNODB_TABLES, which refuses a session without PROCESS with 1227. So from 8.0.29 a
 // session without that grant never lowers the verdict: the fact it would need is unread, and
@@ -110,7 +110,7 @@
 //
 // lock_wait_timeout bounds a statement's wait for a metadata lock and innodb_lock_wait_timeout its
 // wait for a row lock, and both end in error 1205 on both servers, which Exec wraps in
-// driver.ErrStatementLockTimeout (M13-T2, ADR 0082). DDL here commits as it runs, so the engine
+// driver.ErrStatementLockTimeout (M13-T2). DDL here commits as it runs, so the engine
 // continues from the statement that waited rather than sending the ones before it again -- a rerun
 // from the start is error 1060, a duplicate column, measured. While it backs off the migration is
 // between states with no row saying so, which is the window a crash between two statements has.
@@ -124,7 +124,7 @@
 // included, and interruptible sends KILL QUERY with this session's CONNECTION_ID() from a second pool
 // when the real context ends, returning once the statement's 1317 and the kill are both back. A late
 // kill on an idle connection was measured harmless on both servers, a user needs no privilege to kill
-// a thread of its own, and an ALTER ... FORCE killed partway left the table whole (ADR 0083).
+// a thread of its own, and an ALTER ... FORCE killed partway left the table whole.
 //
 // # A uuid default is refused while this server writes a binary log
 //
@@ -133,7 +133,7 @@
 // DDL would compute different ones. Measured, and narrow in every direction -- refused on an empty
 // table and under binlog_format=ROW, accepted by CREATE TABLE and by both ways of setting a default
 // afterwards, accepted for CURDATE(), and accepted by MariaDB even with a binary log. So log_bin is
-// read once in Open and the refusal names the setting and the two-operation fix (ADR 0059 §G).
+// read once in Open and the refusal names the setting and the two-operation fix.
 //
 // # Two engines, one driver, and a version that lies
 //
@@ -155,8 +155,8 @@
 // # One pinned connection, because the migration lock belongs to one
 //
 // database/sql is a pool. GET_LOCK is connection-scoped, so acquiring on one pooled connection and
-// releasing on another silently fails to release -- ADR 0011's requirement, arriving here before
-// there is a lock. Open sets MaxOpenConns to one and holds one *sql.Conn for the session's life, and
+// releasing on another silently fails to release -- the pinned-session requirement, arriving here
+// before there is a lock. Open sets MaxOpenConns to one and holds one *sql.Conn for the session's life, and
 // a test asserts the pool will hand out no second connection rather than trusting it.
 //
 // The done-when for this task says "connection pooling"; the contract says one pinned session.
@@ -220,7 +220,7 @@
 //
 // # A read is read-only because the server says so, and a transaction is not enough
 //
-// Query opens a read-only transaction, which is what ADR 0032 asks for, and pins
+// Query opens a read-only transaction, which is what the contract asks for, and pins
 // transaction_read_only around it, which is what makes it true.
 //
 // START TRANSACTION READ ONLY alone refuses an INSERT, an UPDATE, a DELETE and a REPLACE -- and lets
@@ -229,8 +229,8 @@
 // change survives the rollback. Measured on 8.0.46 and 11.4.13. The session variable closes the hole
 // because the DDL's own implicit transaction is read-only too.
 //
-// The case that decides read-only is SELECT ... FOR UPDATE. MySQL has no data-modifying CTE, so ADR
-// 0032 B's PostgreSQL fixture does not port -- but FOR UPDATE begins with SELECT, passes any check
+// The case that decides read-only is SELECT ... FOR UPDATE. MySQL has no data-modifying CTE, so
+// PostgreSQL's fixture does not port -- but FOR UPDATE begins with SELECT, passes any check
 // on the leading keyword, and takes exclusive row locks that block every writer on those rows. It is
 // refused as error 1792 on both servers, which is classified into driver.ErrNotReadOnly because
 // internal/runtime/host cannot name a driver.
@@ -265,7 +265,7 @@
 // # What a transaction is here, and the one thing it cannot promise
 //
 // Transact brackets one transaction and commits only when the work returns nil, discarding it on
-// anything else including a panic (ADR 0017). database/sql rolls a transaction back itself when the
+// anything else including a panic. database/sql rolls a transaction back itself when the
 // context it was begun with is canceled, so the rollback tolerates sql.ErrTxDone.
 //
 // MySQL commits implicitly on DDL. A rollback after a CREATE TABLE reports success and undoes
@@ -275,7 +275,7 @@
 // so a failed ALTER leaves no half-built table; that bounds the damage to one statement and does not
 // make a migration of several recoverable. M9-T5 is where the engine's answer was measured: the
 // statements that landed before the failure are still there, so the run is recorded dirty and the
-// next one is refused with the row it wrote (ADR 0061).
+// next one is refused with the row it wrote.
 //
 // # The compiler
 //
@@ -310,7 +310,7 @@
 // make internal/engine split every migration into single-statement parts, which is the dirty-state
 // model's to choose rather than a flag the compiler sets. M9-T5 chose: a failure partway records how
 // far it got. A raw operation declaring no_transaction is still carried as given, and changes where
-// the history rows are written rather than what survives (ADR 0084).
+// the history rows are written rather than what survives.
 //
 // # Character set and collation, which are declared rather than inherited
 //
@@ -366,8 +366,8 @@
 // supply the rest. The missing attributes live in the database and nowhere else.
 //
 // So alter_column answers driver.ErrNeedsSession and the session is a driver.Expander, declared
-// Emulated (ADR 0053, SQLite's precedent one engine over). internal/engine asks for the expansion
-// immediately before the operation runs rather than while compiling the migration (ADR 0071), which
+// Emulated (SQLite's precedent one engine over). internal/engine asks for the expansion
+// immediately before the operation runs rather than while compiling the migration, which
 // is what makes a second redefinition of one column restate what the first one wrote: measured on
 // both servers, two in one migration land as varchar(128) NOT NULL where compiling both up front
 // restated the nullability the first had just changed. Exactly one payload is exempt:
@@ -448,7 +448,7 @@
 // refusal. Dropping one is refused below 8.0.19, where DROP CONSTRAINT arrived. And renaming a column
 // is refused below MariaDB 10.5.2, which is inside this driver's range and has only CHANGE COLUMN --
 // itself a full redefinition. Neither container can reach any of those, so each is tested against a
-// constructed version, which is ADR 0052's reading of invariant #13: the version is asked for and
+// constructed version, which is how invariant #13 reads here: the version is asked for and
 // never hardcoded, and a branch no available server produces is still written and held to a test.
 //
 // # The history store, and where this engine's premise reaches it
@@ -493,7 +493,7 @@
 //
 // # This driver's live tests are tagged, and SQLite's are not
 //
-// ADR 0050's rule is that a build tag names a requirement. SQLite needs a t.TempDir(); MySQL needs a
+// The rule is that a build tag names a requirement. SQLite needs a t.TempDir(); MySQL needs a
 // daemon, so everything that touches a real server is behind the integration tag and runs in the
 // Docker job. What is untagged is everything that needs none: the connection string and its
 // refusals, version and variant interpretation from constructed strings, the compiler and its golden
@@ -572,23 +572,22 @@
 // and its own SHOW CREATE drops an explicit one, so the distinction is not in the catalog -- this
 // driver reads RESTRICT as no_action there and as restrict on MySQL, which is what lets a key with
 // no actions declared compare equal across all four servers. The index this server creates for a
-// foreign key over an unindexed column is suppressed, no other engine creating one. See
-// docs/adr/0069-per-driver-introspection.md.
+// foreign key over an unindexed column is suppressed, no other engine creating one.
 //
 // # Replica lag is read on each replica
 //
 // MySQL and MariaDB report lag only on the replica, so ReplicaLag opens each databases.<name>.replicas
 // connection string on a pool of its own, lazily and under a five-second bound, and asks SHOW REPLICA
 // STATUS -- SHOW SLAVE STATUS before MySQL 8.0.22 and MariaDB 10.5.1 -- reading the row under either
-// spelling of its columns, since MariaDB keeps the old ones under the new statement (M13-T8, ADR
-// 0088). A stopped IO or SQL thread, a NULL lag, no row, error 1227 and an unreachable replica are
-// each unknown with a reason of their own; a replica is named by host:port, never by its DSN.
+// spelling of its columns, since MariaDB keeps the old ones under the new statement (M13-T8). A
+// stopped IO or SQL thread, a NULL lag, no row, error 1227 and an unreachable replica are each
+// unknown with a reason of their own; a replica is named by host:port, never by its DSN.
 //
 // # Whether this server permits log-based capture
 //
 // Open reads log_bin, binlog_format and binlog_row_image, and the session's own global privileges
 // from information_schema.USER_PRIVILEGES -- never SHOW GRANTS, which prints a password hash on
-// MariaDB -- into capability.Facts.Capture (M13-T16, ADR 0090). REPLICATION CLIENT is accepted under
+// MariaDB -- into capability.Facts.Capture (M13-T16). REPLICATION CLIENT is accepted under
 // MariaDB's 10.5 name, BINLOG MONITOR, too. A failed read is read as not permitted. MySQL alone also
 // needs binlog_row_value_options empty, since PARTIAL_JSON sends half an image; MariaDB alone also needs
 // REPLICATION MASTER ADMIN, which its SHOW SLAVE HOSTS asks for (M13-T17). Both say how long they keep
@@ -596,7 +595,7 @@
 //
 // # A shadow table, kept current from the binary log
 //
-// Capture reads one table's row events through go-mysql (M13-T10, ADR 0091), on a pool and a
+// Capture reads one table's row events through go-mysql (M13-T10), on a pool and a
 // replication connection of its own, under a server id derived from the capture's name and moved past
 // every id the server and its replicas hold. A transaction is handed over once its commit is read and
 // the position moves only then: gtid:<set> where the server records GTIDs, file:<name>:<offset> where
@@ -619,7 +618,7 @@
 //
 // # The same on MariaDB
 //
-// MariaDB 11.4 runs it too (M13-T17, ADR 0095), with four differences, each measured on 11.4.13. Its
+// MariaDB 11.4 runs it too (M13-T17), with four differences, each measured on 11.4.13. Its
 // log is read in go-mysql's MariaDB flavor: a group opens with its own GTID event and no BEGIN, and a
 // standalone group is one statement that commits itself. Its position is gtid:<domain>-<server>-<seq>
 // from @@gtid_binlog_pos, which every server writing a binary log has -- file:<name>:<offset> only

@@ -36,7 +36,7 @@ type Planned struct {
 	Ordinal int32
 	// Plan is what it compiled to: the migration, the direction, and each operation's statements.
 	Plan plan.Plan
-	// Direct are the statements it runs itself, which this preview held rather than ran (ADR 0036).
+	// Direct are the statements it runs itself, which this preview held rather than ran.
 	Direct []driver.Query
 	// Unrestorable is what this migration's record and the live schema disagree about, where judged.
 	Unrestorable []Disagreement
@@ -247,10 +247,11 @@ func (e *executor) expandExact(ctx context.Context, at int, ready *prepared) {
 }
 
 // A verdict whose cost depends on the table is declared at its worst, and a session that reads the
-// table may lower it (ADR 0081). The first queued migration is the only one whose tables are what
+// table may lower it. The first queued migration is the only one whose tables are what
 // they will be when it runs -- judgedFirst's rule -- so it is the only one assessed, and every later
 // verdict stays the declaration. A rewritten step is never assessed, its rewrite's cost being the one
-// it runs at, and nor is one on a table the migration creates, which costs nothing whatever it reads. A failed read keeps the worst and is reported rather than failing the preview.
+// it runs at, and nor is one on a table the migration creates, which costs nothing whatever it
+// reads. A failed read keeps the worst and is reported rather than failing the preview.
 
 // assessFirst lowers the first queued migration's verdicts where a session reads its tables as cheaper.
 func (e *executor) assessFirst(ctx context.Context, at int, compiled plan.Plan) error {

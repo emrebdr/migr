@@ -57,7 +57,7 @@ func TestTheHistoryTableIsCreatedAsThisDialectSpellsIt(t *testing.T) {
 		t.Log("The column list is M2-T5's and the spellings are M3-T2's, so a change here means")
 		t.Log("one of those moved -- read the diff before accepting it. checksum is varchar(255)")
 		t.Log("rather than the 135 characters migr1 needs, so a scheme bump never has to migrate")
-		t.Log("migr's own history table (ADR 0009).")
+		t.Log("migr's own history table.")
 	}
 }
 

@@ -114,7 +114,7 @@ func TestNoShippedRuleIsAboutDestruction(t *testing.T) {
 		if strings.Contains(string(r.ID), "destructive") || strings.Contains(string(r.ID), "drop") {
 			t.Errorf("rule %q looks like it judges destruction, which is a hard gate rather than "+
 				"a rule: a severity must never be able to permit what validation.allow_destructive "+
-				"permits (ADR 0063)", r.ID)
+				"permits", r.ID)
 		}
 	}
 }

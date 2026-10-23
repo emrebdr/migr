@@ -11,13 +11,10 @@
 // M4-T7, narrowing in M4-T8, the dirty-state model in M4-T9, and previewing in M5-T2. The
 // transaction opt-out is completed in M13-T4. The live-schema gate arrived with M11-T2: restorable.go
 // reads a snapshot before each half runs and refuses a migration whose record of the schema this
-// database contradicts, which is where ADR 0008's from trust problem closed. See
-// docs/adr/0069-per-driver-introspection.md, docs/adr/0021-apply-executor.md,
-// docs/adr/0022-rollback-executor.md, docs/adr/0023-batch-narrowing.md,
-// docs/adr/0024-dirty-runs.md and docs/adr/0026-dry-run-and-sql-sources.md. A data-only migration
-// runs in chunks and carries on after an interruption as of M12-T3 (docs/adr/0078), and a statement
-// that gave up on a lock is tried again after a backoff as of M13-T2 (docs/adr/0082), under two
-// bounds stopped on the server as of M13-T3 (docs/adr/0083).
+// database contradicts, which is where the trust problem of a recorded from payload closed. A data-only
+// migration runs in chunks and carries on after an interruption as of M12-T3, and a statement that
+// gave up on a lock is tried again after a backoff as of M13-T2, under two bounds stopped on the
+// server as of M13-T3.
 //
 // # A preview reads what an apply ensures
 //
@@ -29,7 +26,7 @@
 // that it makes none may not make that one either. So it is the only caller for which a database
 // with no history table is an answer rather than a bug: resolved refuses that report because an
 // apply has just ensured one, while a preview folds against an empty-but-present log and reports
-// Recorded: false beside the queue. That is not ADR 0019's mistake, which is reading absent as
+// Recorded: false beside the queue. That is not the ErrNoTable mistake, which is reading absent as
 // empty *silently* — a preview says so in the first line of its output and applies nothing either
 // way.
 //
@@ -43,7 +40,7 @@
 // to ask what each one does, a clock, and the runtime name every history row records.
 //
 // Source is asked only about migrations that will actually run, and only once the lock is held.
-// That is not an optimization. ADR 0009 permits a migration to branch on live query results, so
+// That is not an optimization. A migration may to branch on live query results, so
 // operations emitted before the lock are emitted against a database another run may still change;
 // and M6 spawns a runtime process per migration, so emitting for a migration that will be skipped
 // is a subprocess of side effects for an answer nothing reads.
@@ -85,7 +82,7 @@
 // not as a correct answer.
 //
 // Ensure before Read, and this one is invisible in the signatures. history.Read maps ErrNoTable to
-// an absent log and reconciling an absent log yields zero statuses by design (ADR 0019), so reading
+// an absent log and reconciling an absent log yields zero statuses by design, so reading
 // first reports "nothing to do" on every fresh database, forever.
 //
 // Ensure outside any transaction, which is invisible too: a store may open one only when the
@@ -102,14 +99,14 @@
 // An apply emits one migration at a time, because migration 5's operations may depend on the column
 // migration 4 just created — emitted up front, 5 would be emitted against a database where 4 has not
 // run. The stated cost is that a migration which will not load is found only after the ones before
-// it applied (ADR 0021).
+// it applied.
 //
 // A rollback cannot pay that cost. It runs newest first, so an irreversible migration at position
 // three would be met only after five and four had been undone, leaving a database carrying
 // migrations whose successors are gone — a schema nothing describes. Irreversibility is a property
 // of the migration rather than of the run, so it is knowable before anything happens, and the whole
 // queue is therefore inverted before any of it runs. ir.ReverseAll refuses whole for the same reason
-// one level down: a partial reversal is worse than none (ADR 0008).
+// one level down: a partial reversal is worse than none.
 //
 // The mirror-image price is real and is not hidden: a down is emitted while the migrations after it
 // are still applied, rather than against the state it will run against. No shape avoids both.
@@ -126,7 +123,7 @@
 // owes it.
 //
 // The hazard is stated rather than hidden. Deriving re-emits a migration's up against a database
-// where it is already applied, and ADR 0009 permits a migration to branch on live query results, so
+// where it is already applied, and a migration may branch on live query results, so
 // one that emits differently the second time yields an inverse of something that never ran. The
 // history records only a digest, so nothing can catch it after the fact. Verifying an inverse
 // against the live schema is what closed it (M11-T2): restorable.go reads a snapshot immediately
@@ -141,7 +138,7 @@
 // ModePlan; and derive asks in ModePlan whatever the invocation is, so one rollback issues both —
 // the down as the run it is, then the up as the question its inverse comes from. A migration
 // reached through a language runtime can write directly, through host.db.exec, and plan mode is
-// what holds that statement rather than running it (docs/protocol.md §6, ADR 0033).
+// what holds that statement rather than running it (docs/protocol.md §6).
 //
 // Nothing observes the difference yet: internal/source/sql reads a text file and cannot branch,
 // which is why it ignores the parameter and a test asserts it emits the same operations either
@@ -154,7 +151,7 @@
 //
 // # The order a rollback undoes in is the order the runs happened
 //
-// Not version order: a declared dependency may point backwards in time, which ADR 0018 makes the use
+// Not version order: a declared dependency may point backwards in time, which is the use
 // case rather than a mistake, so a later-timestamped migration can have run first. Not the reverse
 // of the reconciled report either: that is the order the current files would run in, and a
 // dependency edge added after both applied makes it disagree with what happened.
@@ -170,10 +167,10 @@
 // queue; they differ only in how that run ends.
 //
 // Nothing here compares two versions, and that is the point. Going up the sequence is
-// migration.Order's, where ADR 0018 makes a backwards-pointing declared dependency the use case;
-// going down it is (Batch, Ordinal) descending, which ADR 0022 chose over version-descending by
-// name. A prefix of either is meaningful and a version comparison over either is wrong — and wrong
-// in a way that every version-ordered fixture would agree with.
+// migration.Order's, where a backwards-pointing declared dependency is the use case;
+// going down it is (Batch, Ordinal) descending, chosen over version-descending by name. A prefix of
+// either is meaningful and a version comparison over either is wrong — and wrong in a way that
+// every version-ordered fixture would agree with.
 //
 // --to names the state the database should end in rather than the last migration acted on, so
 // up --to X applies through X and down --to X leaves X applied. Going up the cut is taken over the
@@ -191,7 +188,7 @@
 // Narrowing happens after the state switch, so a drifted, dirty or missing migration refuses the
 // whole run even when the scope would never have reached it. That is deliberate: those are
 // properties of the reconciled database rather than of one invocation's appetite. It over-refuses
-// for missing, which ADR 0023 records rather than hides.
+// for missing, which is stated rather than hidden.
 //
 // migr down with no arguments rolls back the last batch. The zero Scope is not that, because a zero
 // value meaning something different per direction is one nobody can read at a call site — so M5-T2's
@@ -229,10 +226,10 @@
 // # A migration runs as parts, split around what cannot share a transaction
 //
 // A statement may declare that it cannot run inside a transaction; CREATE INDEX CONCURRENTLY is why
-// the flag exists, and a raw operation's no_transaction is how a migration says so (M13-T4, ADR
-// 0084). The steps are divided into parts before anything runs: consecutive statements that may
-// share a transaction are one part and run inside one, and a statement that may not is a part of its
-// own and runs bare. A migration with no such statement is one part, which is exactly the one
+// the flag exists, and a raw operation's no_transaction is how a migration says so (M13-T4). The
+// steps are divided into parts before anything runs: consecutive statements that may share a
+// transaction are one part and run inside one, and a statement that may not is a part of its own
+// and runs bare. A migration with no such statement is one part, which is exactly the one
 // transaction M11-T7 made bracket the whole step loop, so nothing about it changed.
 //
 // Every part but the last commits on its own, so each one writes a dirty row saying how far the
@@ -248,7 +245,7 @@
 // still held to statements a transaction takes, as it arrives, which is the one moment they exist;
 // a refusal there discards the part's transaction. ErrNothingToRun reads a statement list, so a plan
 // holding only deferred operations is refused only where nothing is deferred either; otherwise every
-// SQLite migration of one rebuild would be unrunnable (ADR 0071).
+// SQLite migration of one rebuild would be unrunnable.
 //
 // What survives a failure is what the parts before it committed, and on an engine whose DDL commits
 // also what the failing part ran before the statement that failed. A lock wait spent in a
@@ -263,8 +260,8 @@
 //
 // # An emulated operation is compiled as the run reaches it
 //
-// An operation a driver performs only against a live database arrives as a deferred plan.Step
-// (ADR 0053, ADR 0071). The run walks a migration's steps in order and expands each deferred one
+// An operation a driver performs only against a live database arrives as a deferred plan.Step.
+// The run walks a migration's steps in order and expands each deferred one
 // immediately before its statements execute, so the catalog it is rendered from is the one the steps
 // ahead of it left.
 //
@@ -276,7 +273,7 @@
 // table without the NOT NULL that alter had just written, and a rollback of two emulated migrations
 // re-created what the newer inverse had removed.
 //
-// ADR 0022's whole-queue inversion is unchanged and is about something else: irreversibility is a
+// The whole-queue inversion is unchanged and is about something else: irreversibility is a
 // property of the migration, so it must be met before anything is undone. What moved is when a
 // statement is rendered, not when a refusal is decided.
 //
@@ -284,7 +281,7 @@
 // statements the migration had in all, because the operations it never reached are rendered from a
 // catalog it never read — so DirtyError carries how many were still to be compiled and renders its
 // total as a partial one. And a resume is refused outright where any operation is compiled as it
-// runs, for ADR 0062's own reason one layer in: the recorded index names a statement in the list
+// runs, for the resume refusal's own reason one layer in: the recorded index names a statement in the list
 // that run emitted, and re-rendering an expansion here numbers a different list.
 //
 // M13-T4 therefore writes the multi-run loop rather than deleting a precondition, and inherits the
@@ -300,7 +297,7 @@
 // Three more are refused once the history has been read, before any migration runs:
 //
 //   - a history table still absent after Ensure reported success, because reading that as "no runs
-//     yet" makes a fully migrated production database look virgin (ADR 0019);
+//     yet" makes a fully migrated production database look virgin;
 //   - two entries claiming one version, which Discover already refuses but which arrives here as a
 //     caller's slice;
 //   - any migration reconciling to drifted or dirty (M4-T9). Both refuse the whole run rather than
@@ -317,7 +314,7 @@
 //
 // The switch on history.State carries no default, so exhaustive names this package the day a sixth
 // state arrives — and M13-T14's did: waiting, which an apply carries on as a hold and a rollback
-// refuses (ADR 0093). The trailing return is the answer for a state this build cannot interpret,
+// refuses. The trailing return is the answer for a state this build cannot interpret,
 // and it refuses rather than guessing.
 //
 // Three are refused per migration, before its first statement, each naming the task that lifts it:
@@ -325,7 +322,7 @@
 //   - one that compiles to no statements at all, because reporting success for a schema change that
 //     never happened is the driver conformance suite's own failure, one layer up -- except a down
 //     that emitted no operations, which is its author saying there is nothing to undo and is
-//     recorded rolled back with none run (ADR 0079); a derived down never reaches that, being
+//     recorded rolled back with none run; a derived down never reaches that, being
 //     refused where the up it would invert now emits nothing;
 //   - one that groups into more than one run, because nothing here splits a migration around a
 //     statement that cannot share a transaction;
@@ -369,10 +366,10 @@
 //
 // A transactional group still goes through Transact on a session that reports no transactional DDL.
 // The driver is the only thing that knows what a transaction means on its engine, and MySQL's DML is
-// transactional even where its DDL is not. The honest consequence is that ADR 0013's
+// transactional even where its DDL is not. The honest consequence is that
 // record-before-commit buys nothing there: the first DDL statement implicitly commits, so the
 // history row lands in a different transaction from the schema change it describes. That window is
-// what a dirty row exists to describe rather than a defect in it. See docs/adr/0024-dirty-runs.md.
+// what a dirty row exists to describe rather than a defect in it.
 //
 // The row records what stopped the run and the caller gets the window it opened. Those were one value
 // until M9-T5: perform computed leftDirty once and passed the resulting *DirtyError as both, so the
@@ -394,15 +391,15 @@
 // where the row sits. It cannot say how many statements the run had, because the row records how far
 // it got rather than how far it had to go — so it says that rather than leaving a reader to infer it.
 // Nothing recomputes the total: the statements were the ones *that run* emitted, and a migration may
-// branch on live query results (ADR 0009), so re-asking could legitimately produce a different list
-// than the one that half-ran. See docs/adr/0061-refusing-a-dirty-database.md.
+// branch on live query results, so re-asking could legitimately produce a different list
+// than the one that half-ran.
 //
 // # Settling it, which is the only way out
 //
 // Resolve is the fourth entry point and the only one that exists because invariant #6 permits a
 // repair path. It finds the one migration between states and either runs what the stopped run never
 // reached or records what an operator did about it, and DryRun stops it after the plan rather than
-// putting a second pipeline beside the first (ADR 0026's rule).
+// putting a second pipeline beside the first (one pipeline, two renderings).
 //
 // Resolution is an append. The fold already clears a dirty run when a later Applied or Resolved row
 // lands, so nothing is edited and no recorded checksum is rewritten -- which is the only shape
@@ -415,19 +412,18 @@
 // names a statement in the list *that run* emitted, so against a list that moved it names a different
 // statement. A migration that branches on live data is therefore not resumable, and the refusal says
 // so and names the two repairs that are. A migration holding an operation this engine compiles as it
-// runs is not resumable either, for the same reason one layer in (ADR 0071).
+// runs is not resumable either, for the same reason one layer in.
 //
 // The skip is executor.from, read by exec as the statements it counts through and does not send, so a
 // resume that stops again records an absolute index rather than one relative to itself. Where from
-// equals the whole count -- a dirty row naming every statement, which ADR 0024 says means the commit
-// or the history write failed -- nothing is executed and the Applied row the bookkeeping never got
+// equals the whole count -- a dirty row naming every statement, which means the commit or the
+// history write failed -- nothing is executed and the Applied row the bookkeeping never got
 // to is recorded instead.
 //
 // The two asserted repairs reach neither a planner nor a runtime: the row is built from the recorded
 // one plus this session, so a migration that no longer builds can still be settled. They copy the
 // *recorded* source digest rather than the file's own now, so an operator who edited the file gets the
 // dirty state settled and the edit reported as drifted -- which is true, rather than laundered.
-// See docs/adr/0062-resolving-a-dirty-migration.md.
 //
 // # What a drifted migration is told, and what it is not told
 //
@@ -437,8 +433,8 @@
 //
 // It shows the recorded checksum in full — both halves, exactly as the history row holds it — and
 // the recomputed source digest in full beside it. There is no recomputed IR half and none is
-// invented: producing one needs a language runtime and a live database, and ADR 0009 permits a
-// migration to branch on live query results, so a mismatch there would have three possible causes
+// invented: producing one needs a language runtime and a live database, and a migration
+// may branch on live query results, so a mismatch there would have three possible causes
 // and only one of them would be drift. Rendering a placeholder inside a migr1: value would be a
 // checksum no parser accepts, which is worse than an absence the message explains.
 //
@@ -485,7 +481,7 @@
 // was asked to undo -- gating it would make the permission mandatory for migr down outright, since
 // the inverse of CreateTable is DropTable. And a resume finishes what a permitted run started, on a
 // schema that is already half-changed; refusing there would leave a database between states with
-// nothing but the asserted repairs to settle it. See ADR 0063.
+// nothing but the asserted repairs to settle it.
 //
 // # What this server has declared it cannot perform
 //
@@ -493,7 +489,7 @@
 // resolved against the connected server is asked of every operation a migration emits, and one it
 // refuses stops that migration with the driver's own reason, the operation's index, and the object
 // it names. Nothing here resolves a verdict for itself -- Capabilities() is the session's, built
-// inside Open against a server it detected (ADR 0012) -- so the check costs no I/O and needs no
+// inside Open against a server it detected -- so the check costs no I/O and needs no
 // configuration at all. There is no flag and no opt-out: a refusal an operator can switch off is
 // not one.
 //
@@ -502,7 +498,7 @@
 // the up half alone, because the inverse of CreateTable is DropTable, while an operation the server
 // will not perform is just as unrunnable backwards. A rollback inverts its whole queue before
 // running any of it, so migr down is preflighted whole; an apply cannot be, because migration N may
-// depend on N-1 having been applied and may branch on live query results (ADR 0009).
+// depend on N-1 having been applied and may branch on live query results.
 //
 // A resume is not gated, for the reason the destructive gate is not: the statements it runs are the
 // ones the stopped run reached rather than ones a verdict was asked about.
@@ -510,12 +506,12 @@
 // What this buys is sharpest on an engine whose DDL commits. Measured on MySQL 8.0 before the gate
 // existed: a migration whose second operation that server refuses applied the first, sent the
 // second, took error 1674, and was recorded dirty -- which then refused both directions until migr
-// resolve. See ADR 0064.
+// resolve.
 //
 // # A step waits for a later release, and a run stops at it without failing
 //
 // Options.Gates is every step of a change across deploys that waits on another, resolved by
-// migration.Gates, and Options.Release names the deploy this run belongs to (M13-T7, ADR 0087). Before
+// migration.Gates, and Options.Release names the deploy this run belongs to (M13-T7). Before
 // a queued migration is asked anything, Gated judges it against the history as it stood before the
 // run, advanced by what this run has applied since: it waits while its prior step is not applied, or
 // belongs to this release, and the run then stops there with Result.Held and no error -- a change
@@ -534,7 +530,7 @@
 //
 // Exceeding is the third gate of that shape and the only one no run reads: it reports every step
 // whose plan.Step.Lock is above safety.max_lock_impact, and migr plan and migr validate fail with
-// LockImpactError on it under --require-safe, which internal/cli resolves to exit 5 (ADR 0086). It
+// LockImpactError on it under --require-safe, which internal/cli resolves to exit 5. It
 // skips an operation the server refuses, which Unsupported already reports, and a step carrying no
 // verdict at all exceeds every ceiling, so a planner never handed the session's capabilities fails
 // closed rather than passing everything.
@@ -547,15 +543,15 @@
 //
 // # An obligation the contract cannot express
 //
-// ADR 0013's record-before-commit rests on a driver's history store writing through the session's
+// Record-before-commit rests on a driver's history store writing through the session's
 // open transaction. PostgreSQL does; the contract cannot say so, and a store on a second connection
 // would break the guarantee silently. It is stated in internal/driver's package doc and asserted
-// per driver, exactly as ErrNoTable is (ADR 0019).
+// per driver, exactly as ErrNoTable is.
 //
 // # A data-only migration runs a chunk at a time, and carries on where it stopped
 //
 // A migration whose every operation is a data operation is marked by the planner to run in chunks
-// (M12-T3, ADR 0078), and chunk.go is its run: for each operation, the key from Introspect, then a
+// (M12-T3), and chunk.go is its run: for each operation, the key from Introspect, then a
 // loop of the pacer's say, one driver.Chunker chunk, and that chunk's checkpoint, all in one
 // transaction. The first chunk's transaction also writes the dirty row, so a run killed between two
 // chunks leaves what a failed one does, and the last one's writes the applied row and clears the
@@ -571,7 +567,7 @@
 // so far did, and answers how many rows the next covers, how long to wait for it, and why it is
 // waiting. The wait goes through a Sleeper, so no test here ever sleeps.
 //
-// Lagged is the pacer M13-T8 drives from replica lag (ADR 0088). It reads driver.LagReader on every
+// Lagged is the pacer M13-T8 drives from replica lag. It reads driver.LagReader on every
 // Pace and answers Hold -- wait, then ask again -- while any replica is above the threshold or could
 // not be read, naming the worst, an unreadable one first; the engine reports each held poll through
 // Progress with Waiting set, counts them on Run, and asks again after the wait. It keeps no state,
@@ -584,7 +580,7 @@
 // the loop, and driver.ErrStatementLockTimeout is the only failure it repeats, so a refusal is never
 // sent twice. Backoff is the seam -- Exponential doubles a base up to a cap with half of each delay
 // random, from a Jitter the caller injects since this package may hold no randomness -- and Retried
-// is told of every retry before its wait, which internal/cli logs as a warning (ADR 0082).
+// is told of every retry before its wait, which internal/cli logs as a warning.
 //
 // What is rerun depends on what survived. On transactional DDL the rollback undid every statement
 // and released every lock they took, so the whole migration runs again from where this run began,
@@ -602,18 +598,18 @@
 // # Two bounds, each a deadline with a cause of its own
 //
 // timeout.go holds safety.statement_timeout, around each statement and each chunk, and
-// safety.migration_timeout, around a migration with its retries and their backoff (M13-T3, ADR
-// 0083). Each is context.WithTimeoutCause, so context.Cause tells either from an operator's
-// interrupt: a bound reached is a TimeoutError naming the key to raise, and Ctrl-C stays Canceled.
-// The driver stops the statement on the server before returning, so a stopped statement is a failure
-// like any other -- rolled back where the engine allows, recorded on the session that ran it, never
-// retried, the lock released by the ordinary path. A migration bound that cuts a backoff short
-// reports the lock wait it was backing off from, and not retries spent.
+// safety.migration_timeout, around a migration with its retries and their backoff (M13-T3). Each is
+// context.WithTimeoutCause, so context.Cause tells either from an operator's interrupt: a bound
+// reached is a TimeoutError naming the key to raise, and Ctrl-C stays Canceled. The driver stops
+// the statement on the server before returning, so a stopped statement is a failure like any other
+// -- rolled back where the engine allows, recorded on the session that ran it, never retried, the
+// lock released by the ordinary path. A migration bound that cuts a backoff short reports the lock
+// wait it was backing off from, and not retries spent.
 //
 // # A shadow-table migration is four recorded stages, and the hold has no end of its own
 //
 // A migration declaring Online's ShadowTable runs through shadow.go, shadow_run.go and
-// shadow_settle.go rather than as statements (M13-T9, ADR 0089). It is refused before anything is
+// shadow_settle.go rather than as statements (M13-T9). It is refused before anything is
 // created where the server does not permit capture, the session is no driver.Shadower, or an
 // operation is not a change to one existing keyed table. The stream opens before the copy reads a
 // row, and each stage -- copying, syncing, cut_over -- is recorded in <history table>_shadows in the
@@ -627,16 +623,17 @@
 //
 // # A statement outside any transaction is repaired, and then may be retried
 //
-// M13-T4 never retried a bare statement, since nothing rolled back what it left. Since M13-T11 (ADR
-// 0092) the engine asks Options.Repairer about one that failed, and a repair saying the statement may
-// run again lifts that rule for it alone: a lock wait is retried with the ordinary backoff, and a
-// failure the repair says was the leftover itself is retried at once. A repair finding the statement's
-// work already done counts the statement as run. A resume asks the repairer once more before it reruns
-// the statement a stopped run last sent, so a run killed mid-build is carried on rather than failing on
-// a name its corpse holds. Every repair is reported through Options.Repaired and on the run. A
-// statement marked Unblocking runs under Options.ConcurrentTimeout instead of StatementTimeout.
+// M13-T4 never retried a bare statement, since nothing rolled back what it left. Since M13-T11 the
+// engine asks Options.Repairer about one that failed, and a repair saying the statement may run
+// again lifts that rule for it alone: a lock wait is retried with the ordinary backoff, and a
+// failure the repair says was the leftover itself is retried at once. A repair finding the
+// statement's work already done counts the statement as run. A resume asks the repairer once more
+// before it reruns the statement a stopped run last sent, so a run killed mid-build is carried on
+// rather than failing on a name its corpse holds. Every repair is reported through Options.Repaired
+// and on the run. A statement marked Unblocking runs under Options.ConcurrentTimeout instead of
+// StatementTimeout.
 //
-// Since M13-T10 (ADR 0091) three things more. The session's Shadower.Admits is asked after the key is
+// Since M13-T10 three things more. The session's Shadower.Admits is asked after the key is
 // read and before the stream opens, so a table that engine cannot carry is refused with nothing
 // created. A preview judges only the first queued migration against the live table: a later one's
 // table may be one a migration ahead of it creates, so it is judged on everything that reads no table,
@@ -644,7 +641,7 @@
 // log again instead of copying on, each read reported as a held chunk, so a copy cannot outrun the
 // replay into a cutover that never catches up.
 //
-// Since M13-T15 (ADR 0094) three more. A read whose record committed is acknowledged to the stream,
+// Since M13-T15 three more. A read whose record committed is acknowledged to the stream,
 // and nothing is acknowledged inside a transaction, since a PostgreSQL slot advanced there stays
 // advanced through a rollback. A cutover attempt that rolled back resets the job to what the store
 // recorded and reopens the stream from that position, because its catch-up's writes were undone while

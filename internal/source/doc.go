@@ -1,7 +1,7 @@
 // Package source turns IR operations back into the migration source a language
 // writes them as, which is what lets migr diff write a migration file.
 //
-// Status: complete (M11-T5). See docs/adr/0073-the-schema-projection.md.
+// Status: complete (M11-T5).
 //
 // # One chain, a writer per language
 //
@@ -25,7 +25,7 @@
 //
 // # It writes the recorded payloads, and that is the point
 //
-// ADR 0070's stated payoff is that a migration migr diff writes is reversible by
+// The differ's stated payoff is that a migration migr diff writes is reversible by
 // derivation. The differ declines to emit a drop whose prior definition it cannot
 // record precisely so that the derived down is exact -- so a writer that dropped
 // .Was(...) would spend that for nothing and write migrations this project's own
@@ -53,6 +53,6 @@
 // Every Go migration in a project shares one package and the default name is the
 // same for every diff, so two generated migrations named from the name are a
 // project that does not build. TypeScript needs none of this, each migration being
-// a module with a default export -- ADR 0042's "the module system replaces the
-// registry", reached from a new direction.
+// a module with a default export -- "the module system replaces the registry",
+// reached from a new direction.
 package source

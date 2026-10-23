@@ -1,8 +1,8 @@
 # Releasing migr
 
 This page is for maintainers. Releases are built, signed and published by
-`.github/workflows/release.yml`, never from a laptop: signing needs that job's GitHub OIDC token
-(ADR 0098).
+`.github/workflows/release.yml`, never from a laptop: signing needs that job's GitHub OIDC token.
+
 
 ## Cut a release
 
@@ -52,7 +52,7 @@ $ make release-snapshot   # every archive in dist/, unsigned
 ## The Homebrew tap
 
 `brew install emrebdr/tap/migr` reads `Casks/migr.rb` from the repository `emrebdr/homebrew-tap`,
-which every release rewrites (ADR 0099). Set it up once:
+which every release rewrites. Set it up once:
 
 1. Create the **public** repository `emrebdr/homebrew-tap`, with default branch `main` and a README.
 2. Create a fine-grained personal access token whose only repository is `emrebdr/homebrew-tap`, with
@@ -69,7 +69,7 @@ The hand-run snapshot uploads the cask it would commit (`migr.rb`) with its arti
 ## npm
 
 `npx @migr/cli` installs `@migr/cli`, whose optional dependencies are the six platform packages, each
-pinned to its exact version (ADR 0100). `npm/cli/build.mjs` writes all seven from goreleaser's
+pinned to its exact version. `npm/cli/build.mjs` writes all seven from goreleaser's
 `dist/`, and `npm/cli/publish.mjs` publishes them. Set up once:
 
 1. Create the npm organization `migr` at npmjs.com. Public packages are free, and the organization
@@ -96,7 +96,7 @@ depends on `@migr/cli` at the same version, so `npx migr` works too.
 ## Images
 
 The release logs in to `ghcr.io` with the job's own `GITHUB_TOKEN` (`packages: write`), so the
-images need no secret (ADR 0101). **After the first tag, make the package public once**: on GitHub,
+images need no secret. **After the first tag, make the package public once**: on GitHub,
 open **Packages → migr → Package settings → Change visibility**. A new package is private until then,
 and a pipeline elsewhere can't pull it.
 

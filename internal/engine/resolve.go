@@ -479,7 +479,7 @@ func (e *executor) asked(ctx context.Context, item queued, dir ir.Direction) (Em
 // expandedLateError refuses a resume whose statements are a function of a schema this run has moved.
 func expandedLateError(deferred int32) error {
 	return fmt.Errorf("%w: %d of its operations are compiled against the database immediately "+
-		"before each one runs (ADR 0071), so the statement list the recorded index counts through "+
+		"before each one runs, so the statement list the recorded index counts through "+
 		"is rendered from a schema this run has already changed -- and re-rendering it here would "+
 		"number a different list. Finish or undo the change yourself and record what you did with "+
 		"--applied or --rolled-back", ErrNotResumable, deferred)
@@ -489,7 +489,7 @@ func expandedLateError(deferred int32) error {
 func emittedDifferentlyError(recorded, now checksum.Digest) error {
 	return fmt.Errorf("%w: it emitted a different list of operations this time, so the statement "+
 		"the recorded index names is not the statement that would run:\n\n  recorded  %s\n  now       "+
-		"%s\n\nA migration may branch on live query results (ADR 0009), so this is permitted rather "+
+		"%s\n\nA migration may branch on live query results, so this is permitted rather "+
 		"than corrupt -- what it rules out is resuming by index. Finish or undo the change yourself "+
 		"and record what you did with --applied or --rolled-back",
 		ErrNotResumable, recorded, now)

@@ -19,7 +19,7 @@ import (
 // M7-T8 proved each language alone against a real server and refused a directory holding both,
 // because before that refusal the run applied every file its one runtime recognized and failed on
 // the first it did not -- half applying the project. This is the other side of that: each file is
-// routed by its own extension (ADR 0048), so two runtime sessions are alive over one pinned
+// routed by its own extension, so two runtime sessions are alive over one pinned
 // driver.Conn, and the four migrations interleave by timestamp rather than by language.
 //
 // Two things here cannot be seen in a single-language suite. The order is the whole point -- the
@@ -260,7 +260,7 @@ func TestEachHistoryRowRecordsTheLanguageItsOwnMigrationIsWrittenIn(t *testing.T
 	}
 
 	t.Log("The row is per migration where the option used to be per run, so a mixed run stamping")
-	t.Log("one language on every row is the failure this asserts against (ADR 0048).")
+	t.Log("one language on every row is the failure this asserts against.")
 
 	for i, rec := range runs {
 		if want := string(mixedLanguages[rec.Version]); rec.Runtime != want {

@@ -146,7 +146,7 @@ func TestUndoneIsTheAnswerTheSessionAsksForWhenItIsAskedForADown(t *testing.T) {
 	}
 
 	t.Log("One answer per language: the session reads Undone, so a helper reading it cannot")
-	t.Log("disagree with what the engine will be told (ADR 0068).")
+	t.Log("disagree with what the engine will be told.")
 }
 
 // assertCarriesReason holds a refusal to naming the author's own reason, which §7.4 requires.

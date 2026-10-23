@@ -146,7 +146,7 @@ func TestAFailurePartwayThroughASplitRecordsWhatTheCommittedPartsLeft(t *testing
 				t.Fatalf("Apply returned %v, a DirtyError %v, want %v", err, got, tc.want == history.Dirty)
 			}
 
-			if dirty != nil && (!dirty.Split || !strings.Contains(err.Error(), "ADR 0084")) {
+			if dirty != nil && (!dirty.Split || !strings.Contains(err.Error(), "cannot run inside a transaction")) {
 				t.Errorf("the dirty run does not say the split is why it left statements behind: %v", err)
 			}
 
@@ -231,7 +231,7 @@ func TestAnExpansionAfterASplitRunsInsideItsOwnPartsTransaction(t *testing.T) {
 	}
 
 	t.Log("The expansion reads the catalog after the standalone statement committed and before")
-	t.Log("anything in its own part ran -- exactly what the steps before it left (ADR 0084).")
+	t.Log("anything in its own part ran -- exactly what the steps before it left.")
 }
 
 func TestAPartTheRunAlreadyCommittedIsSkippedWholeOnAResume(t *testing.T) {
@@ -304,5 +304,5 @@ func TestOnAnEngineWhoseDDLCommitsAFailedPartKeepsWhatItRan(t *testing.T) {
 	}
 
 	t.Log("Where DDL commits as it goes, c2 survived the failure of the part it shared with d3,")
-	t.Log("as it would in a migration with no split at all (ADR 0024).")
+	t.Log("as it would in a migration with no split at all.")
 }

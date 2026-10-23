@@ -1,8 +1,7 @@
 // Package rule holds the lint rules migr validate runs, and what a project decides each is worth.
 //
-// Status: the framework and two rules (M10-T4), then the three that complete the set (M10-T5). See
-// docs/adr/0066-lint-rules.md and docs/adr/0067-the-shipped-lint-rules.md, the second of which
-// states per rule what it reports and what it declines to. migr config prints the five with their
+// Status: the framework and two rules (M10-T4), then the three that complete the set (M10-T5). Each
+// rule's own doc comment states what it reports and what it declines to. migr config prints the five with their
 // resolved severities, which is how an operator discovers them without reading this.
 //
 // # A rule is data with one function in it
@@ -24,8 +23,8 @@
 // # What a rule judges, and what it cannot see
 //
 // Subject is one migration as internal/validate has already read it: both halves, each carrying
-// its operations and the statements the migration sends itself (ADR 0036's other half of what a
-// migration does), plus an Undo saying where the down came from. Those five Undo answers are what
+// its operations and the statements the migration sends itself (the escape hatch, the other half of
+// what a migration does), plus an Undo saying where the down came from. Those five Undo answers are what
 // validate.undo already distinguishes, and the distinction is what makes a rule about an *unwritten*
 // down expressible at all: CheckReverse reports a migration nothing can undo, which is a different
 // statement from one whose author wrote no down and got an inverse derived.
@@ -33,8 +32,8 @@
 // Two things a rule deliberately cannot see:
 //
 // A database. not-null-without-default is about adding a NOT NULL column with no default to a
-// *non-empty* table, and a row count is not something migr validate has: ADR 0064 settled that
-// --connect buys the capability set and nothing else, and that migrations are asked over
+// *non-empty* table, and a row count is not something migr validate has: --connect
+// buys the capability set and nothing else, and that migrations are asked over
 // driver.Offline. So the rule reports what it can see and says in its own detail that it could not
 // count the table's rows, which is what a warning is for. There is exactly one case where it does
 // know: a table *this migration creates* holds nothing, so a column added to one is never reported.
@@ -67,7 +66,7 @@
 //
 // Everything else that exits 2 is wrong: a filename the grammar refuses, an operation no server
 // will perform, a migration nothing can undo. A rule at error is something this project decided it
-// will not ship. That is deliberate (ADR 0066, E): migr up never reads a rule at all, because the
+// will not ship. That is deliberate: migr up never reads a rule at all, because the
 // run's gates -- drift, destruction, capability -- are each about whether an operation is correct or
 // permitted, and refusing a deploy over a missing primary key is how a project learns to switch
 // everything off.

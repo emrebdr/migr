@@ -268,7 +268,7 @@ func TestAResumeIsRefusedWhereAnOperationIsCompiledAsItRuns(t *testing.T) {
 		t.Errorf("the refused resume ran %v", conn.calls)
 	}
 
-	t.Log("ADR 0062's own argument, one layer further in: the recorded index names a statement in")
+	t.Log("The resume refusal's own argument, one layer further in: the recorded index names a statement in")
 	t.Log("the list that run emitted, and an expansion's statements are a function of a schema")
 	t.Log("this run has already changed -- so re-rendering them here numbers a different list.")
 	t.Log("The two repairs that do not compile anything are what the refusal sends an operator to.")
@@ -296,7 +296,7 @@ func TestAPreviewCompilesNothingPastTheFirstMigration(t *testing.T) {
 	if previewed.Steps[1].Plan.Deferred() != 1 {
 		t.Error("the second migration's first operation was compiled, and it cannot be")
 		t.Log("The schema it would run against is the one the migration before it leaves, which")
-		t.Log("is judgedFirst's reason for judging only the first migration (ADR 0069).")
+		t.Log("is judgedFirst's reason for judging only the first migration.")
 	}
 }
 
@@ -317,8 +317,8 @@ func TestAPreviewCompilesNothingForAMigrationThatWritesFirst(t *testing.T) {
 
 	if previewed.Steps[0].Plan.Deferred() != 1 {
 		t.Error("an operation was compiled behind a statement the migration sends itself")
-		t.Log("The escape hatch runs before the operations and outside their transaction (ADR")
-		t.Log("0036), so a migration holding one changes the schema before its first operation")
+		t.Log("The escape hatch runs before the operations and outside their transaction,")
+		t.Log("so a migration holding one changes the schema before its first operation")
 		t.Log("reads it -- which is the one thing that makes even the first operation inexact.")
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"github.com/emrebdr/migr/internal/schema"
 )
 
-// A view's body is engine text and compares as the text it is (ADR 0065), so two engines' renderings
+// A view's body is engine text and compares as the text it is, so two engines' renderings
 // of one view differ and a diff across engines proposes replacing every view it can see. That is the
 // model's own honesty rather than this differ's choice: nothing here can know that an expanded column
 // list and a SELECT * are the same query, and claiming otherwise is what a snapshot must not do.

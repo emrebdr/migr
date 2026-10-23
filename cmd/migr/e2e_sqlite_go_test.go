@@ -16,7 +16,7 @@ import (
 // Every .sql migration compiles to ir.Raw, so the suite beside this one can never produce an
 // emulated operation however it is written. A Go migration emits real IR, so add_check arrives as
 // ir.AddCheck, the compiler answers driver.ErrNeedsSession, and the session expands it against the
-// live database (ADR 0053) into the statements ADR 0054 describes.
+// live database into the statements of SQLite's table rebuild.
 //
 // Untagged like the rest of this engine's tests: the Go toolchain is present by definition when
 // go test is what is running (M6-T6), so building a runner needs nothing make check lacks.

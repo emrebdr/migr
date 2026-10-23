@@ -8,7 +8,7 @@
 // Version is overridden at build time via -ldflags; commit and dirty state come
 // from the go tool's VCS stamping, so an ordinary `go build` still reports them.
 // A release build sets it to the tag, v-prefixed, through .goreleaser.yaml's
-// ldflags (M14-T1, ADR 0098) -- the same form `make build` stamps.
+// ldflags (M14-T1) -- the same form `make build` stamps.
 //
 // An untagged build stamps Version from `git describe --always`, which is the
 // short commit itself, so Info.String omits the parenthesised commit when the

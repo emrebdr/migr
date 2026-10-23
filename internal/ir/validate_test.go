@@ -235,7 +235,7 @@ func TestMarshalDoesNotEscapeHTML(t *testing.T) {
 			t.Errorf("found the escape %s in %s", escaped, encoded)
 			t.Log("Go escapes <, > and & by default; JavaScript's JSON.stringify does not.")
 			t.Log("Escaping here would make the Go and TypeScript SDKs emit different bytes")
-			t.Log("for the same migration, breaking ADR 0003 and changing the checksum.")
+			t.Log("for the same migration, breaking byte-identical IR and changing the checksum.")
 		}
 	}
 
@@ -257,7 +257,7 @@ func TestMarshalEmitsTheTwoSeparatorsAsUTF8(t *testing.T) {
 		t.Errorf("the separators were escaped: %s", encoded)
 		t.Log("encoding/json escapes U+2028 and U+2029 whatever SetEscapeHTML is told, and")
 		t.Log("JSON.stringify escapes neither. Escaping here makes the Go and TypeScript SDKs")
-		t.Log("emit different bytes for one migration -- docs/ir.md §3.3, ADR 0047.")
+		t.Log("emit different bytes for one migration -- docs/ir.md §3.3.")
 	}
 
 	if !bytes.Contains(encoded, []byte(query)) {

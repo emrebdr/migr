@@ -16,7 +16,7 @@ import (
 //	           full scan to re-validate, which is invariant #12's concern rather than tidiness
 //	default    whenever the target column has one, changed or not, because a driver that changes a
 //	           column by restating its whole definition drops every attribute it was not told about
-//	           (ADR 0058) -- stated as a property of a generator that knows both states, not as a
+//	           -- stated as a property of a generator that knows both states, not as a
 //	           branch on an engine
 //	type       only when it changes, because ir.AlterColumn.Destructive() keys on its presence, so
 //	           restating an unchanged one would make every column change need permitting
@@ -86,7 +86,7 @@ func (d *differ) stateChanges(op *ir.AlterColumn, subject string,
 // A type is compared on the logical answer, which is the only part of it anything can act on. Two
 // guesses that agree propose nothing, since the best answer available is that the column is
 // unchanged; two that disagree are refused, because the operation would carry a target type nothing
-// verified and record a prior type that is itself a guess -- ADR 0008's trust problem, written by
+// verified and record a prior type that is itself a guess -- the recorded-state trust problem, written by
 // migr rather than by an author. Creating is not changing: a new column is emitted off the logical
 // answer however certain it is, there being nothing to compare it against and no data at risk.
 

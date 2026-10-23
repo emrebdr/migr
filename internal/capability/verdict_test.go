@@ -88,7 +88,7 @@ func TestTheTwoAxesAreIndependent(t *testing.T) {
 
 	t.Log("Support and lock impact are uncorrelated: ALTER TABLE ... TYPE is native on PostgreSQL")
 	t.Log("and rewrites the whole table, while SQLite's emulated column drop on a small table is")
-	t.Log("cheap. A model that cannot express both is ADR 0004's rejected single axis.")
+	t.Log("cheap. A model that cannot express both is the rejected single axis.")
 }
 
 func TestARefusedOperationHasNoLockCostToReport(t *testing.T) {

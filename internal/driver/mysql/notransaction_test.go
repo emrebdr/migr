@@ -19,5 +19,5 @@ func TestARawStatementCarriesItsTransactionOptOutAndNoOther(t *testing.T) {
 	}
 
 	t.Log("The flag is a fact about the statement the author wrote, so the driver carries it as")
-	t.Log("given: grouping it into runs is internal/engine's, never a driver's (ADR 0084).")
+	t.Log("given: grouping it into runs is internal/engine's, never a driver's.")
 }

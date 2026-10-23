@@ -49,7 +49,7 @@ func TestCompilingAnOperationDeclaredUnsupportedIsAllowed(t *testing.T) {
 		t.Log("refusal has: MySQL 8.0.15 compiles a CHECK and discards it, which is why that")
 		t.Log("driver declares add_check unsupported there (invariant #13). Four constructed")
 		t.Log("servers in internal/driver/mysql produce five of these, and this suite called")
-		t.Log("every one of them a disagreement until M10-T2 (ADR 0064).")
+		t.Log("every one of them a disagreement until M10-T2.")
 	}
 }
 
@@ -223,7 +223,7 @@ func TestAnUnrecognizedLockImpactFails(t *testing.T) {
 			problems := joined(s.check())
 			if !strings.Contains(problems, "names no verdict this build recognizes") {
 				t.Errorf("problems %q accept a lock verdict nothing can compare", problems)
-				t.Log("An unrecognized impact satisfies no ceiling at all (ADR 0012), so")
+				t.Log("An unrecognized impact satisfies no ceiling at all, so")
 				t.Log("--require-safe and max_lock_impact both fail open for that operation.")
 				t.Log("The zero LockImpact is the case a driver reaches by forgetting the field.")
 			}

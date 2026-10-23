@@ -135,6 +135,6 @@ func TestTheHistoryStoreIsBoundToTheSessionAndItsTable(t *testing.T) {
 	if store.session != session {
 		t.Error("the store is not bound to the session that returned it")
 		t.Log("History takes no context and returns no error precisely because the store is built")
-		t.Log("inside Open and cannot fail to be constructed (ADR 0013).")
+		t.Log("inside Open and cannot fail to be constructed.")
 	}
 }

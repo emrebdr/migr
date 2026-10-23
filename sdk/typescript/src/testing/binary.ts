@@ -3,7 +3,7 @@
 // Nothing in this SDK can compile an operation into SQL -- the drivers are the engine's, and will
 // stay there -- so running a migration against a real database means running the real binary. A
 // helper that quietly skipped itself when the binary was missing would report a pass it did not
-// earn, which is the rule ADR 0028 and ADR 0040 both settle; so this throws and names both rungs.
+// earn, which migr validate refuses to do too; so this throws and names both rungs.
 // found() is exported for a suite that would rather decide for itself.
 //
 // MIGR_BIN set to something that is not an executable is an error and not a fall-through to PATH:

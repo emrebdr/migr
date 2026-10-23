@@ -14,7 +14,7 @@ import (
 
 // MariaDB refuses RENAME TABLE under LOCK TABLES (error 1192), and an ALTER TABLE ... RENAME under the
 // lock fails every writer queued behind it with 1146, so its cutover is three connections beside the
-// session, each measured on 11.4.13 (M13-T17, ADR 0095):
+// session, each measured on 11.4.13 (M13-T17):
 //
 //   - a holder takes LOCK TABLES on the table alone, so writers queue behind it;
 //   - the session catches the shadow up, carries AUTO_INCREMENT across and commits, which leaves it

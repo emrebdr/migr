@@ -193,7 +193,7 @@ func TestDriftIsDecidedOnTheSourceHalfAlone(t *testing.T) {
 
 	if got := resolve(t, users, rec).State; got != StateApplied {
 		t.Errorf("resolved to %s, want %s", got, StateApplied)
-		t.Log("ADR 0009: migrations may branch on live query results, so re-planning against")
+		t.Log("Migrations may branch on live query results, so re-planning against")
 		t.Log("a changed database legitimately emits different operations. Comparing the IR")
 		t.Log("half would report exit code 4 for a failure the operator did not cause.")
 	}
@@ -531,7 +531,7 @@ func TestAMigrationRenamedButNotEditedIsStillApplied(t *testing.T) {
 
 	if got := resolve(t, renamed, up(users, 1, Applied)).State; got != StateApplied {
 		t.Errorf("resolved to %s, want %s", got, StateApplied)
-		t.Log("The join is by version and the bytes did not change (ADR 0018). The recorded")
+		t.Log("The join is by version and the bytes did not change. The recorded")
 		t.Log("name now disagrees with the filename, and both are right about what they")
 		t.Log("describe: status renders the file's, history renders the run's.")
 	}

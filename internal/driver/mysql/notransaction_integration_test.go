@@ -37,5 +37,5 @@ func TestAStatementDeclaringNoTransactionRunsBareAndTheMigrationApplies(t *testi
 
 	t.Log("Every MySQL DDL statement commits on its own already, so the flag changes nothing about")
 	t.Log("what survives a failure here -- it changes where the history row is written, and keeps")
-	t.Log("the engine's one rule rather than a driver's (ADR 0084).")
+	t.Log("the engine's one rule rather than a driver's.")
 }

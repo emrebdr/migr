@@ -78,7 +78,7 @@ func TestTheTemplateTellsAnAuthorWhyTheDownIsTheirs(t *testing.T) {
 		if !strings.Contains(down, want) {
 			t.Errorf("the down section does not mention %q:\n%s", want, down)
 			t.Log("SQL reaches the database as ir.Raw, whose Reverse always fails, so a .sql")
-			t.Log("migration with an empty down can never have one derived (ADR 0022, C4). The")
+			t.Log("migration with an empty down can never have one derived. The")
 			t.Log("file itself is where an author is standing when they decide to skip it.")
 		}
 	}

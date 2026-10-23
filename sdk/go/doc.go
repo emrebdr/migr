@@ -54,7 +54,7 @@
 // Statements.NoTransaction declares that the raw statement just added cannot run inside a
 // transaction, as CREATE INDEX CONCURRENTLY cannot. The engine then runs it on its own and
 // the statements around it in transactions of their own, recording how far the migration
-// got after each (ADR 0084). It needs an engine reading irVersion 3; against an older one
+// got after each. It needs an engine reading irVersion 3; against an older one
 // the migration is refused before anything is sent.
 //
 // # Import path and package name
@@ -75,11 +75,11 @@
 // wrote itself, which the engine commits on its own -- before the transaction the
 // operations run in, and not undone by a later failure. So a migration that calls
 // Exec and authors no Down is refused outright rather than half-reverted; write a
-// Down, or declare the migration irreversible with a reason (ADR 0036).
+// Down, or declare the migration irreversible with a reason.
 //
 // A Down that emits nothing is an answer of its own: the author says there is nothing
 // to undo, and the rollback is recorded with no statement run. An Up that emits
-// nothing is still refused (ADR 0079).
+// nothing is still refused.
 //
 // # Replacing a column
 //
@@ -101,7 +101,7 @@
 // serving, and so is undoing Expand while one writes the new column; each sends a
 // warning saying so, in plan mode too, so migr plan shows it before migr up runs it.
 // Each phase declares itself a step of the change, waiting on the phase before it
-// (Phased, ADR 0087), and migr runs a step only under a release after the one that
+// (Phased), and migr runs a step only under a release after the one that
 // applied its prior step -- so a deploy passes migr up --release <build> and the four
 // land a deploy apart, the run holding at the next one rather than failing. A hand-written
 // migration declares the same through Phase. The backfill's data_transform and the
@@ -113,7 +113,7 @@
 // # Running through a shadow table
 //
 // A migration implementing Online and returning ShadowTable is performed through a copy of
-// the one table it changes rather than as a plain ALTER (M13-T9, ADR 0089): the copy is
+// the one table it changes rather than as a plain ALTER (M13-T9): the copy is
 // filled in chunks while the table's writes are read from the server's replication log,
 // held in sync until someone confirms the cutover, then swapped in, the original kept under
 // a derived name. A server that cannot read its own log is refused before anything is
@@ -145,8 +145,8 @@
 //
 // One consequence is a scanner this copy owns as the engine's does: encoding/json
 // escapes U+2028 and U+2029 whatever SetEscapeHTML is told, and docs/ir.md §3.3 emits
-// them as UTF-8, so marshal rewrites them and must tell an escape from the text of one
-// (ADR 0047). A fix applied to one copy and not the other passes on that side, which is
+// them as UTF-8, so marshal rewrites them and must tell an escape from the text of one.
+// A fix applied to one copy and not the other passes on that side, which is
 // the standing cost of writing the IR three times.
 //
 // # One thing stdout cannot be protected from
@@ -163,8 +163,8 @@
 // Package migrtest, beside this one, holds three helpers: one that captures the IR a half
 // emits against a recording host, one that reports which of the three answers to "what
 // undoes this" a migration gives, and one that runs the real migr binary against a database
-// it throws away. None of them inverts an operation -- that is the engine's, for ADR 0022's
-// reason -- so whether a rollback can run at all is reported by migr validate through the
+// it throws away. None of them inverts an operation -- that is the engine's, so two SDKs
+// cannot reach two answers -- so whether a rollback can run at all is reported by migr validate through the
 // third helper rather than guessed by the first two.
 //
 //	migrtest.Up(t, AddUsers{}).Is(t, migr.CreateTable{Table: "users", ...})

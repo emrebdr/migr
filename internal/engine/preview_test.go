@@ -44,7 +44,7 @@ func TestAPreviewNeverCreatesTheHistoryTable(t *testing.T) {
 		t.Errorf("the preview would run %q, want every migration on a virgin database", got)
 		t.Log("An apply reads an absent history table as a bug, because it just ensured one. A")
 		t.Log("preview never ensured one, so absent is an answer rather than a failure: nothing")
-		t.Log("has run here yet, and migr up would create the table first (ADR 0019, ADR 0026).")
+		t.Log("has run here yet, and migr up would create the table first.")
 	}
 }
 

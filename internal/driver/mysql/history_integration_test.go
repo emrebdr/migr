@@ -110,7 +110,7 @@ func TestEveryPathThatTouchesTheTableReportsErrNoTableWhenThereIsNone(t *testing
 		}
 
 		t.Log("Read as 'no runs yet', a fully migrated production database looks virgin and the next")
-		t.Log("up re-runs every migration it had already applied. ADR 0019 calls this the worst")
+		t.Log("up re-runs every migration it had already applied. That is the worst")
 		t.Log("failure in the contract, and the interface shape is unchanged by getting it wrong.")
 	})
 }

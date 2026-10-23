@@ -60,7 +60,7 @@ func NewLog(runs []Record) Log {
 	return Log{runs: ordered, present: true}
 }
 
-// byRun orders runs by the key ADR 0013 chose, since a clock ties and a rollback reverses this order.
+// byRun orders runs by (batch, ordinal), since a clock ties and a rollback reverses this order.
 func byRun(a, b Record) int {
 	return cmp.Or(cmp.Compare(a.Batch, b.Batch), cmp.Compare(a.Ordinal, b.Ordinal))
 }

@@ -436,7 +436,7 @@ func TestTheTypeScriptTemplateCarriesBothStylesAndTheChoiceOfUndo(t *testing.T) 
 
 	t.Log("A module uses one export style or the other and offering both is refused, so a")
 	t.Log("template showing only one leaves an author to discover the other from an error.")
-	t.Log("ADR 0036, D is the same argument as the Go template's: a migration that reaches the")
+	t.Log("It is the same argument as the Go template's: a migration that reaches the")
 	t.Log("database itself owes an authored down or a declared irreversibility.")
 
 	for _, want := range []string{
@@ -469,7 +469,7 @@ func TestTheTypeScriptTemplateShowsTheBuilderAndWhatForgettingApplyCosts(t *test
 func TestTheGoTemplateSaysWhatTheEscapeHatchCosts(t *testing.T) {
 	body := golang.Template
 
-	t.Log("ADR 0036, D: a derived down is refused outright for a migration that used s.Exec, so")
+	t.Log("A derived down is refused outright for a migration that used s.Exec, so")
 	t.Log("an author who reaches for it has to learn the price where they first meet it.")
 
 	for _, want := range []string{"s.Exec", "Irreversible", "no inverse"} {

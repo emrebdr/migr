@@ -353,22 +353,22 @@ func allEnding(stops []closer) closer {
 
 // asked is what one session answered before it was closed, which is nothing for a run not connected.
 type asked struct {
-	// caps is what the server declares it can do, which only a connected run has (ADR 0064).
+	// caps is what the server declares it can do, which only a connected run has.
 	caps *capability.Set
 	// live is the schema that database holds now, which the reference check projects from (M10-T3).
 	live *schema.Snapshot
-	// rewriter is the session's safer sequences, which are pure and so outlive it (ADR 0085, 0086).
+	// rewriter is the session's safer sequences, which are pure and so outlive it.
 	rewriter driver.Rewriter
-	// shadows reports a session that performs shadow-table migration, which a report states (ADR 0089).
+	// shadows reports a session that performs shadow-table migration, which a report states.
 	shadows bool
 	// invalid are the indexes a failed concurrent build or drop left INVALID, which a report lists.
 	invalid []invalidIndex
 }
 
-// Both reads happen on one session and it closes straight after, which is ADR 0064's rule unchanged:
-// a verdict performs no I/O and a snapshot is a value, so neither outlives the connection. It takes
-// no migration lock and reads no history (ADR 0027) -- this is a report, and the reference check is
-// honest about a half-migrated database without being told how far it got.
+// Both reads happen on one session and it closes straight after, which is validate --connect's rule
+// unchanged: a verdict performs no I/O and a snapshot is a value, so neither outlives the
+// connection. It takes no migration lock and reads no history -- this is a report, and the
+// reference check is honest about a half-migrated database without being told how far it got.
 
 // A driver that answers no snapshot and no error is carried as a run with no live schema rather than
 // crashed over: the checks reading it already treat a missing one as a run that opened nothing, and

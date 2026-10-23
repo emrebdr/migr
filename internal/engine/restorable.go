@@ -13,7 +13,7 @@ type Sense string
 
 // The two senses, which differ in what they are about and in what permits them.
 const (
-	// SenseStated is a recorded prior definition the live schema contradicts, which ADR 0008 named.
+	// SenseStated is a recorded prior definition the live schema contradicts, which payload trust leaves open.
 	SenseStated Sense = "stated"
 	// SenseImplied is a change the live schema reveals and no recorded prior definition can restore.
 	SenseImplied Sense = "implied"
@@ -62,7 +62,7 @@ func Stated(found []Disagreement) []Disagreement {
 	return kept
 }
 
-// Two senses, and they answer different questions. A stated disagreement is ADR 0008's trust
+// Two senses, and they answer different questions. A stated disagreement is the payload trust
 // problem: nine operations carry a from payload describing what they replace, nothing has ever
 // verified one, and a payload describing the wrong thing produces a reverse that restores the wrong
 // schema. An implied disagreement is what the live schema reveals an operation will change that no

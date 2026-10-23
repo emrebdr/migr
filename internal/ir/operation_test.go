@@ -336,7 +336,7 @@ func TestLogicalTypesReachTheWireAsStrings(t *testing.T) {
 	}
 
 	if !strings.Contains(string(encoded), `"type":"decimal(10,2)"`) {
-		t.Errorf("ADR 0005 requires the canonical string form, got %s", encoded)
+		t.Errorf("a type must encode as its canonical string form, got %s", encoded)
 	}
 }
 

@@ -32,8 +32,8 @@
 // and the next statement sees nothing it did. Open therefore sets MaxOpenConns to one and holds one
 // *sql.Conn for the session's life, which a test asserts rather than trusts.
 //
-// The three pragmas below are connection-scoped for the same reason, and ADR 0011 already required
-// pinning for the migration lock. Here it is correctness before it is a lock strategy.
+// The three pragmas below are connection-scoped for the same reason, and the migration lock already
+// required pinning. Here it is correctness before it is a lock strategy.
 //
 // # The three pragmas this driver owns, each read back
 //
@@ -50,9 +50,9 @@
 // nothing, and reads back the old value. A test drives exactly that.
 //
 // That no-op is also why the table rebuild below cannot turn foreign keys off: the engine runs a
-// migration inside one transaction (ADR 0017). What does work inside one is defer_foreign_keys,
+// migration inside one transaction. What does work inside one is defer_foreign_keys,
 // which holds the enforcement until COMMIT -- and holds nothing else, which is the measurement the
-// rebuild was designed around rather than the one it expected (ADR 0054).
+// rebuild was designed around rather than the one it expected.
 //
 // A connection string that sets one of the three through modernc's _pragma= is refused, naming the
 // pragma. PostgreSQL pins lock_timeout after parsing, overriding a DSN that set it; foreign_keys(0)
@@ -66,7 +66,7 @@
 // their behalf.
 //
 // Every transaction begins IMMEDIATE, through modernc's _txlock=immediate, which parseDSN adds where the
-// connection string names no _txlock (M13-T12, ADR 0096). A deferred transaction reads first and takes
+// connection string names no _txlock (M13-T12). A deferred transaction reads first and takes
 // the write lock on its first write, and in WAL that upgrade fails at once with SQLITE_BUSY_SNAPSHOT
 // (517) where another connection committed in between -- waiting out no busy_timeout, measured under
 // the zero-downtime suite's writers on every rebuild and every chunk. IMMEDIATE takes the lock at BEGIN,
@@ -84,9 +84,9 @@
 //
 // Query sets query_only for the length of the read, so the refusal comes from the engine rather
 // than from a keyword check here, and SQLITE_READONLY is classified into driver.ErrNotReadOnly --
-// which lives on the contract because internal/runtime/host cannot name a driver (ADR 0032).
+// which lives on the contract because internal/runtime/host cannot name a driver.
 //
-// The case that decides it is not PostgreSQL's. SQLite has no data-modifying CTE, so ADR 0032 B's
+// The case that decides it is not PostgreSQL's. SQLite has no data-modifying CTE, so PostgreSQL's
 // fixture does not port; its own equivalent is PRAGMA user_version = 5, which begins with PRAGMA,
 // passes any check on the leading keyword, and writes the database header.
 //
@@ -114,7 +114,7 @@
 //
 // SQLite's DDL is transactional: a schema change is a write to the same file under the same
 // transaction as the data. Transact brackets one, commits only when the work returns nil, and
-// discards it on anything else including a panic (ADR 0017).
+// discards it on anything else including a panic.
 //
 // PostgreSQL's equivalent also asks the server for its transaction status, so a transaction this
 // driver did not open is caught. SQLite exposes no such status to SQL -- it is the C API's
@@ -127,13 +127,13 @@
 // fails with SQLITE_BUSY ends SQLite's own transaction as well -- measured at M13-T2, an explicit
 // ROLLBACK afterwards answers that none is active, which corrects what this paragraph said before.
 // So a busy statement and a busy COMMIT are both driver.ErrStatementLockTimeout, and the engine
-// reruns the transaction after a backoff (ADR 0082): in the default rollback journal, another
+// reruns the transaction after a backoff: in the default rollback journal, another
 // writer makes the statement busy and a reader makes the COMMIT busy.
 //
 // A canceled context needs nothing of this driver: the engine is in this process, so database/sql's
 // cancel reaches sqlite3_interrupt and the statement stops inside it -- measured at M13-T3, a write
 // that would run for minutes stopped about 100ms after its deadline, rolled back, and left the
-// session usable (ADR 0083).
+// session usable.
 //
 // # Identifiers are always quoted, and there is no length to check
 //
@@ -173,7 +173,7 @@
 // decimal(p,s) is declared and enforced by nothing, and this one can change a value. Measured on
 // 3.53.4: a decimal column given '1.10' stores the REAL 1.1. It is declared anyway because it is
 // what every SQLite consumer expects to read back and because arithmetic and ORDER BY work; a
-// column that must keep its cents belongs in int64 of minor units. See ADR 0051.
+// column that must keep its cents belongs in int64 of minor units.
 //
 // An enum is text plus an inline CHECK holding the column to its labels, so this engine supports a
 // type PostgreSQL refuses: there is no CREATE TYPE object to leak, the check dies with the column,
@@ -208,16 +208,16 @@
 //
 // The seven are declared Emulated by a table rebuild, and Compile asks for a session rather than
 // refusing: the statements depend on the table's current definition, which Compile has no
-// connection to read (ADR 0053). The session's Expand is what produces them, and internal/engine
+// connection to read. The session's Expand is what produces them, and internal/engine
 // calls it immediately before the operation's statements run rather than while compiling the
-// migration (ADR 0071) -- so the definition a rebuild reads is the one the operations ahead of it
+// migration -- so the definition a rebuild reads is the one the operations ahead of it
 // left. Everything Expand reads goes through the session's open transaction, which is what makes
 // that true for statements those operations have sent and not yet committed.
 //
 // # What a rebuild is, and why it is not SQLite's documented one
 //
 // SQLite documents a 12-step procedure built around ALTER TABLE ... RENAME. Three measurements
-// took that apart, and each one is in ADR 0054 with what it showed:
+// took that apart, and each one is below with what it showed:
 //
 // A rename at 3.25+ rewrites references to the table throughout the schema and re-parses the whole
 // schema while doing it. Renaming the shadow into place fails outright when a view names the table,
@@ -280,8 +280,9 @@
 // No CREATE INDEX CONCURRENTLY, because SQLite has none: one writer means an index build holds the
 // write lock for its duration, and saying so is the lock axis M8-T3 owes. So nothing this driver
 // composes sets Statement.NoTransaction. A raw operation declaring no_transaction does -- VACUUM is
-// the one statement SQLite refuses inside a transaction -- and the engine runs it bare (ADR 0084). Every composed statement ends in a semicolon; a raw operation does not, because run verbatim
-// is the whole contract and its author may already have written one.
+// the one statement SQLite refuses inside a transaction -- and the engine runs it bare. Every
+// composed statement ends in a semicolon; a raw operation does not, because run verbatim is the
+// whole contract and its author may already have written one.
 //
 // # What an operation costs a live database
 //
@@ -325,8 +326,8 @@
 // and a second opinion where flock cannot be trusted. It is never what decides.
 //
 // Because the stamp is in the file, what a report carries here is the **hold** rather than the
-// holder's age: this driver has the better of the two numbers, and PostgreSQL does not. Since
-// ADR 0060 it says so, the duration being labeled with what it measures -- until then the field
+// holder's age: this driver has the better of the two numbers, and PostgreSQL does not. Now it
+// says so, the duration being labeled with what it measures -- until then the field
 // carrying it rendered as a session age, which a hold is not.
 //
 // That split is the whole recovery story, and it is what invariant #11 needs from this strategy. The
@@ -363,17 +364,17 @@
 //
 // The wait is a poll on a fixed interval inside one total budget, because flock has no form that
 // takes a deadline and abandoning the blocking form leaks a descriptor that may acquire afterwards.
-// It is not ADR 0020's rejected retry: that was rejected because PostgreSQL's lock manager queues
+// It is not the rejected retry loop: that was rejected because PostgreSQL's lock manager queues
 // fairly and re-acquiring loses your place, and a non-blocking flock never enters a queue. A canceled
 // context and a lock file that cannot be created are both reported as themselves rather than as
 // contention, since exit code 3 means another run holds the lock.
 //
 // The holder's age comes from SQLite. The record carries strftime('now') and reading a holder has
-// julianday subtract it, which is ADR 0020's "the server subtracts" with the in-process library as
-// the server -- forbidigo leaves this driver no clock, and none had to be added to the contract. A
+// julianday subtract it, which is PostgreSQL's "the server subtracts" with the in-process library
+// as the server -- forbidigo leaves this driver no clock, and none had to be added to the contract. A
 // stamp SQLite cannot read comes back NULL and one from the future comes back negative; both render
 // as an age this connection could not determine. For PostgreSQL that field is the holder's session
-// age and here it is the hold itself, which is never longer. See ADR 0055.
+// age and here it is the hold itself, which is never longer.
 //
 // On a filesystem where flock is advisory rather than enforced, the second rung is a heuristic and
 // not a guarantee. SQLite's own locking is unsafe there for the same reason, so the limit is
@@ -412,7 +413,7 @@
 // as Go's own String form with the zone abbreviation in it -- "2026-09-29 11:22:33.123456789 +0530
 // UTC+5:30", measured, which no RFC3339 parser reads back and which scanning into a time.Time
 // refuses. The fraction is fixed-width because RFC3339Nano trims trailing zeros, which makes ".11Z"
-// sort before ".1Z"; nothing here orders by applied_at (ADR 0013 orders by batch and ordinal), but a
+// sort before ".1Z"; nothing here orders by applied_at (history orders by batch and ordinal), but a
 // column an operator sorts by hand should not lie. Reading back accepts any width.
 //
 // A recorded direction, outcome, checksum or instant this build cannot read back is a
@@ -449,7 +450,7 @@
 // way because SQLite has no enum type, so reporting the check as a constraint would have a differ
 // propose dropping the column's own type. The match is against this driver's exact rendering, so a
 // hand-written check that is byte-identical to it is absorbed too -- which is why the type stays
-// ambiguous. See docs/adr/0069-per-driver-introspection.md.
+// ambiguous.
 //
 // Two more things the pragmas answer and the obvious one does not. pragma_table_info omits a
 // generated column entirely, so the columns come from table_xinfo. And a table-level PRIMARY KEY
@@ -459,6 +460,6 @@
 // # No replication log
 //
 // SQLite declares capability.Facts.Capture as never permitted, lacking a replication log, and its
-// Capture refuses with capture.ErrUnsupported for good (M13-T16, ADR 0090): a shadow-table migration
+// Capture refuses with capture.ErrUnsupported for good (M13-T16): a shadow-table migration
 // is refused here before anything is created.
 package sqlite

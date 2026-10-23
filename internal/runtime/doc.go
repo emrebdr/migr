@@ -38,7 +38,7 @@
 // exec.Cmd. Every guarantee below lives in a field an adapter could otherwise
 // overwrite: Stdin decides whether the child can be talked to, SysProcAttr
 // whether it can be ended, Cancel whether it can be left behind. None of the
-// three is a language's business (ADR 0034, B).
+// three is a language's business.
 //
 // # The session, and the one rule §2.5 makes structural
 //
@@ -51,7 +51,7 @@
 //
 // Callbacks are served inline and therefore one at a time. §2.5 lets a runtime
 // pipeline several, and the host still answers them in turn: they all reach one
-// driver.Conn, which ADR 0011 made a pinned session rather than a pool.
+// driver.Conn, which is a pinned session rather than a pool.
 //
 // A Session is the engine.Source. Emit opens the host window, sends
 // migration.execute in the mode the engine stated, and holds the runtime's own

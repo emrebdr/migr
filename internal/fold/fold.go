@@ -26,8 +26,8 @@ type folder struct {
 
 // This is the opposite direction from internal/diff, and the two are each other's inverse over a
 // list the differ produced: Forward(a, Diff(a, b)) is b. A package of its own rather than a file
-// next door, because ADR 0070 F says the differ's names-only availability model must not grow into
-// a projection -- and rather than internal/schema, which may never import internal/ir (ADR 0065).
+// next door, because the differ's names-only availability model must not grow into
+// a projection -- and rather than internal/schema, which may never import internal/ir.
 //
 // It folds and it does not validate. An operation naming something that is not there is a refusal
 // rather than a panic or a silent create, which is what makes the same fold readable as M10-T3's

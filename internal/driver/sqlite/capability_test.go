@@ -54,7 +54,7 @@ func TestDropColumnIsDeclaredAgainstTheLibraryRatherThanAssumed(t *testing.T) {
 
 	t.Log("The compiler emits the same statement either way -- it is pure by contract and has no")
 	t.Log("session to ask -- so the declaration is the only place a version-dependent answer can")
-	t.Log("live. That is ADR 0015's recorded asymmetry, and PostgreSQL's uuid default is the same")
+	t.Log("live. That is the declaration's known asymmetry, and PostgreSQL's uuid default is the same")
 	t.Log("shape in the same direction.")
 }
 
@@ -78,7 +78,7 @@ func TestTheVersionIsAskedForRatherThanHardcoded(t *testing.T) {
 	t.Log("For this driver the version is a fact about the build rather than about the database:")
 	t.Log("modernc.org/sqlite links the library in, so AtLeast(3, 35) is true for every session")
 	t.Log("this binary can open and the refusal above is unreachable until the dependency is")
-	t.Log("pinned older. Invariant #13's `asked, never hardcoded` is what is being kept (ADR 0052).")
+	t.Log("pinned older. Invariant #13's `asked, never hardcoded` is what is being kept.")
 }
 
 func TestTheDeclarationAndTheCompilerAgreeAtEveryVersion(t *testing.T) {

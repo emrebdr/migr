@@ -91,7 +91,7 @@ func TestADiffGoesThroughTheSameWriterMigrCreateDoes(t *testing.T) {
 		t.Errorf("a refused write left %v behind", written)
 	}
 
-	t.Log("One file format and one writer (ADR 0025, C): migration.New names it, checkUnclaimed")
+	t.Log("One file format and one writer: migration.New names it, checkUnclaimed")
 	t.Log("refuses a version another file holds, and writeNew is O_EXCL -- so nothing migr writes")
 	t.Log("can overwrite anything, and this command inherits all three rather than spelling them")
 	t.Log("a second time.")
@@ -122,7 +122,7 @@ func TestADiffRefusesADatabaseTheMigrationsDoNotAlreadyDescribe(t *testing.T) {
 
 			if got := ExitCode(err); got != ExitRuntime {
 				t.Errorf("it exited %d, want %d (%v)", got, ExitRuntime, err)
-				t.Log("ADR 0029's rule: the same command line succeeds once migr up has run, so")
+				t.Log("Exit 1, not 2: the same command line succeeds once migr up has run, so")
 				t.Log("it is the world that is not ready rather than the argument being wrong.")
 			}
 
@@ -249,7 +249,7 @@ func TestADiffDoesNotProposeReplacingAViewOrACheckThatIsAlreadyThere(t *testing.
 	t.Log("Four of the five engines rewrite a view's body and a check's expression, so comparing")
 	t.Log("them as written would have every migr diff over a database that is exactly up to date")
 	t.Log("propose replacing every one of them. fold.Comparable carries the live text across for")
-	t.Log("every element both schemas hold by name (ADR 0073, C).")
+	t.Log("every element both schemas hold by name.")
 }
 
 func TestADiffRendersWhatTheDifferWouldNotPropose(t *testing.T) {
@@ -268,7 +268,7 @@ func TestADiffRendersWhatTheDifferWouldNotPropose(t *testing.T) {
 	}
 
 	t.Log("The differ returns two things and a command that printed only the operations would")
-	t.Log("write a migration that silently does not close the gap (ADR 0070, H).")
+	t.Log("write a migration that silently does not close the gap.")
 }
 
 func TestADiffUnderJSONAsksNothingAndSaysWhatNothingConfirmed(t *testing.T) {

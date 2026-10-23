@@ -84,7 +84,7 @@ func VersionOf(ops Operations) int {
 	return version
 }
 
-// noTransactionSince is the irVersion that first carries raw's no_transaction (ADR 0084).
+// noTransactionSince is the irVersion that first carries raw's no_transaction.
 const noTransactionSince = 3
 
 // Since returns the oldest irVersion that carries one operation, which a field can raise above its kind's.

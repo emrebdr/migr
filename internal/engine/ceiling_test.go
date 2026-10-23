@@ -178,7 +178,7 @@ func TestAPreviewAssessesTheFirstQueuedMigrationAndNoOther(t *testing.T) {
 	}
 
 	t.Log("A preview applies nothing, so a table the first migration changes is not yet what the")
-	t.Log("second will meet. Only the first is assessed, judgedFirst's own rule (ADR 0081, 0086).")
+	t.Log("second will meet. Only the first is assessed, judgedFirst's own rule.")
 }
 
 func TestAPreviewKeepsTheWorstWhereTheTableCannotBeRead(t *testing.T) {

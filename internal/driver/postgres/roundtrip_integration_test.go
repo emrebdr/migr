@@ -449,7 +449,7 @@ func TestATeardownIsRebuiltFromWhatItRecorded(t *testing.T) {
 
 	t.Log("Eight of these ten operations carry a from payload, and this is what it is for: the")
 	t.Log("whole structure is reconstructed from recorded prior state and from nothing else.")
-	t.Log("ADR 0008 calls that payload trust rather than proof; against a live server it is")
+	t.Log("That is payload trust rather than proof; against a live server it is")
 	t.Log("measured, which is the strongest check available before introspection lands.")
 }
 

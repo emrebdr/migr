@@ -151,7 +151,7 @@ func TestANarrowedBatchStillNumbersItsOrdinalsFromOne(t *testing.T) {
 		if run.Ordinal != int32(i)+1 {
 			t.Errorf("run %d carries ordinal %d, want %d", i, run.Ordinal, i+1)
 			t.Log("An ordinal numbers the runs an invocation performed, not the migrations it")
-			t.Log("considered (ADR 0021, E), so narrowing has to happen before they are assigned.")
+			t.Log("considered, so narrowing has to happen before they are assigned.")
 		}
 	}
 }
@@ -286,7 +286,7 @@ func TestTheCutFollowsTheOrderTheRunWillTakeRatherThanVersionOrder(t *testing.T)
 	want := []string{versionAt(2), versionAt(0)}
 	if !slices.Equal(versions(result), want) {
 		t.Errorf("--to applied %v, want %v", versions(result), want)
-		t.Log("Version 2 is declared to run first, which ADR 0018 makes the use case rather than a")
+		t.Log("Version 2 is declared to run first, which declared dependencies make the use case rather than a")
 		t.Log("mistake. A cut taken by comparing versions would stop before it and apply version 0")
 		t.Log("alone -- against a database missing what that migration was built on.")
 	}

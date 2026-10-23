@@ -59,7 +59,7 @@ func TestAnOfflineSessionRefusesEveryCallThatNeedsAServer(t *testing.T) {
 			if !conn.Reached() {
 				t.Errorf("%s did not record that a server was needed", call.what)
 				t.Log("The caller cannot learn this from the error: the migration runs in another")
-				t.Log("process, so the sentinel is a string by the time it comes back (ADR 0040).")
+				t.Log("process, so the sentinel is a string by the time it comes back.")
 			}
 		})
 	}

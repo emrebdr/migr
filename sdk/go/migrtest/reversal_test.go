@@ -120,7 +120,7 @@ func TestADownIsCapturedExactlyWhenTheMigrationAuthorsOne(t *testing.T) {
 
 	if len(derived.Down.Operations) != 0 {
 		t.Errorf("a derived inverse was reported as a captured down: %v", derived.Down.Operations)
-		t.Log("ADR 0022 keeps every inverse in the engine, so there is nothing to capture here.")
+		t.Log("The engine keeps every inverse, so there is nothing to capture here.")
 	}
 }
 
@@ -134,7 +134,7 @@ func TestADerivedUndoOverAHeldStatementIsReported(t *testing.T) {
 	}
 
 	for _, phrase := range []string{"authors no down", theStatement, "no inverse to derive",
-		"ADR 0036"} {
+		"committed on its own"} {
 		if !strings.Contains(stood.said(), phrase) {
 			t.Errorf("the finding does not say %q:\n%s", phrase, stood.said())
 		}
@@ -164,7 +164,7 @@ func TestTheSamePatternWithAnAuthoredDownIsNotReported(t *testing.T) {
 	}
 
 	t.Log("The refusal is about derivation, not about the pattern: an authored down is the")
-	t.Log("author saying what undoes their own data change, which is what ADR 0036 asks for.")
+	t.Log("author saying what undoes their own data change, which is what the refusal asks for.")
 }
 
 func TestAMigrationThatSendsNoStatementsIsNeverReported(t *testing.T) {

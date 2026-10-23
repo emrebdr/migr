@@ -165,7 +165,7 @@ func TestTwoServerVersionsDisagreeAboutTheSameOperation(t *testing.T) {
 		t.Log("with no database and Resolve stays free of I/O.")
 		t.Log("These rules are a fixture demonstrating the mechanism, not PostgreSQL's real")
 		t.Log("answers: the driver reports brief_exclusive rather than lock_free for the 11+ case,")
-		t.Log("because ALTER TABLE still takes ACCESS EXCLUSIVE (ADR 0016).")
+		t.Log("because ALTER TABLE still takes ACCESS EXCLUSIVE.")
 	}
 
 	if sets["16.2"].Server() != "16.2" || sets["16.2"].Driver() != "postgres" {

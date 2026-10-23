@@ -137,7 +137,7 @@ func TestPlanAndApplyEmitIdenticalIRForAMigrationThatDoesNotBranchOnData(t *test
 			emitted[protocol.ModeApply], emitted[protocol.ModePlan])
 		t.Log("This is what makes migr plan worth reading: the operations a preview reports are")
 		t.Log("the operations the apply will run, byte for byte, and the checksum covers that")
-		t.Log("same encoding. host.schema.apply records in both modes and always did (ADR 0030).")
+		t.Log("same encoding. host.schema.apply records in both modes and always did.")
 	}
 }
 

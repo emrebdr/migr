@@ -1,4 +1,4 @@
-// Publishes the seven packages build.mjs wrote (ADR 0100): the six platform packages first and
+// Publishes the seven packages build.mjs wrote: the six platform packages first and
 // @migr/cli last, so the wrapper never names a package the registry does not hold yet; a version
 // already there is skipped, so a failed release can be run again. Before anything, the binary for this
 // machine must report the packages' version. Run as `node npm/cli/publish.mjs <out> [--dry-run]`.

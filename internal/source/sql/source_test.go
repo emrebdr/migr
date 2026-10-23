@@ -130,7 +130,7 @@ func TestAFileWithNoDownSectionAuthorsNoDown(t *testing.T) {
 			t.Errorf("Emit(down) returned %v, want ErrNoDownAuthored", err)
 			t.Log("A marker with nothing under it is not a down someone wrote. The engine derives")
 			t.Log("an inverse from this sentinel, and ir.Raw refuses to be inverted -- which is")
-			t.Log("the message telling the author to write the undo (ADR 0022, C4).")
+			t.Log("the message telling the author to write the undo.")
 		}
 	}
 }
@@ -221,7 +221,7 @@ func TestTheTemplateThisPackageWritesEmitsNothingAndAuthorsNoDown(t *testing.T) 
 	}
 
 	t.Log("What migr create writes is what this parses, which is the reason the writer and the")
-	t.Log("reader are one package (ADR 0025, B). A template that did not parse would be a file")
+	t.Log("reader are one package. A template that did not parse would be a file")
 	t.Log("format with two definitions, found the first time somebody ran what migr wrote.")
 }
 

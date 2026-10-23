@@ -149,7 +149,7 @@ test("both modes emit the same operations", async () => {
   assert.deepStrictEqual(
     applying.operations.map((d) => JSON.stringify(d)),
     planning.operations.map((d) => JSON.stringify(d)),
-    "ADR 0033: the engine records operations in both modes, so a preview that emitted something " +
+    "the engine records operations in both modes, so a preview that emitted something " +
       "else would be a preview of a run that never happens",
   );
 });
@@ -251,7 +251,7 @@ test("a down is captured exactly when the migration authors one", async () => {
   assert.equal(
     derived.down.operations.length,
     0,
-    "ADR 0022 keeps every inverse in the engine, so there is nothing to capture here",
+    "the engine keeps every inverse, so there is nothing to capture here",
   );
 
   const declared = await reversal(oneWay);
@@ -271,7 +271,12 @@ test("a migration that authors no down cannot have one captured", () => {
 
 test("a derived undo over a held statement is reported", async () => {
   await assert.rejects(reversal(derivesOverStatement), (thrown: Error) => {
-    for (const phrase of ["authors no down", THE_STATEMENT, "no inverse to derive", "ADR 0036"]) {
+    for (const phrase of [
+      "authors no down",
+      THE_STATEMENT,
+      "no inverse to derive",
+      "committed on its own",
+    ]) {
       assert.ok(thrown.message.includes(phrase), `the finding does not say ${phrase}`);
     }
 

@@ -9,7 +9,7 @@
 // migration that was written, committed, and quietly ignored is the expensive mistake; a README
 // failing loudly is by a wide margin the cheap one.
 //
-// One directory may hold two languages (ADR 0048), so there is a second exemption and it is narrow:
+// One directory may hold two languages, so there is a second exemption and it is narrow:
 // a file whose name is a well-formed migration in an extension this runtime does not load belongs to
 // another runtime and is skipped. A README is not that -- it is refused, exactly as before. What
 // closes the gap the skip opens is the engine, which routed every file by its extension and holds

@@ -12,7 +12,7 @@ import (
 // Bound names which limit a run ran past, by the migr.yaml key an operator raises.
 type Bound string
 
-// The two bounds a run is held to (ADR 0083).
+// The two bounds a run is held to.
 const (
 	// BoundStatement is one statement's limit, safety.statement_timeout.
 	BoundStatement Bound = "safety.statement_timeout"

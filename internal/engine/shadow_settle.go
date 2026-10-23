@@ -11,7 +11,7 @@ import (
 )
 
 // A stopped shadow-table migration is settled by the repairs every dirty migration is, each meaning
-// what it means for a copy kept current from a log (ADR 0089, F). Rolling it back is the abort: the
+// what it means for a copy kept current from a log. Rolling it back is the abort: the
 // capture is released and the copy dropped before the row is appended, both by the names the state
 // recorded, so nothing is left holding WAL or disk. Asserting it applied is refused, since only a
 // cutover applies one, and a resume is migr up's -- it is the same run, carried on.

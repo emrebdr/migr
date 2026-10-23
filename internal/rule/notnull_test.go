@@ -57,8 +57,8 @@ func TestTheWarningSaysWhatItCouldNotCheckRatherThanClaimingTheTableHasRows(t *t
 	}
 
 	if !strings.Contains(found[0].Detail, "count that table's rows") {
-		t.Errorf("detail %q does not say that the row count is the part nothing asked: ADR 0064 "+
-			"settled that migr validate holds no connection for the migrations, so this is a "+
+		t.Errorf("detail %q does not say that the row count is the part nothing asked: "+
+			"migr validate holds no connection for the migrations, so this is a "+
 			"warning about what it cannot know", found[0].Detail)
 	}
 }

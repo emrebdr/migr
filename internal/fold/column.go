@@ -11,8 +11,8 @@ import (
 // schema.ColumnType requires one and a projection has never seen an engine. Nothing downstream can
 // tell: ColumnType.Equal compares two exact types on the logical type alone, and internal/diff
 // reads Logical(). What it does mean is stated rather than hidden -- a projected type is always
-// exact, so meeting a live type the catalog could only guess at is a refusal by design (ADR 0070,
-// C1). Measured: SQLite declares int16, int32 and float32 ambiguously and MySQL declares timestamp
+// exact, so meeting a live type the catalog could only guess at is a refusal by
+// design. Measured: SQLite declares int16, int32 and float32 ambiguously and MySQL declares timestamp
 // and timestamptz ambiguously, so those columns are refused rather than compared.
 
 // projected renders one of an operation's columns as a snapshot holds it.

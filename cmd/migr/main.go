@@ -4,7 +4,7 @@
 // wired into the binary: each exports a constructor, and this package registers
 // it by name and handles the error. Registration is explicit rather than an
 // init() behind a blank import, because a duplicate name must be reportable and
-// an init() has nowhere to report it (ADR 0011). Core packages must never import
+// an init() has nowhere to report it. Core packages must never import
 // a concrete driver or runtime directly (CLAUDE.md invariant #1), and depguard
 // enforces that.
 //
@@ -14,12 +14,12 @@
 // The one print left here is for the one failure that precedes the CLI. A
 // registry that will not build happens before a flag is parsed, so nothing yet
 // knows whether --json was asked for; everything after it is reported by
-// internal/cli, which is the only place that does (ADR 0029).
+// internal/cli, which is the only place that does.
 //
 // # Why this handles signals
 //
 // A language runtime is spawned into a process group of its own, so the
-// terminal's Ctrl-C reaches migr and not the child (M6-T5, ADR 0034).
+// terminal's Ctrl-C reaches migr and not the child (M6-T5).
 // Canceling the run is what sends $/cancel, waits the grace, and then kills
 // that group; without it, an interrupted migr up would leave a runtime holding
 // a database connection through callbacks nothing will ever answer.

@@ -12,7 +12,7 @@ import (
 )
 
 // A change stream reads pgoutput, PostgreSQL's own logical decoding plugin, through a publication of
-// the one table and a logical replication slot (ADR 0094). Each read is a peek bounded by where the
+// the one table and a logical replication slot. Each read is a peek bounded by where the
 // WAL ended as it began, so it returns nothing only once it has read that far; a peek decodes from
 // the slot's confirmed position, so a transaction committed at or before the stream's cursor is one
 // already handed over and is skipped. A transaction's changes are handed over only at its commit, so

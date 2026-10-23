@@ -6,8 +6,8 @@ import "context"
 //
 // A migration is handed a *Schema and nothing else, so the thing that can close the window has to
 // be something else again -- otherwise a migration could seal its own call and emit afterwards.
-// TypeScript says that in the type system, where Window extends Schema with one more member
-// (ADR 0042); Go says it by holding the Schema rather than embedding it, so Seal is reachable only
+// TypeScript says that in the type system, where Window extends Schema with one more member;
+// Go says it by holding the Schema rather than embedding it, so Seal is reachable only
 // from what NewWindow returned.
 //
 // Where TypeScript takes a Call describing the three facts, this takes them as parameters: Call is

@@ -226,7 +226,7 @@ func TestOnlyTheFirstQueuedMigrationIsJudgedAgainstItsTables(t *testing.T) {
 	}
 
 	t.Log("A preview applies nothing, so only the first queued migration meets its tables as they")
-	t.Log("will be. Every later verdict stays at its declared worst, the ~ marker's rule (ADR 0081).")
+	t.Log("will be. Every later verdict stays at its declared worst, the ~ marker's rule.")
 }
 
 func TestAnAssessedOperationReadsAsSuchAndPassesTheGate(t *testing.T) {

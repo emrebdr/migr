@@ -131,8 +131,8 @@ func TestAPackageOutsideTheMigrationsDirectoryIsNotInTheStamp(t *testing.T) {
 		helpersSource, `Suffix = ""`, `Suffix = "-edited"`, 1))
 
 	if again := commandFor(t, p); !spoiled(t, again) {
-		t.Log("That is better than what is documented -- but doc.go and ADR 0035 state this hole,")
-		t.Log("so widening the stamp means updating both rather than leaving them wrong.")
+		t.Log("That is better than what is documented -- but doc.go states this hole,")
+		t.Log("so widening the stamp means updating it rather than leaving them wrong.")
 		t.Fatal("the stamp now covers a package outside the migrations directory")
 	}
 }

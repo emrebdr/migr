@@ -55,7 +55,7 @@ func TestADriftMessageShowsBothRecordedDigestsAndTheRecomputedOneInFull(t *testi
 
 	if !strings.Contains(message, st.Recorded.Checksum.String()) {
 		t.Errorf("the message does not carry the recorded checksum in full:\n%s", message)
-		t.Log("ADR 0009: a recorded value carries enough information to say which half moved,")
+		t.Log("A recorded value carries enough information to say which half moved,")
 		t.Log("which it can only do if an operator is shown the whole value rather than a prefix.")
 	}
 
@@ -77,7 +77,7 @@ func TestADriftMessageNamesTheSourceHalfAsTheOneThatMoved(t *testing.T) {
 
 	if !strings.Contains(message, "source half of its checksum moved") {
 		t.Errorf("the message does not say which half moved:\n%s", message)
-		t.Log("ADR 0009: two recorded values invite the assumption that both are compared. The")
+		t.Log("Two recorded values invite the assumption that both are compared. The")
 		t.Log("message is the only place that assumption gets corrected.")
 	}
 
@@ -232,7 +232,7 @@ func TestADriftErrorIsNotACorruptRowOrAnyOtherRefusal(t *testing.T) {
 	} {
 		if errors.Is(error(drift), other) {
 			t.Errorf("drift also reports %v, and exit code 4 would then cover it", other)
-			t.Log("ADR 0009 and internal/history's package doc both turn on this: an unreadable")
+			t.Log("internal/history's package doc turns on this: an unreadable")
 			t.Log("row needs manual repair and an unknown scheme needs a newer migr. Reporting")
 			t.Log("either as exit code 4 is how operators learn to ignore exit code 4.")
 		}
@@ -293,7 +293,7 @@ func TestARefusedRunDoesNotClaimHowManyStatementsThereWere(t *testing.T) {
 		t.Errorf("the refusal does not say what the row cannot:\n%s", message)
 		t.Log("The statements were the ones that run emitted and nothing recomputes them: a")
 		t.Log("migration may branch on live query results, so re-asking could emit a different")
-		t.Log("list than the one that half-ran (ADR 0009).")
+		t.Log("list than the one that half-ran.")
 	}
 
 	if strings.Contains(message, " of 4 ") || strings.Contains(message, "of 5 statements") {
@@ -341,7 +341,7 @@ func TestADirtyVersionWithNoFileIsNamedByItsVersion(t *testing.T) {
 
 	if !strings.Contains(message, "version "+versionAt(0)) {
 		t.Errorf("the refusal does not name the version:\n%s", message)
-		t.Log("A dirty run whose file nobody kept still refuses both directions (ADR 0019), and")
+		t.Log("A dirty run whose file nobody kept still refuses both directions, and")
 		t.Log("the version is then the only identity the database carries.")
 	}
 }
@@ -369,7 +369,7 @@ func TestTheTwoSensesOfDirtyStayTellableApart(t *testing.T) {
 
 	if errors.As(between, new(*DirtyError)) {
 		t.Error("errors.As reads the refusal as the run that just became dirty")
-		t.Log("ADR 0024: errors.Is(err, ErrDirty) finds both senses and errors.As on *DirtyError")
+		t.Log("errors.Is(err, ErrDirty) finds both senses and errors.As on *DirtyError")
 		t.Log("finds only the run that produced one. A command resolving the state branches on")
 		t.Log("that, and a refusal mistaken for a fresh failure would be told a window it never had.")
 	}
@@ -386,7 +386,7 @@ func TestARefusalIsNotADriftOrAnyOtherBlockingState(t *testing.T) {
 	for _, other := range []error{ErrDrifted, ErrMissing, history.ErrCorrupt, ErrUnknownState} {
 		if errors.Is(between, other) {
 			t.Errorf("the dirty refusal also reports %v", other)
-			t.Log("A dirty database exits 1 and a drifted one exits 4 (ADR 0029), so a refusal")
+			t.Log("A dirty database exits 1 and a drifted one exits 4, so a refusal")
 			t.Log("reporting both would resolve to whichever check ExitCode runs first.")
 		}
 	}

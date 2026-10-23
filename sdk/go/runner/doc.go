@@ -1,7 +1,7 @@
 // Package runner is the entrypoint the migr engine generates a call to.
 //
 // The Go runtime adapter writes a small main into the user's module, builds it,
-// and executes it (ADR 0035). That generated file names exactly two things: a
+// and executes it. That generated file names exactly two things: a
 // blank import of the user's migrations package, and runner.Main. This package
 // is the second of them, and it exists so that symbol stays stable no matter
 // where the session is implemented.

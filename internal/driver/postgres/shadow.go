@@ -15,7 +15,7 @@ import (
 )
 
 // A shadow is created LIKE the table, without its indexes, which are created under derived names; it is
-// filled a keyed chunk at a time and swapped in under one transaction (ADR 0094).
+// filled a keyed chunk at a time and swapped in under one transaction.
 //
 // Each chunk is INSERT ... SELECT ... FOR SHARE ON CONFLICT (key) DO NOTHING: a row a replay already
 // wrote is kept, and FOR SHARE waits out a writer still holding the row -- measured on 17, a copy

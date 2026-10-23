@@ -19,13 +19,13 @@
 // picks one, because an SDK installed from a package registry and a CLI
 // installed from a release move on different clocks. irVersion is stated rather
 // than negotiated: the two are independent version lines and coupling them
-// would make an IR addition a protocol break (ADR 0030, A).
+// would make an IR addition a protocol break.
 //
 // A migration with no Down answers no_down_authored and one declaring itself
 // one-way answers declared_irreversible, both as JSON-RPC errors carrying a
 // slug. They are refusals rather than results because a client that forgets a
 // result case reports zero operations -- a rollback that undoes nothing and
-// says it worked -- where a forgotten error case raises (ADR 0030, C).
+// says it worked -- where a forgotten error case raises.
 //
 // Every application code sits in -32000..-32099, the band JSON-RPC 2.0
 // delegates to the implementation. LSP's -32800 for a canceled request is not
@@ -41,7 +41,7 @@
 // the migration has finished emitting.
 //
 // So plan mode changes exactly one callback, host.db.exec, and nothing else.
-// That is a smaller difference than ADR 0002 implied and a better one: plan and
+// That is a smaller difference than the first design implied and a better one: plan and
 // apply diverge in one stated place rather than several.
 //
 // # The codec, and what ends a session
@@ -55,7 +55,7 @@
 // because the id was exactly the part that could not be read, so skipping the
 // line and carrying on would leave whoever was waiting on that request waiting
 // forever. Refuse builds the one message §2.6 permits before that happens: an
-// error carrying "id": null, best-effort, and then nothing (ADR 0031, A).
+// error carrying "id": null, best-effort, and then nothing.
 //
 // The envelope is closed and a payload is open. Unknown members on the envelope
 // are refused; params, result, and data are json.RawMessage and are never
@@ -66,8 +66,7 @@
 // Validate is the shape check both sides run. Error.Validate is §7.1's slug
 // requirement, which only the writer runs: a peer's error with no slug still
 // reaches the operator carrying its message, where refusing it would replace
-// "your migration failed: boom" with "the runtime sent a malformed message"
-// (ADR 0031, E).
+// "your migration failed: boom" with "the runtime sent a malformed message".
 //
 // # What this package does not do
 //

@@ -5,10 +5,10 @@
 // through the same encoder and compares them -- the method the runtime conformance suite uses, since
 // member order is part of the IR and deepEqual does not see it.
 //
-// What reversal does not do is invert anything. All twenty inverses live in the engine, because ADR
-// 0022 put them in one place so two SDKs could not reach two answers for one migration; a copy here
-// would be a third, and the day it drifted it would pass a down the engine refuses. Whether every
-// operation can be inverted is the engine's answer, through project().validate().
+// What reversal does not do is invert anything. All twenty inverses live in the engine, so two
+// SDKs could not reach two answers for one migration; a copy here would be a third, and the day it
+// drifted it would pass a down the engine refuses. Whether every operation can be inverted is the
+// engine's answer, through project().validate().
 
 import assert from "node:assert/strict";
 
@@ -168,7 +168,7 @@ function underivable(undo: Undo, held: readonly Statement[]): string | undefined
   return (
     `this migration authors no down, so the engine derives its inverse -- but its up sends ` +
     `${held.length} statement(s) of its own, the first being ${JSON.stringify(held[0]?.sql)}, ` +
-    `and a statement has no inverse to derive. ADR 0036: an exec is committed on its own, before ` +
+    `and a statement has no inverse to derive. An exec is committed on its own, before ` +
     `the transaction the operations run in, and a later failure does not undo it, so the engine ` +
     `refuses to derive a down over one -- write a down, or declare the migration irreversible.`
   );

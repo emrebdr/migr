@@ -90,7 +90,7 @@ func TestAnEmulatedOperationIsReportedUncheckedRatherThanAsAProblem(t *testing.T
 		t.Errorf("the reason does not say what needs the database: %q", unchecked[0].Reason)
 	}
 
-	t.Log("This is ADR 0040's shape reused: a Go migration that reads the database is reported")
+	t.Log("This is the unchecked shape reused: a Go migration that reads the database is reported")
 	t.Log("unchecked rather than failed, and an operation the driver compiles against one is the")
 	t.Log("same claim about a different half of the same command.")
 }

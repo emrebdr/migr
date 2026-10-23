@@ -154,7 +154,7 @@ func TestItEmitsEveryDropCarryingWhatItReplaced(t *testing.T) {
 	}
 
 	t.Log("A differ is the one producer that knows both states exactly, so it fills every from")
-	t.Log("payload ADR 0008 defines -- which is what makes a migration migr diff writes reversible")
+	t.Log("payload the IR defines -- which is what makes a migration migr diff writes reversible")
 	t.Log("by derivation, and why a drop it cannot record is refused rather than emitted bare.")
 }
 
@@ -167,7 +167,7 @@ func TestItMatchesConstraintsAsASet(t *testing.T) {
 
 	if ops, _ := Diff(both(t), renamedKey, Renames{}); len(ops) != 0 {
 		t.Errorf("a foreign key whose name moved proposed %d operations, want none", len(ops))
-		t.Log("ForeignKey.Equal ignores the name because no two engines agree on one (ADR 0065),")
+		t.Log("ForeignKey.Equal ignores the name because no two engines agree on one,")
 		t.Log("so a diff across engines must not propose rebuilding every key it can see.")
 	}
 

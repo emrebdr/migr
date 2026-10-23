@@ -25,7 +25,7 @@ func TestAReadThatWritesIsRefusedByTheServerAndChangesNothing(t *testing.T) {
 				t.Logf("the statement was: %s", cte)
 				t.Log("It begins with WITH and deletes every row, so a host-side check on the")
 				t.Log("leading keyword would have let it through. The read-only transaction is")
-				t.Log("what makes the guarantee a guarantee (ADR 0032, B).")
+				t.Log("what makes the guarantee a guarantee.")
 				t.Fatalf("the driver answered %v, want driver.ErrNotReadOnly", err)
 			}
 

@@ -60,7 +60,7 @@ func TestADeclaredDependencyRunsBeforeTheMigrationThatDeclaresIt(t *testing.T) {
 
 	if got := versionsRan(summary); !slices.Equal(got, declaredOrder()) {
 		t.Errorf("up ran %v, want %v", got, declaredOrder())
-		t.Log("The earlier-timestamped migration declares the later one, which ADR 0018 makes the")
+		t.Log("The earlier-timestamped migration declares the later one, which declared dependencies make the")
 		t.Log("merged-branch case rather than a mistake. migration.Order has overlaid that since")
 		t.Log("M4-T2 and nothing passed it a declaration until M7-T11.")
 	}
@@ -84,7 +84,7 @@ func TestADeclarationMayNameAMigrationAnotherRuntimeLoaded(t *testing.T) {
 		t.Errorf("up ran %v, want %v", got, declaredOrder())
 		t.Log("A declaration names a version, never a file this runtime owns, so the .go migration")
 		t.Log("declares a .ts one its own runtime never loaded. Each session reports its own half")
-		t.Log("and the run resolves the graph over both (ADR 0048, ADR 0049).")
+		t.Log("and the run resolves the graph over both.")
 	}
 }
 
@@ -177,7 +177,7 @@ func TestADeclarationNamingNoMigrationIsRefused(t *testing.T) {
 	}
 
 	t.Log("An edge naming nobody is dropped before the sort, so the order still resolves -- and")
-	t.Log("reporting it is what keeps a typo in a version from silently ordering nothing (ADR 0018).")
+	t.Log("reporting it is what keeps a typo in a version from silently ordering nothing.")
 }
 
 func TestStatusSaysItsOrderIsVersionOrderWhenARuntimeOwnsTheDeclarations(t *testing.T) {
@@ -212,7 +212,7 @@ func TestStatusSaysItsOrderIsVersionOrderWhenARuntimeOwnsTheDeclarations(t *test
 		t.Errorf("status claims an order it cannot know:\n%s", text)
 		t.Log("The run applied these in the opposite order, and no runtime was started here to say")
 		t.Log("so -- which is why the report names its basis rather than claiming the run's")
-		t.Log("(ADR 0027, ADR 0049). This ran over the adapter that refuses to start anything, so")
+		t.Log(". This ran over the adapter that refuses to start anything, so")
 		t.Log("a status that had asked would have failed rather than merely been slower.")
 	}
 }

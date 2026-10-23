@@ -62,5 +62,5 @@ func TestAContractHeldAfterASwapSaysTheSwapIsTwoCommitsHere(t *testing.T) {
 	})
 
 	t.Log("Every DDL statement commits on its own here, so a swap's two renames are two moments and")
-	t.Log("between them the column an app reads is gone. A gate waiting on the app says so (ADR 0087).")
+	t.Log("between them the column an app reads is gone. A gate waiting on the app says so.")
 }

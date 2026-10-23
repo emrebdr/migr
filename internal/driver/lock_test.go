@@ -33,7 +33,7 @@ func TestABusyLockNamesTheHolderAndWhichDurationItMeasured(t *testing.T) {
 	}
 
 	t.Log("The label is carried because the three engines measure three different durations and")
-	t.Log("only the one that measured can say which (ADR 0060). PostgreSQL reports the holder's")
+	t.Log("only the one that measured can say which. PostgreSQL reports the holder's")
 	t.Log("session age, which bounds the hold from above; SQLite reports the hold itself, out of")
 	t.Log("its own lock file; MySQL reports the holder's time in its current state, because the")
 	t.Log("server records no connection start time at all. One sentence over all three would have")

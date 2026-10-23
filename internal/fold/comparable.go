@@ -2,7 +2,7 @@ package fold
 
 import "github.com/emrebdr/migr/internal/schema"
 
-// Three things in a snapshot are engine text (ADR 0065) and a projection has never seen an engine,
+// Three things in a snapshot are engine text and a projection has never seen an engine,
 // so it holds what the migration wrote and the database holds what the server made of it. Measured
 // on four servers, one view asked for as `SELECT id FROM t` reads back expanded by PostgreSQL and
 // database-qualified by MySQL, and one check expression `id > 0` reads back four ways:
@@ -20,7 +20,7 @@ import "github.com/emrebdr/migr/internal/schema"
 // carry the real body.
 //
 // The third engine-text field is a column default, and it needs none of this: every driver
-// normalizes one into the neutral vocabulary (ADR 0069), so a literal and a neutral function do
+// normalizes one into the neutral vocabulary, so a literal and a neutral function do
 // compare. What a driver cannot normalize it records as an expression, and internal/diff refuses
 // that rather than comparing it.
 

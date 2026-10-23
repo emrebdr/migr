@@ -22,8 +22,8 @@ import (
 //
 // A .sql project cannot reach either: every statement in one is ir.Raw, which that gate never
 // judges. So these are Go migrations, and they are untagged for the reason the rest of this
-// engine's suites are -- a t.TempDir() and the Go toolchain are its whole requirement (ADR 0050,
-// M6-T6).
+// engine's suites are -- a t.TempDir() and the Go toolchain are its whole requirement
+// (M6-T6).
 //
 // Each case is written twice: once as the migration an author would reach for, which is refused,
 // and once with the remedy the refusal names, which applies and then round-trips. The second half
@@ -129,8 +129,8 @@ func (m KeyPeople) Up(ctx context.Context, s *migr.Schema) error {
 // Both operations are in one migration, and until M11-T7 they could not be: this engine emulates
 // each of them and expanded both from the catalog as it was before either ran, so the key's rebuild
 // re-rendered the table without the NOT NULL the alter had just written. The rollback below is one
-// migr down for the same reason -- every inverse in a run is compiled before any of it runs
-// (ADR 0022), which used to mean the older inverse re-created what the newer one had removed.
+// migr down for the same reason -- every inverse in a run is compiled before any of it runs,
+// which used to mean the older inverse re-created what the newer one had removed.
 const tighteningFirst = derivedPreamble + `
 func init() { migr.Register(TightenTag{}) }
 
@@ -256,7 +256,7 @@ func checkRefused(t *testing.T, says string, rest ...string) {
 
 	if got := cli.ExitCode(migr(t, config, "up")); got != cli.ExitRuntime {
 		t.Errorf("migr up exited %d, want %d", got, cli.ExitRuntime)
-		t.Log("ADR 0029's rule: the same command line succeeds against a database that does not")
+		t.Log("Exit 1, not 2: the same command line succeeds against a database that does not")
 		t.Log("contradict the migration, so the world is what is not ready rather than the argument.")
 	}
 
@@ -272,7 +272,7 @@ func checkRefused(t *testing.T, says string, rest ...string) {
 // The comparison is the neutral snapshot rather than the catalog text, and the difference is the
 // point: a reversed drop_column appends the column rather than putting it back where it was, which
 // no v1 operation can control -- MySQL's AFTER has no field in the IR (M9-T7). schema.Snapshot
-// holds what a schema has and never the order it has it in, for exactly that reason (ADR 0065), so
+// holds what a schema has and never the order it has it in, for exactly that reason, so
 // it compares equal where the recorded DDL does not.
 
 // checkRemedyRoundTrips holds the remedy the refusal names to applying and then undoing itself.

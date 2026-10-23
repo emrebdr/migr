@@ -131,7 +131,7 @@ func TestTheEnvelopeIsNotHashed(t *testing.T) {
 
 	if got == Digest(sha256.Sum256(wrapped)) {
 		t.Error("the irVersion envelope reached the hashed bytes")
-		t.Log("ADR 0007 puts the envelope outside the checksum boundary: a version bump that")
+		t.Log("The envelope sits outside the checksum boundary: a version bump that")
 		t.Log("reshapes no operation must leave every applied migration's checksum untouched,")
 		t.Log("or drift detection fires across every installation at once.")
 	}

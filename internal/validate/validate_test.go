@@ -32,7 +32,7 @@ func TestEveryMigrationIsReadAsAQuestion(t *testing.T) {
 	want := []engine.Mode{engine.ModePlan, engine.ModePlan}
 	if !slices.Equal(src.modes, want) {
 		t.Errorf("validation read the migration in %v, want %v", src.modes, want)
-		t.Log("migr validate opens no database at all (ADR 0028), and a check that ran the")
+		t.Log("migr validate opens no database at all, and a check that ran the")
 		t.Log("escape hatch would not be one. Both halves are questions, and a source reached")
 		t.Log("through a language runtime is the one that can tell the difference.")
 	}
@@ -309,7 +309,7 @@ func TestAMigrationThatReachesTheDatabaseItselfCannotHaveItsDownDerived(t *testi
 	problems := report.Problems()
 
 	t.Log("Every operation here inverts, so nothing else reports a problem -- and a rollback")
-	t.Log("would silently revert the schema and leave the UPDATE standing (ADR 0036).")
+	t.Log("would silently revert the schema and leave the UPDATE standing.")
 
 	if len(problems) != 1 || problems[0].Check != CheckReverse {
 		t.Fatalf("the report holds %+v, want the migration nothing can undo", problems)

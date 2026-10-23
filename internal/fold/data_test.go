@@ -71,6 +71,6 @@ func TestADataWriteMustStateTheTypeItsColumnHolds(t *testing.T) {
 		Column: "loose", Type: logical(t, "int32"), Value: ir.Literal("7")}}); len(refused) != 0 {
 		t.Errorf("a type the catalog could only guess at was held against the stated one: %v",
 			refused)
-		t.Log("A guess never equals a fact (ADR 0065), and it never contradicts one either.")
+		t.Log("A guess never equals a fact, and it never contradicts one either.")
 	}
 }

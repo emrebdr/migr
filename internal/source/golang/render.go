@@ -85,7 +85,7 @@ func statements(ops ir.Operations) (string, error) {
 }
 
 // A chain that is never applied emits nothing at all, and migr fails such a migration rather than
-// reporting a change it never made (ADR 0038, A). So every statement but the last checks its error
+// reporting a change it never made. So every statement but the last checks its error
 // and returns it, and the last one returns the apply itself -- which is how an author writes it.
 
 // render writes one chain, returning its result where it is the last of them.

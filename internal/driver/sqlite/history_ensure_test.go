@@ -208,7 +208,7 @@ func TestTheHistoryTableIsCreatedAsOneUnitRatherThanStatementByStatement(t *test
 		t.Fatalf("Record after it: %v", err)
 	}
 
-	t.Log("Ensure opens a transaction only when the session has none, as PostgreSQL's does: ADR 0017")
+	t.Log("Ensure opens a transaction only when the session has none, as PostgreSQL's does: Transact")
 	t.Log("makes a second one a refusal, and Ensure is called from paths that may already be inside")
 	t.Log("one.")
 }

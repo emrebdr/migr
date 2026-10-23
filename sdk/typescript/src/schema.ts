@@ -7,7 +7,7 @@
 //
 // The AbortSignal rides here rather than in a second parameter, which is where the Go SDK puts its
 // context. That is CLAUDE.md §8's rule -- idiomatic syntax per language, identical semantics -- and
-// the facts beside it are on the Schema in Go too (ADR 0042).
+// the facts beside it are on the Schema in Go too.
 //
 // The window takes a Host rather than a stream, so the whole builder and every callback is
 // exercised against a recording host and no process. The session supplies the real one.
@@ -16,7 +16,7 @@
 // migration that reports success having changed nothing is the failure docs/ir.md §3.4 names -- so
 // the window remembers every chain it handed out. TypeScript adds the second: an apply that was
 // sent and never awaited would carry its failure into a promise nobody reads, so the window
-// remembers those too and surfaces the first of them when the call ends (ADR 0043).
+// remembers those too and surfaces the first of them when the call ends.
 
 import type { Builder, NewTable, Statements, TableChain, ViewChain } from "./builder.ts";
 import { newBuilder, newTableChain, statementsChain, tableChain, viewChain } from "./builder.ts";

@@ -155,7 +155,7 @@ func TestAKeyToAColumnAnEarlierMigrationAddedIsNotAProblem(t *testing.T) {
 	if found := referenced(report); len(found) > 0 {
 		t.Errorf("a correct project reported %d reference problems:\n%v", len(found), found)
 		t.Log("The projection is what makes this correct: checking against the live catalog alone")
-		t.Log("would call this broken whenever the migration creating users has not run (ADR 0064 C2).")
+		t.Log("would call this broken whenever the migration creating users has not run.")
 	}
 }
 

@@ -1,7 +1,7 @@
 // Package fold applies IR operations to a schema snapshot, which is the opposite
 // direction from internal/diff.
 //
-// Status: complete (M11-T5). See docs/adr/0073-the-schema-projection.md.
+// Status: complete (M11-T5).
 //
 // # What it is a function of
 //
@@ -10,9 +10,9 @@
 // the shape diff.Diff, engine.Destructive and schema.Unrepresentable already have:
 // one policy, read by a report and by a command alike.
 //
-// It is a package of its own rather than a file in internal/diff because ADR 0070
-// says the differ's names-only availability model must not grow into a projection,
-// and rather than a method on schema.Snapshot because ADR 0065 forbids
+// It is a package of its own rather than a file in internal/diff because the
+// differ's names-only availability model must not grow into a projection,
+// and rather than a method on schema.Snapshot because nothing may let
 // internal/schema from importing internal/ir at all.
 //
 // Over a list the differ produced the two compose to the identity: Forward(a,
@@ -27,7 +27,7 @@
 // what makes the same fold readable as internal/validate's reference-integrity
 // check (M10-T3), where those refusals are the findings rather than a problem --
 // folded from two starting points, since neither the live schema nor the project's
-// own beginning is a sound basis alone (ADR 0075).
+// own beginning is a sound basis alone.
 //
 // A refusal stops that operation and nothing after it. One exception ends the
 // projection entirely, and it is the reason this package has a caller that refuses
@@ -53,7 +53,7 @@
 // type alone, so a projected int32 equals PostgreSQL's integer and MySQL's int.
 //
 // What it does mean is that a projected type is always exact, so meeting a live
-// type the catalog could only guess at is a refusal by design (ADR 0070, C1).
+// type the catalog could only guess at is a refusal by design.
 // Measured: SQLite declares int16, int32 and float32 ambiguously, and MySQL
 // declares timestamp and timestamptz ambiguously. SQLite's int64 and text are
 // ambiguous and guess correctly, so those compare.
@@ -65,7 +65,7 @@
 // four servers -- bare on SQLite, double-parenthesised on PostgreSQL, and with the
 // column backquoted on both MySQL variants -- and one view asked for as
 // SELECT id FROM t comes back expanded by PostgreSQL and database-qualified by
-// MySQL. The exact spellings are in ADR 0073's Context.
+// MySQL. The exact spellings differ per engine.
 //
 // So Comparable carries the live text across for every element both schemas hold
 // under one name, and only a genuine arrival or departure is left to propose.
@@ -75,6 +75,6 @@
 // real body.
 //
 // The third engine-text field needs none of this: every driver normalizes a column
-// default into the neutral vocabulary (ADR 0069), and what it cannot normalize it
+// default into the neutral vocabulary, and what it cannot normalize it
 // records as an expression, which internal/diff refuses rather than comparing.
 package fold

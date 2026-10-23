@@ -23,7 +23,7 @@ import (
 // native spellings and certainties included, where a hand-written expectation could predict neither.
 //
 // A view and a check are deliberately absent, for the reason the snapshot fixture leaves them out:
-// both are engine text (ADR 0065), so no target this suite could write down would read back as
+// both are engine text, so no target this suite could write down would read back as
 // itself. internal/diff's own tests carry them.
 
 // Diff holds one driver's engine to the operations this differ emits between two of its snapshots.
@@ -99,7 +99,7 @@ func (s Diff) checkProjected(t *testing.T, live schema.Snapshot) {
 		t.Logf("projected:\n%s\n\nlive:\n%s", render(t, projected), render(t, live))
 		t.Log("Either the projection does not describe what the operations do, or this engine")
 		t.Log("reads one of these types back as something it cannot be compared to exactly --")
-		t.Log("which is a refusal by design (ADR 0070, C1) and belongs in inexactTypes rather")
+		t.Log("which is a refusal by design and belongs in inexactTypes rather")
 		t.Log("than in the fixture.")
 	}
 }

@@ -149,7 +149,7 @@ func matchOnline(loaded []protocol.Discovered, fixtures []Fixture) []string {
 
 		problems = append(problems, fmt.Sprintf("%s: this runtime declared it runs online as %q and the "+
 			"fixture declares %q -- the strategy is read from the migration, so every language reports "+
-			"the same one (ADR 0089)", f.Stem(), got, f.Online))
+			"the same one", f.Stem(), got, f.Online))
 	}
 
 	return problems
@@ -172,7 +172,7 @@ func matchPhases(loaded []protocol.Discovered, fixtures []Fixture) []string {
 
 		problems = append(problems, fmt.Sprintf("%s: this runtime declared the phase %+v and the "+
 			"fixture declares %+v -- a step is read from the migration, so every language reports "+
-			"the same one (ADR 0087)", f.Stem(), got, f.Phase))
+			"the same one", f.Stem(), got, f.Phase))
 	}
 
 	return problems
@@ -195,7 +195,7 @@ func matchDeclared(loaded []protocol.Discovered, fixtures []Fixture) []string {
 
 		problems = append(problems, fmt.Sprintf("%s: this runtime declared %v and the fixture "+
 			"declares %v -- a declaration is read from the migration, so every language reports "+
-			"the same list (ADR 0018)", f.Stem(), deps, f.Dependencies))
+			"the same list", f.Stem(), deps, f.Dependencies))
 	}
 
 	return problems

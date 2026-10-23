@@ -257,9 +257,9 @@ func explainVector(t *testing.T) {
 	t.Log("Do not regenerate this constant. Find out what moved: the normalized-source and")
 	t.Log("emitted-IR assertions above say which of the two inputs it was.")
 	t.Log("One vector has moved, once: lineSeparators, in M7-T9, when ir.Marshal stopped")
-	t.Log("escaping U+2028 and U+2029 (ADR 0047). Its new value was derived by hashing the")
+	t.Log("escaping U+2028 and U+2029. Its new value was derived by hashing the")
 	t.Log("bytes by hand rather than by running this package. Nothing else has moved, and a")
-	t.Log("decision recorded in an ADR is the only thing that may move one again.")
+	t.Log("deliberate, documented decision is the only thing that may move one again.")
 }
 
 func TestTheCRLFVectorAgreesWithItsLineFeedTwin(t *testing.T) {

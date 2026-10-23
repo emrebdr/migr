@@ -26,7 +26,7 @@ var historyColumns = []string{
 	"duration_ms", "last_statement", "error", "driver", "runtime", "engine_version", "ir_version",
 }
 
-// runOrder is the order the runs happened, which is the key rather than the clock (ADR 0013).
+// runOrder is the order the runs happened, which is the key rather than the clock.
 const runOrder = `"batch", "ordinal"`
 
 // latestOrder reverses the run order, so one row is the most recent run.

@@ -51,7 +51,7 @@
 // An edge names a version, because that is the key discovery proves unique, the one a history row
 // joins on, and the one `migr down --to` names. Every message renders a filename instead, since a
 // loop printed as three fifteen-digit timestamps is the least useful form of the one error this
-// exists to produce. ADR 0018 records both, and records that a declaration is read from a migration
+// exists to produce. A declaration is read from a migration
 // rather than computed by one — a graph that could branch on live query results would let plan and
 // apply order the same migrations differently.
 //
@@ -129,7 +129,7 @@
 //
 // A migration may declare itself a Phase -- one step of a change, naming the step it waits on -- and
 // Gates resolves every waiting step to the migration carrying the step before it, over the order a run
-// uses (M13-T7, ADR 0087). It refuses, naming every file at once, a step waiting on one nothing
+// uses (M13-T7). It refuses, naming every file at once, a step waiting on one nothing
 // declares, one step two migrations declare, a step waiting on one that runs after it, and a blank or
 // self-referential declaration. Like a dependency, a phase is read from the migration and never
 // computed; unlike one it does not order anything, the timestamps and dependencies having done that,
@@ -139,7 +139,7 @@
 // # How a migration runs against a live table
 //
 // Online is what each migration declares about running online, keyed by version, read from a
-// runtime's migration.discover alongside its dependencies and its phase (M13-T9, ADR 0089).
+// runtime's migration.discover alongside its dependencies and its phase (M13-T9).
 // ShadowTable is the one Strategy; Check refuses any other, naming the file, and Declarations bundles
 // the three things a started runtime reports so they travel as one value.
 package migration

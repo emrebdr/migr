@@ -20,7 +20,7 @@ const identifierLimit = 63
 // notNullSuffix ends the name of the check a not_null_check rewrite adds and drops again.
 const notNullSuffix = "_nn"
 
-// The reasons a plan prints beside each rewrite, measured on 16 and 17 over 15 million rows (ADR 0085).
+// The reasons a plan prints beside each rewrite, measured on 16 and 17 over 15 million rows.
 const (
 	notValidReason = "added NOT VALID and validated on its own, so writes go on while the rows are " +
 		"checked -- the plain statement blocked them for the whole scan"

@@ -142,7 +142,7 @@ func TestAResumeOfARunThatHadReachedEveryStatementExecutesNothing(t *testing.T) 
 	if last := conn.store.runs[len(conn.store.runs)-1]; last.Outcome != history.Applied {
 		t.Errorf("the run was recorded %q, want applied", last.Outcome)
 		t.Log("A dirty row naming every statement means the commit or the history write failed")
-		t.Log("after all of them took effect (ADR 0024), so the schema change is complete and")
+		t.Log("after all of them took effect, so the schema change is complete and")
 		t.Log("what is missing is the row. Recording it is not an assertion about anything.")
 	}
 }
@@ -216,7 +216,7 @@ func TestAResumeIsRefusedWhenTheMigrationEmitsADifferentListOfOperations(t *test
 		t.Errorf("the refused resume ran %v, want nothing", ran)
 	}
 
-	for _, want := range []string{"different list of operations", "--applied", "ADR 0009"} {
+	for _, want := range []string{"different list of operations", "--applied", "branch on live query results"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not say %q:\n%v", want, err)
 		}

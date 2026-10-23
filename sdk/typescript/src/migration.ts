@@ -4,10 +4,10 @@
 // down, it declares it has none and says why, or it has neither and the engine derives the inverse.
 // Those are three shapes here rather than three fields, so a migration that both writes a down and
 // declares it has none does not compile. Go answers that at registration, because Go has no way to
-// say it in a type (ADR 0037, A).
+// say it in a type.
 //
 // Behaviour is a method and a fact is a property. `dependencies` is a readonly array rather than a
-// method for one reason: ADR 0018 requires a declaration and forbids a computation, and a method
+// method for one reason: a dependency is declared and never computed, and a method
 // invites the graph that would let migr plan and migr up order the same migrations differently.
 //
 // A .js or .mjs migration is loaded by the same runtime and checked by no compiler at all, so every

@@ -13,7 +13,8 @@ import (
 // nonexistent column, is caught before execution. internal/fold already answers both: Forward folds
 // and does not validate, so each is a fold.Refusal naming the operation and what it could not find.
 // What this file decides is what to start the fold from -- and that is the whole of the problem,
-// because ADR 0064 C2 rejected the obvious answer.
+// because judging against the live catalog, the obvious answer, calls a correct migration broken
+// whenever the migration creating its table has not run yet.
 //
 // Checking against the live catalog alone calls a correct migration broken whenever the migration
 // that creates its table has not run yet. Measured on SQLite, the other direction is just as bad:
@@ -191,7 +192,7 @@ type projection struct {
 // sound basis -- measured, and the measurement is what makes this a connected check:
 //
 //   - the live schema alone refuses every operation of every migration that has already run, since
-//     the schema is what they built. ADR 0064 C2's failure, reached from the other side;
+//     the schema is what they built. The live-catalog problem, reached from the other side;
 //   - the project's own beginning alone refuses every operation of a migration migr diff wrote. A
 //     drift correction re-adds an index the project already created and drops a column the project
 //     never had, so replaying it from nothing cannot work -- measured on all three of the operations
@@ -199,7 +200,7 @@ type projection struct {
 //     migr validate, which is the tool disagreeing with itself.
 //
 // So the check runs where it has both and does not run where it has neither. That is the shape
-// capability already has (ADR 0064): a check needing the target database says so rather than
+// capability already has: a check needing the target database says so rather than
 // answering from what it could reach.
 const (
 	// FromProject is the projection that starts from nothing and is built by the migrations alone.

@@ -13,8 +13,8 @@ import (
 // on all five servers, that rewrite is exactly what each one does -- an index follows a renamed
 // column and keeps its own name, and a foreign key in another table follows a renamed table.
 //
-// What is deliberately not rewritten is a check expression and a view body, both being engine text
-// (ADR 0065). Every server rewrites those itself, and a textual substitution here would be the guess
+// What is deliberately not rewritten is a check expression and a view body, both being engine text.
+// Every server rewrites those itself, and a textual substitution here would be the guess
 // this package refuses -- a column name appears inside string literals and other tables' columns
 // too. So a check or a view over a renamed object is proposed as a drop and an add, or as a
 // replacement, which lands on the target schema either way.

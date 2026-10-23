@@ -175,7 +175,7 @@ func TestTheFailureNamesTheConnectionAnOperatorCanKill(t *testing.T) {
 		t.Log("The connection id comes from IS_USED_LOCK, which needs no privilege, and")
 		t.Log("TestAKilledHolderLeavesALockTheNextRunTakesImmediately is where the id this report")
 		t.Log("gives is handed to KILL -- so the advice the message carries is the advice a test")
-		t.Log("follows, which is ADR 0020's own precedent for PostgreSQL's pid.")
+		t.Log("follows, which is the precedent PostgreSQL's pid set.")
 	})
 }
 
@@ -354,7 +354,7 @@ func TestALockSurvivesEveryWayATransactionCanEnd(t *testing.T) {
 
 		t.Log("Measured on both servers, and the third case is the one that matters here: MySQL has")
 		t.Log("no transactional DDL, so every DDL statement commits the open transaction implicitly")
-		t.Log("(ADR 0057). A user-level lock is not transactional, so none of the three releases it --")
+		t.Log(". A user-level lock is not transactional, so none of the three releases it --")
 		t.Log("and if any did, the lock would vanish partway through the first migration that")
 		t.Log("created a table, with the rest of the run unprotected and nothing saying so.")
 	})
@@ -438,7 +438,7 @@ func TestTheAcquireAndTheReleaseHappenOnOneConnection(t *testing.T) {
 		t.Log("The done-when's pooling clause, asserted by the server's own id rather than by")
 		t.Log("inspecting the pool: GET_LOCK belongs to a connection, so an acquire on one pooled")
 		t.Log("connection and a release on another would report success and release nothing. Open")
-		t.Log("sets MaxOpenConns to one and holds one *sql.Conn for the session's life (ADR 0057),")
+		t.Log("sets MaxOpenConns to one and holds one *sql.Conn for the session's life,")
 		t.Log("and this is what proves the lock rode on it.")
 	})
 }

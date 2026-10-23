@@ -14,9 +14,7 @@
 //
 // Status: both axes complete (M2-T2), and all three drivers classify every operation on both --
 // PostgreSQL at M3-T3, SQLite at M8-T3, MySQL at M9-T3. M13-T1 held the three to one standard: no
-// verdict cheaper than a server measurably performs, and unknown for raw alone. See
-// docs/adr/0012-capability-resolution.md, 0016-lock-impact-is-a-duration.md, which fixed what the
-// four verdicts mean, and 0081-lock-verdicts-resolved-against-the-table.md.
+// verdict cheaper than a server measurably performs, and unknown for raw alone.
 //
 // # Resolution answers about an operation, not about a kind
 //
@@ -52,7 +50,7 @@
 // will not build fails the connection rather than surfacing later.
 //
 // There is deliberately no connection-free baseline set. One would have to answer the SQLite 3.35
-// question before knowing the answer, which is the confidently-wrong verdict ADR 0004 rejected,
+// question before knowing the answer, which is the confidently-wrong verdict this package refuses,
 // committed one axis over.
 //
 // # Unknown is a label, not a rank
@@ -121,20 +119,21 @@
 //
 // # Not built, and why
 //
-// One further fact belongs here and is recorded rather than stubbed, following what ADR 0011 did
+// One further fact belongs here and is recorded rather than stubbed, following what was done
 // with history.Store:
 //
 //	engine limits on a logical type (PG precision 1000, MySQL 65)   deferred from M1-T1
 //
 // It is a field on a struct rather than a method on an interface, so adding it reopens no driver.
-// Facts.Capture was the other, and arrived in M13-T16 (ADR 0090): Capture names every setting and
+// Facts.Capture was the other, and arrived in M13-T16: Capture names every setting and
 // privilege a server lacks for log-based change capture, its zero value permits nothing, and each
 // driver reads it at Open, an answer it cannot read being read as not permitted. Its Retention says,
-// in the server's own terms, how long the log a stopped migration reads on from is kept (M13-T10). That is ADR 0004's retrofit-cost argument applied to the model that argument created,
-// and it is why Set is a struct. Facts.TransactionalDDL was the third and arrived in M3-T3, so
-// M4-T9 read a field rather than adding one — and then found that the field answers only one of the
-// three ways a failure leaves statements behind, so the engine asks what survived and consults this
-// only for the run it is in (ADR 0024).
+// in the server's own terms, how long the log a stopped migration reads on from is kept (M13-T10).
+// That is the retrofit-cost argument applied to the model that argument created, and it is why Set
+// is a struct. Facts.TransactionalDDL was the third and arrived in M3-T3, so M4-T9 read a field
+// rather than adding one — and then found that the field answers only one of the three ways a
+// failure leaves statements behind, so the engine asks what survived and consults this only for the
+// run it is in.
 //
 // Three capabilities the milestone plan names are deliberately absent, because no v1 operation can
 // request them: a partial index (add_index has no predicate), a deferrable constraint (no
@@ -145,7 +144,7 @@
 // Capture is a connection-wide fact rather than a per-operation verdict: binlog_format and
 // wal_level describe the server, not the operation being asked about. A server that will not
 // permit it refuses shadow-table migration with a reason naming the missing setting or privilege,
-// rather than silently falling back to triggers — see docs/adr/0014-online-change-capture.md.
+// rather than silently falling back to triggers.
 //
 // Type limits have no consumer before M10, no decided shape, and no gap today: a driver handed
 // decimal(1200,2) refuses at Compile with a reason, which the conformance suite already accepts.
@@ -154,7 +153,7 @@
 //
 // This package must never import internal/driver. The driver contract names capability.Set as a
 // return type, so the dependency runs one way and the other direction is an import cycle — the same
-// rule ADR 0011 recorded for internal/history. depguard does not catch it: it denies the
+// rule internal/history follows. depguard does not catch it: it denies the
 // internal/driver/ prefix, which leaves the contract package itself importable.
 //
 // internal/config imports this package for the four ceiling spellings, which it owned first and

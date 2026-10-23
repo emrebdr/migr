@@ -171,7 +171,7 @@ export interface DBExecResult {
 
 /** CapabilityGetParams asks about a whole operation, since a driver refuses payloads and not kinds. */
 export interface CapabilityGetParams {
-  /** The operation itself, because MySQL's answer depends on the column's type (ADR 0015). */
+  /** The operation itself, because MySQL's answer depends on the column's type. */
   operation: unknown;
 }
 

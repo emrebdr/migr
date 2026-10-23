@@ -51,7 +51,7 @@ func TestAReadThatWritesIsRefusedByTheServerRatherThanByAKeywordCheck(t *testing
 			t.Errorf("the table holds %s rows, so one of those reads wrote", got)
 		}
 
-		t.Log("SELECT ... FOR UPDATE is this engine's answer to ADR 0032 B. MySQL has no")
+		t.Log("SELECT ... FOR UPDATE is this engine's read-only case. MySQL has no")
 		t.Log("data-modifying CTE, so PostgreSQL's fixture does not port -- but FOR UPDATE begins")
 		t.Log("with SELECT, passes any check on the leading keyword, and takes exclusive row locks")
 		t.Log("that block every writer on those rows.")

@@ -43,7 +43,7 @@ func (s Snapshot) child() string { return s.Prefix + "_child" }
 func (s Snapshot) named(suffix string) string { return s.Prefix + "_" + suffix }
 
 // What it leaves out, it leaves out for a measured reason rather than for convenience. Three of the
-// engine-text elements ADR 0065 names are absent -- a check expression, a view body and an
+// snapshot's engine-text elements are absent -- a check expression, a view body and an
 // expression default -- because no two engines render one the same way and nothing compares them.
 // Seven logical types are absent, and inexactTypes states why each one is.
 

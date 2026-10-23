@@ -27,20 +27,19 @@ import (
 //
 // Four migrations, and two of them are here for paths no language has exercised end to end:
 //
-//   - one reads the live server with host.db.query and branches on the answer, which is what ADR
-//     0009's "migrations may branch on live query results" has always claimed and nothing ran;
+//   - one reads the live server with host.db.query and branches on the answer, which is what
+//     "migrations may branch on live query results" has always claimed and nothing ran;
 //   - one sends a statement of its own through host.db.exec, which is committed outside the
-//     transaction its operations run in (ADR 0032) and which migr plan holds rather than running
-//     (ADR 0036).
+//     transaction its operations run in and which migr plan holds rather than running.
 //
 // M7-T8 could not prove one of those two the whole way: that a migration failing *after* an exec
-// leaves that statement committed, which is ADR 0032's warning. M7-T10 proves it, and the cleanup is
-// what made it possible -- a pgtest probe rather than a compensating migration, for two reasons a
-// reader will otherwise try both of. A migration whose only effect is an exec compiles to no
-// statements and the engine refuses it, since reporting success for a change that never happened is
-// what that refusal exists to prevent; and one that dropped the table as an *operation* would be
-// recorded as applied, so a second run of the test would skip it and meet the table still there.
-// Invariant #3 is why the SQL lives in the driver's own subtree and not here.
+// leaves that statement committed, which is host.db.exec's documented warning. M7-T10 proves it,
+// and the cleanup is what made it possible -- a pgtest probe rather than a compensating migration,
+// for two reasons a reader will otherwise try both of. A migration whose only effect is an exec
+// compiles to no statements and the engine refuses it, since reporting success for a change that
+// never happened is what that refusal exists to prevent; and one that dropped the table as an
+// *operation* would be recorded as applied, so a second run of the test would skip it and meet the
+// table still there. Invariant #3 is why the SQL lives in the driver's own subtree and not here.
 
 // tsHistoryTable keeps this suite's runs out of the tables the .sql, Go, and driver suites use.
 const tsHistoryTable = "migr_e2e_ts_migrations"
@@ -397,7 +396,7 @@ func TestPlanHoldsTheStatementAMigrationSendsItself(t *testing.T) {
 	}
 
 	t.Log("A held statement is printed above the operations and marked, because that is when it")
-	t.Log("runs: on its own, before the transaction, and not undone by a later failure (ADR 0036).")
+	t.Log("runs: on its own, before the transaction, and not undone by a later failure.")
 
 	if !strings.Contains(planned, "! ") {
 		t.Errorf("migr plan does not mark the statement it held:\n%s", planned)
@@ -456,7 +455,7 @@ func assertWarnsOfTheTwoPatternsTheseFixturesUse(t *testing.T, out string) {
 	}
 
 	t.Log("Both fixtures use their pattern deliberately: one omits its down so the engine derives")
-	t.Log("the inverse, and one execs a CREATE TABLE beside an addColumn to prove ADR 0032's")
+	t.Log("the inverse, and one execs a CREATE TABLE beside an addColumn to prove host.db.exec's")
 	t.Log("warning that the statement is committed on its own. That is why neither rule is an")
 	t.Log("error -- a legitimate use of a pattern is what a warning is for.")
 
@@ -470,7 +469,7 @@ func TestValidateChecksATypeScriptProjectWithoutOpeningADatabase(t *testing.T) {
 
 	out := migrOut(t, cfg, "validate")
 
-	t.Log("ADR 0040 again, from the second language: the process starts and every database call it")
+	t.Log("The offline session again, from the second language: the process starts and every database call it")
 	t.Log("could make refuses, so a migration that reads is reported unchecked rather than passed.")
 
 	if !strings.Contains(out, "not checked") {
@@ -523,7 +522,7 @@ func TestAStatementAMigrationRanItselfSurvivesTheFailureThatFollowedIt(t *testin
 
 	reported := migrFailure(t, failing, "up")
 
-	t.Log("ADR 0032's whole warning, measured: host.db.exec runs while the migration is deciding")
+	t.Log("host.db.exec's whole warning, measured: host.db.exec runs while the migration is deciding")
 	t.Log("what it does, which is before the engine has compiled anything or opened a transaction.")
 	t.Log("So the statement is committed on its own and a later failure does not undo it -- the")
 	t.Log("compensation is somebody's to write, and here it is a probe rather than a migration.")

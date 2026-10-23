@@ -15,15 +15,15 @@ import (
 // itself. Below that it reads five sentinels, because recognizing them in one place is what saves
 // every command from having to remember them: driver.ErrLockTimeout, since giving up on the
 // migration lock is contention rather than a runtime error, and driver.ErrStatementLockTimeout for
-// the same reason about a table lock, once every retry safety.lock_retries allows is spent (ADR
-// 0082) -- the same command succeeds once whoever holds it lets go; engine.ErrDrifted, since an
-// applied migration that was edited is the one failure invariant #6 gives a code of its own; and
+// the same reason about a table lock, once every retry safety.lock_retries allows is spent -- the
+// same command succeeds once whoever holds it lets go; engine.ErrDrifted, since an applied
+// migration that was edited is the one failure invariant #6 gives a code of its own; and
 // engine.ErrDestructive, which is the rule for exit 2 exactly -- the operator retypes the command
 // with --allow-destructive, or names the kind in migr.yaml, and the same command then runs --
 // engine.ErrNoRelease beside it for the same reason, the operator adding --release; and
 // engine.ErrLockImpact, which --require-safe returns where an operation costs more than
 // safety.max_lock_impact allows, so a CI job can tell a plan that would block production from one
-// that failed (M13-T6, ADR 0086).
+// that failed (M13-T6).
 //
 // Nothing else resolves itself here, and the boundary is deliberate. A history row this build
 // cannot read reports history.ErrCorrupt and a row written under a future checksum scheme reports
@@ -32,13 +32,13 @@ import (
 //
 // The selector refusals a run's own flags produce are tagged by the command that owns those flags
 // rather than added here, for the same reason: a sentinel resolved in this function is one every
-// command inherits, and engine.ErrNoSteps belongs to the two that register --step (ADR 0029, E).
+// command inherits, and engine.ErrNoSteps belongs to the two that register --step.
 //
 // ExitLockImpact is produced by --require-safe on migr plan and migr validate and by nothing else:
 // migr up is not gated, so the code means "a preview found this too costly" and never "a run stopped".
 //
 // ExitAwaiting is a migr up that stopped holding a shadow-table migration in sync, which stays waiting for
-// its cutover: the schema did not change, and nothing failed (M13-T14, ADR 0093). engine.ErrAwaitingCutover
+// its cutover: the schema did not change, and nothing failed (M13-T14). engine.ErrAwaitingCutover
 // is read here for the reason the lock sentinels are, so a deploy script can tell "changed" from "not yet".
 const (
 	ExitOK         = 0

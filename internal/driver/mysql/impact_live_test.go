@@ -253,7 +253,7 @@ func TestNoTableRewriteHappensThatWasNotDeclared(t *testing.T) {
 	t.Log("directly -- the relfilenode oracle one engine over. The assertion runs one way only:")
 	t.Log("whatever rewrote must have been declared table_rewrite. The converse is deliberately")
 	t.Log("false and the over-reports are logged by name, because a retype is declared a rewrite even")
-	t.Log("where the cast is free (ADR 0016), and MariaDB adds a parenthesised default instantly")
+	t.Log("where the cast is free, and MariaDB adds a parenthesised default instantly")
 	t.Log("where MySQL rewrites. Separating brief from long is a duration under load: M13-T12's.")
 }
 
@@ -428,7 +428,7 @@ func TestTheTwoServersAgreeAboutDroppingAColumnOnlyFromTheReleaseTheyBothHave(t 
 	t.Log("other half no container can reach: MySQL gained the instant drop at 8.0.29 and MariaDB at")
 	t.Log("10.4.3, below this driver's floor, so between 8.0 and 8.0.28 the two variants answer")
 	t.Log("differently for one operation. That span is tested against constructed versions in")
-	t.Log("impact_test.go, which is ADR 0052's reading of invariant #13.")
+	t.Log("impact_test.go, which is how invariant #13 reads for a version no container runs.")
 }
 
 func TestAUUIDDefaultIsRefusedByTheServerExactlyWhereTheDeclarationSaysSo(t *testing.T) {

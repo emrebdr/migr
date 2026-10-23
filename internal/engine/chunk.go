@@ -12,7 +12,7 @@ import (
 	"github.com/emrebdr/migr/internal/plan"
 )
 
-// A data-only migration runs one keyed chunk at a time, each chunk its own transaction (ADR 0078).
+// A data-only migration runs one keyed chunk at a time, each chunk its own transaction.
 // The chunk's transaction carries its checkpoint, so how far the run got is committed exactly when
 // the rows are -- and the first chunk's carries a dirty row as well, so a run killed between two
 // chunks leaves the evidence a failed one does. The last chunk's carries the applied row and clears

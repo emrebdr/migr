@@ -113,7 +113,7 @@ func TestTheSessionReportsAPreviewThatReachedTheDatabase(t *testing.T) {
 		t.Errorf("a run that sent exactly what it stated was reported: %v", problems)
 	}
 
-	t.Log("ADR 0032 and ADR 0036: under mode plan the engine records host.db.exec rather than")
+	t.Log("Under mode plan the engine records host.db.exec rather than")
 	t.Log("running it, so a preview that reaches the database has already changed something.")
 }
 

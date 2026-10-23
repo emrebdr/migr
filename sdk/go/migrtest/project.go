@@ -23,8 +23,8 @@ import (
 // "this project is not inside a Go module" before a migration is ever loaded.
 //
 // So it goes under <project>/.migr/, which is the directory the Go adapter already writes its
-// generated runner into, and which ignores itself from the inside with a .gitignore holding "*"
-// (ADR 0035). The database does not: it lives in the test's own t.TempDir() and is removed with it,
+// generated runner into, and which ignores itself from the inside with a .gitignore holding "*".
+// The database does not: it lives in the test's own t.TempDir() and is removed with it,
 // along with the lock file the SQLite driver puts beside it.
 //
 // The history table is derived per project rather than per test, because a test may stage two of them

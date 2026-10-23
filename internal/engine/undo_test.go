@@ -39,7 +39,7 @@ func TestAnAuthoredDownThatEmitsNothingRollsBackAndRecordsItsRow(t *testing.T) {
 
 	t.Log("The backfill phase of an expand/contract change has nothing of its own to undo: the")
 	t.Log("expand's down drops the column it filled. Its author says so by emitting nothing, and the")
-	t.Log("migration is still recorded rolled back, or the next up would find it applied (ADR 0079).")
+	t.Log("migration is still recorded rolled back, or the next up would find it applied.")
 }
 
 func TestAnUpThatEmitsNothingIsStillRefused(t *testing.T) {

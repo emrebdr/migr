@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the two release images the way a pipeline does (M14-T4, ADR 0101): a project mounted at /work,
+# Runs the two release images the way a pipeline does (M14-T4): a project mounted at /work,
 # the DSN in the environment, the image's own non-root user. `make test-docker` builds the images and
 # starts compose's postgres17 first.
 #

@@ -102,7 +102,7 @@ func TestTheHistoryTableIsCreatedAndSeenFromAnotherSession(t *testing.T) {
 	}
 }
 
-// Introspect leaves out the table the session was opened with (ADR 0069), which is this one -- so
+// Introspect leaves out the table the session was opened with, which is this one -- so
 // what describes it is a session pointed at a different history table, for which it is an ordinary
 // table like any other. That the name is what decides is the point rather than a way around it: the
 // same exclusion is why every migr diff over a migrated database does not propose dropping the
@@ -151,7 +151,7 @@ func TestASnapshotLeavesOutTheHistoryTableTheSessionRecordsIn(t *testing.T) {
 				described, historyTable) {
 				t.Errorf("the session's own history table is in its snapshot:\n%s", described)
 				t.Log("Read as part of the schema, migr's own bookkeeping would have every")
-				t.Log("migr diff propose dropping the migration history (ADR 0069).")
+				t.Log("migr diff propose dropping the migration history.")
 			}
 		})
 	}
@@ -373,7 +373,7 @@ func TestTheLogIsOrderedByTheKeyAndNotByTheClockOrByInsertion(t *testing.T) {
 		t.Errorf("the most recent run is batch %d, want 2", latest.Batch)
 		t.Log("Batch 2 was applied an hour before batch 1, so a reader keyed on applied_at picks")
 		t.Log("the wrong one. Two runs can also share a millisecond, and down reverses the last")
-		t.Log("batch -- so a tie there rolls two migrations back in the wrong order (ADR 0013).")
+		t.Log("batch -- so a tie there rolls two migrations back in the wrong order.")
 	}
 
 	t.Log("The rows are inserted out of order on purpose: on a small fresh table PostgreSQL")
@@ -497,7 +497,7 @@ func TestARowThisBuildCannotDecodeIsReportedAsCorruptRatherThanAsDrift(t *testin
 	}
 
 	t.Log("A corrupt row is not drift. Drift is exit code 4 and means someone edited an applied")
-	t.Log("migration; an unreadable row means this table needs manual repair (ADR 0013).")
+	t.Log("migration; an unreadable row means this table needs manual repair.")
 }
 
 func TestARowFromANewerBuildIsStillReadable(t *testing.T) {

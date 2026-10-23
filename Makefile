@@ -127,7 +127,7 @@ docs:
 docs-dev:
 	@cd docs && npm ci --silent --no-audit --no-fund && npx vitepress dev
 
-# A release is .github/workflows/release.yml, never a laptop (ADR 0098): signing needs that job's OIDC
+# A release is .github/workflows/release.yml, never a laptop: signing needs that job's OIDC
 # token. These two prove the configuration and the six archives locally, signing skipped.
 release-check:
 	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser not found: go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)"; exit 1; }
@@ -138,7 +138,7 @@ release-snapshot:
 	@goreleaser release --snapshot --clean --skip=sign,docker
 
 # The release's two Dockerfiles over a binary for this machine's architecture, laid out as
-# goreleaser's dockers_v2 lays out its context, so what is tested is what is released (ADR 0101).
+# goreleaser's dockers_v2 lays out its context, so what is tested is what is released.
 DOCKER_ARCH := $(shell go env GOARCH)
 DOCKER_CTX  := dist/docker
 
@@ -219,7 +219,7 @@ else
 endif
 	@echo "    containers left running; 'make clean' tears them down"
 
-# The zero-downtime proof (M13-T12, ADR 0096): every operation against every compose server and
+# The zero-downtime proof (M13-T12): every operation against every compose server and
 # SQLite, up and down, while eight readers and eight writers work the table, each held to its own
 # lock-impact verdict against MIGR_ZERODOWNTIME_BUDGET (1.5s unset). It brings the databases up for
 # test-integration's reason, and runs only the packages that carry the tag -- the three drivers, each

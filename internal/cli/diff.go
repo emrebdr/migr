@@ -55,7 +55,7 @@ func nameOf(args []string) string {
 // The whole command in the order it does it: read under the lock, release, then compute, ask, and
 // write. A rename prompt waits on a person, and holding the migration lock across that would block
 // every other migr run on the database for as long as they took to answer -- so the lock covers
-// reading and not asking. A report takes no lock at all (ADR 0027) and this is not a report: it
+// reading and not asking. A report takes no lock at all and this is not a report: it
 // persists its answer into a file, so the answer has to be about a database nobody is changing.
 
 // runDiff writes the migration that closes the gap between the live schema and the migrations.
@@ -211,7 +211,7 @@ func (s *session) readSchemas(ctx context.Context, opts *options,
 // A desired schema folded from every migration is the schema the database should have once they have
 // all run, so a diff over a half-migrated project would propose everything the pending ones do and
 // then duplicate them. Exit 1 rather than 2 throughout: the same command line succeeds once migr up
-// has run, so it is the world that is not ready (ADR 0029).
+// has run, so it is the world that is not ready.
 
 // checkSettled refuses a database the migrations do not already describe, naming what is unsettled.
 func (s *session) checkSettled(ctx context.Context, files []history.File) error {
@@ -431,7 +431,7 @@ func kindNames(ops ir.Operations) []ir.Kind {
 
 // A generated migration goes through migration.New, checkUnclaimed and writeNew -- the same three
 // migr create uses -- so there is one file format and one writer, and a version another file already
-// claims is refused here exactly as it is there (ADR 0025, C).
+// claims is refused here exactly as it is there.
 
 // writeGenerated puts the generated body in the migration file this run claimed at the start.
 func writeGenerated(opts *options, t *target, m migration.Migration, body string) (string, error) {
@@ -506,7 +506,7 @@ type generated struct {
 }
 
 // A command that printed only the operations would write a migration that silently does not close
-// the gap, so both of the differ's return values are rendered (ADR 0070, H).
+// the gap, so both of the differ's return values are rendered.
 
 // String renders what was written, what was not proposed, and what nothing confirmed.
 func (g generated) String() string {

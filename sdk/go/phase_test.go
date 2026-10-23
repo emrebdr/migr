@@ -98,5 +98,5 @@ func TestEachPhaseOfAReplacementWaitsOnTheOneBeforeIt(t *testing.T) {
 
 	t.Log("The four phases are a release apart each: a backfill in the deploy that expanded misses")
 	t.Log("the rows the old app writes, and a contract in the deploy that swapped drops a column the")
-	t.Log("old app still reads (ADR 0087).")
+	t.Log("old app still reads.")
 }

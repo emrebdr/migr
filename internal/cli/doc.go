@@ -65,21 +65,21 @@
 //
 // It goes to stderr, as one object on one line, so stdout keeps holding exactly
 // one result document -- a run that committed two migrations and then failed
-// owes both answers, and putting them in one stream makes neither parseable
-// (ADR 0029, A). The three errors that render paragraphs -- engine.DriftError,
+// owes both answers, and putting them in one stream makes neither parseable.
+// The three errors that render paragraphs -- engine.DriftError,
 // engine.DirtyError and engine.DirtyStateError -- are carried as the fields they
 // are built from rather than as their prose; the prose is what --json exists to
 // replace, so it is not repeated beside them.
 //
 // The last two share the `dirty` key and are told apart by its `sense`, which is
 // `became` for a run that just left the schema between states and `already` for
-// one refused over a database that was. That is the distinction ADR 0024 draws
+// one refused over a database that was. That is the distinction the engine draws
 // with errors.As, written into the document so a consumer branches on a named
 // field rather than on which key turned up. Fields only one sense knows are
 // absent from the other: a run that just failed knows its statement total and
 // the declaration of the session it ran on, and a row read back knows when it
 // was recorded. transactional_ddl is a pointer for that reason -- a false there
-// would read as a session the refusal never asked (ADR 0061).
+// would read as a session the refusal never asked.
 //
 // # The one command that repairs, and the two ways it reaches a database
 //
@@ -97,7 +97,7 @@
 // session, so nothing needs compiling. That is not an optimization: a
 // migration that no longer builds is exactly when an operator reaches for
 // them, and starting a runtime to write a bookkeeping row would fail for a
-// reason that has nothing to do with the repair (ADR 0062).
+// reason that has nothing to do with the repair.
 //
 // What it prints is a third rendering of one history row. recordedRun is the
 // shape migr status and migr history already print, and the statements a
@@ -129,15 +129,15 @@
 //
 // The driver registry is a parameter of Execute rather than something this
 // package builds: cmd/migr is the only place that may name a concrete driver
-// (invariant #1), and registration is explicit so a duplicate name is reportable
-// (ADR 0011). Passing it in is also what lets the untagged suite drive every
+// (invariant #1), and registration is explicit so a duplicate name is reportable.
+// Passing it in is also what lets the untagged suite drive every
 // command against a fake database with no Docker at all.
 //
 // config.Target resolves --database, else the "default" key, else the only
 // database defined, else it refuses naming them all. It never fans out. A
 // migr.yaml holding a development target and a production one is an ordinary
 // file, and `migr up` reaching production because nobody typed a flag is not a
-// mistake a tool should be able to make (ADR 0026, F).
+// mistake a tool should be able to make.
 //
 // # A summary prints before its error
 //
@@ -154,7 +154,7 @@
 // database someone else is changing is not one; a status answers "what is" and
 // does not promise to act on it. Locking would make a read-only report block a
 // deploy and give it an exit code 3 of its own, when it is exactly the command
-// an operator wants during one (ADR 0027, A).
+// an operator wants during one.
 //
 // They exit 0 having found drift or a dirty migration. The five states are the
 // output, not the failure -- migr up is already the gate that exits 4 and 1, and
@@ -162,7 +162,7 @@
 //
 // A database with no history table is printed as itself: one sentence, plus how
 // many migration files are on disk, and no rows. Not N pendings, which is what a
-// preview says and what ADR 0019 exists to prevent -- read that way, a fully
+// preview says and what history.ErrNoTable exists to prevent -- read that way, a fully
 // migrated production database looks virgin.
 //
 // The fold is history.Read plus history.Reconcile, called here rather than
@@ -216,7 +216,7 @@
 // migr create --lang still writes a file for another language on purpose, and
 // now the project simply runs it.
 //
-// The source is built after connect and never before it (ADR 0040). A runtime
+// The source is built after connect and never before it. A runtime
 // session needs the driver.Conn its callbacks reach, so before the connection
 // exists there is nothing to give one; t.sources takes it as a parameter, and
 // building the source first is refused by runtime.Options.check rather than by
@@ -225,7 +225,7 @@
 // than leaking a backend on every failed run; and session.close ends the process
 // before closing the connection, because a callback in flight reaches it. Those
 // two defers are not interchangeable, for the reason the lock and the
-// transaction are not (ADR 0020).
+// transaction are not.
 //
 // Consequently status renders a filename and history renders version_name. No
 // history row records an extension, deliberately, since a run may outlive the
@@ -239,7 +239,7 @@
 // one: discovered puts the directory in version order, sources starts what reads
 // each language and brings back what each of its migrations declared, and attach
 // calls migration.Order over the union before hashing the sequence that came
-// back (ADR 0049). validate takes the same step between offlineSource and
+// back. validate takes the same step between offlineSource and
 // validate.Run, so the gate reads the sequence it gates.
 //
 // The digests follow the order rather than the order following them:
@@ -255,8 +255,8 @@
 // wherever they surface: migration.Order reports every one of both in one pass,
 // each cycle as its path in filenames, and a migration is what an operator edits.
 //
-// status prints version order and names it. It starts no runtime by design
-// (ADR 0027), so it cannot read an edge at all; claiming the run order anyway
+// status prints version order and names it. It starts no runtime by design,
+// so it cannot read an edge at all; claiming the run order anyway
 // and caching the declarations where a report could read them were the
 // alternatives, and the second is a new record of what the migrations say with
 // its own invalidation. The basis is in --json as order, and the one-line note
@@ -277,7 +277,7 @@
 // Each operation carries the verdict this engine gives it, printed whether it is
 // native or emulated: a label that appears only when something is unusual is one
 // nobody learns to read. The verdict is the step's own, resolved by the planner
-// from the session's declaration (M13-T6, ADR 0086).
+// from the session's declaration (M13-T6).
 //
 // --safety prints each operation's lock cost beside it: the rewrite's where one
 // applies, nothing on a table the migration creates, and the first queued
@@ -290,20 +290,20 @@
 // a report whose only problems are those exits 5, and any other problem keeps it 2.
 //
 // migr up, its --dry-run and migr plan take --release, the deploy a run belongs to, falling back to
-// MIGR_RELEASE (M13-T7, ADR 0087). A step of a change across deploys that waits for a later release
+// MIGR_RELEASE (M13-T7). A step of a change across deploys that waits for a later release
 // stops the run with a ⏸ held line naming it and why, and the run exits 0; --json carries held.
 // engine.ErrNoRelease is resolved to exit 2 beside ErrDestructive, the operator adding the flag, and
 // a phase declaration no deploy could carry out is exit 2 at discovery, in migr validate too.
 //
 // It marks an operation the session performs as a safer sequence with a ↳ rewritten
 // line naming its safety.rewrites key, how many statements it became and why, and
-// closes with a note naming the key that switches each one off (M13-T5, ADR 0085).
+// closes with a note naming the key that switches each one off (M13-T5).
 // --json carries it as rewrite. --dry-run and migr up count the operations rewritten,
 // and -v logs each one as it runs, so a rewrite is never silent.
 //
 // It marks a statement that cannot run inside a transaction with a [no transaction]
 // line directly above it, and a migration holding one with how many parts it runs
-// as, each committing on its own (M13-T4, ADR 0084); --json carries both, as
+// as, each committing on its own (M13-T4); --json carries both, as
 // no_transaction positions beside an operation's statements and parts beside a
 // migration, and --dry-run's row says "in N parts". M5-T4 wrote that marker and
 // deleted it, because the executor refused every migration that could carry one.
@@ -333,15 +333,14 @@
 // statement in such a migration is a raw operation migr cannot read -- so
 // without it a scaffolded project could not run its own first migration, which
 // is the failure the dsn fallback already exists to avoid. The comment beside it
-// is what makes it a decision rather than a restated default. See
-// docs/adr/0063-destructive-operations.md.
+// is what makes it a decision rather than a restated default.
 //
 // # A lint rule reaches migr validate and no other command
 //
 // rulesFor resolves migr.yaml's validation.rules against the rules this build
 // ships, and only runValidate reads it: there is no flag, and migr up, migr plan
-// and --dry-run say nothing about rules at all. That is ADR 0066's E, which is
-// M10-T4's own note read straight -- the run's gates are each about whether an
+// and --dry-run say nothing about rules at all. That is M10-T4's own note read
+// straight -- the run's gates are each about whether an
 // operation is correct or permitted, and a practice judgment is not one of those.
 //
 // A rule at error is a problem and exits 2; one at warn is printed in a section
@@ -367,7 +366,7 @@
 // from migr.yaml and asked to compile, and nothing calls Open. It reads every
 // migration, compiles both directions for the configured engine, and checks
 // that something can undo each one -- reporting every problem rather than the
-// first (ADR 0028).
+// first.
 //
 // Opening no database is not the same as needing no configuration. Which engine
 // to compile for comes from migr.yaml, so a config it cannot read is still a
@@ -377,27 +376,26 @@
 // and nowhere else: every other command either opens a database already or is a
 // report that must not. It opens the session before anything else runs, so a DSN
 // that points nowhere fails before a runtime is spawned, reads Capabilities(),
-// and closes -- a verdict performs no I/O (ADR 0012), so the declaration outlives
+// and closes -- a verdict performs no I/O, so the declaration outlives
 // the connection that produced it. It takes no migration lock and reads no
 // history: this is the command an operator reaches for during a deploy.
 //
 // An unreachable database fails the command rather than skipping the check, which
-// is ADR 0028 B2's rule: a gate that silently drops a check reports a pass it did
+// is validate's rule: a gate that silently drops a check reports a pass it did
 // not earn. Without the flag the report says so in a sentence of its own, because
 // "no problems found" alone would make the two runs indistinguishable. It names
 // the server it did reach, which is also what --json carries beside connected.
-// See docs/adr/0064-capability-preflight.md.
 //
 // The migrations themselves are still asked over driver.Offline even with the
 // flag, and that is deliberate rather than unfinished: answering a migration's
 // own reads live would make its verdict depend on how far that database happens
 // to be migrated, so a read of a table an earlier migration creates would fail
 // against an empty CI database and the report would call the migration broken.
-// Unchecked is the honest answer there (ADR 0040), and it stays the answer.
+// Unchecked is the honest answer there, and it stays the answer.
 //
-// A language needing a runtime keeps that promise rather than trading it away
-// (ADR 0040). The process is started -- so a module that will not build, and the
-// registration errors ADR 0037 answers at migration.discover, are caught here and
+// A language needing a runtime keeps that promise rather than trading it away.
+// The process is started -- so a module that will not build, and the
+// registration errors the Go SDK answers at migration.discover, are caught here and
 // nowhere earlier -- but the session behind it is driver.Offline, which refuses
 // every database call. A migration that reads nothing is therefore validated in
 // full, exactly as a .sql one is; a migration that reaches the database is
@@ -435,7 +433,7 @@
 //
 // ConfirmRenames is the interactive half of M11-T4 and its one caller is
 // M11-T5's migr diff: detection is pure and so is emission, so the person goes
-// between them rather than inside either (ADR 0072). The policy is this
+// between them rather than inside either. The policy is this
 // package's rather than that command's, and it is one asymmetry throughout.
 //
 // A declined rename becomes a drop and a create, which invariant #7 gates -- the
@@ -466,7 +464,7 @@
 // the seed table -- the seeding wrapper -- so the lock, the transactions, dirty,
 // drift and resume are a migration's own and nothing in internal/engine branches
 // on seeds. The lock is the migration lock: a driver keys it by the history table
-// alone, so a seed and a migr up exclude each other (ADR 0076, A).
+// alone, so a seed and a migr up exclude each other.
 //
 // It refuses unless every migration has run, which is the whole of seeds never
 // mixing with migration ordering: a seed always meets the schema the migrations
@@ -488,5 +486,5 @@
 // run holding it, never as current. --confirm VERSION writes the one column the holder reads, and
 // takes no migration lock, since that run holds it for the whole hold. A migr up that stops
 // holding one exits 6, and --unattended or MIGR_UNATTENDED cuts over at the first caught-up read
-// with no confirmation (M13-T14, ADR 0093).
+// with no confirmation (M13-T14).
 package cli

@@ -139,7 +139,7 @@ func TestTheConformanceSuitePassesWithoutAServer(t *testing.T) {
 	t.Log("four servers produced five failures between them -- add_check and drop_check on 8.0.0,")
 	t.Log("drop_check on 8.0.15 and 8.0.18, rename_column on MariaDB 10.5.0. A declaration may")
 	t.Log("refuse more than Compile does, because it is resolved against a server Compile cannot")
-	t.Log("see; what it may never do is promise what Compile refuses (ADR 0064).")
+	t.Log("see; what it may never do is promise what Compile refuses.")
 }
 
 // describeDeclaration names one declaration, since two cases may differ by configuration alone.

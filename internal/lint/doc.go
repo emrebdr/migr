@@ -4,7 +4,7 @@
 // The reasoning is in CLAUDE.md §9. In short: a block that needs a comment to be
 // understood should be a named function instead, because the name is visible at every
 // call site and a name that stops fitting the code is obvious, where a stale comment is
-// invisible. Longer prose belongs in a package doc, in docs/, or in an ADR — places read
+// invisible. Longer prose belongs in a package doc or in docs/ — places read
 // deliberately rather than skimmed past on the way to the code.
 //
 // # Owner

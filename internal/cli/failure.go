@@ -158,7 +158,7 @@ const (
 
 // halted is how far a run got before it left the schema between states, as fields.
 type halted struct {
-	// Sense is whether this run became dirty or the database already was, which ADR 0024 separates.
+	// Sense is whether this run became dirty or the database already was, which the engine's errors separate.
 	Sense string `json:"sense"`
 	// Version is the migration's UTC timestamp, which names it when no file carries one.
 	Version string `json:"version"`

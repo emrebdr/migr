@@ -54,8 +54,7 @@ Writing `down` _and_ `irreversible` does not compile, because both cannot be tru
 sends the database a statement itself has no inverse to derive, so it owes one of the first two.
 
 A `down` that emits nothing says there is nothing to undo, and the rollback is recorded with no
-statement run. An `up` that emits nothing is still refused
-(ADR 0079).
+statement run. An `up` that emits nothing is still refused.
 
 ### `dependencies` is data, not a method
 
@@ -122,7 +121,7 @@ literal emit the same bytes, which is asserted for all twenty.
 `JSON.stringify` happens to escape exactly what
 [`docs/ir.md` §3.3](../../docs/ir.md) asks for, including U+2028 and U+2029, which Go's encoder
 escapes whatever it is told — so this SDK is the conforming one there and the Go copies undo their
-own encoder (ADR 0047). A test holds the line
+own encoder. A test holds the line
 `host.schema.apply` writes to that, because the bytes on the wire come from the envelope's
 `stringify` rather than from the operation codec the spec test exercises.
 
@@ -311,8 +310,7 @@ There is a second exemption and it is narrow: a file whose name is a **well-form
 extension this runtime does not load — `20260727T153000_add_users.go` — belongs to another runtime and
 is skipped, because one directory may hold more than one language. A `README.md` is not that, and is
 still refused. Nothing is skipped by everything in silence: migr routed every file by its extension
-and holds what each runtime reports here against what it sent
-(ADR 0048).
+and holds what each runtime reports here against what it sent.
 
 ## The version means something
 
@@ -324,8 +322,7 @@ nothing anywhere reads this package's version to decide behaviour.
 
 It has a cost worth knowing before you read a changelog: a protocol bump forces a major release of
 a package whose API may not have changed, and a breaking change to _this API_ cannot take the major
-without misreporting the protocol. See
-ADR 0041.
+without misreporting the protocol.
 
 Three tests hold the claim up rather than leaving it to a release checklist: `VERSION` matches
 `package.json`, its major matches `PROTOCOL_VERSION`, and `PROTOCOL_VERSION` matches the version
@@ -382,7 +379,7 @@ r.down.is(...); // empty exactly when the engine derives the inverse
 ```
 
 It does not invert anything. Every inverse lives in the engine, so that two SDKs cannot reach two
-answers for one migration (ADR 0022) — whether an
+answers for one migration — whether an
 operation can be inverted at all is reported by `migr validate` below. The one rollback this can see
 is impossible it throws over: an up that sends statements of its own and authors no down, since a
 statement has no inverse to derive.
@@ -409,7 +406,7 @@ is `MIGR_BIN`, or `migr` on `PATH`; when there is neither this **fails rather th
 
 `roundTrip()` catches residue: a down that left a table behind makes the second up fail, and the
 server is what says so. It is not a comparison of two schema snapshots — that needs introspection the
-engine does not expose yet. See ADR 0068.
+engine does not expose yet.
 
 **The test file does not go in the migrations directory.** Discovery is strict and dotfiles are its
 only exemption, so a `migrations.test.ts` sitting beside the migrations is refused by name and every

@@ -20,7 +20,7 @@ import (
 
 // A TypeScript migration is a module with a default export, so nothing here needs a unique
 // identifier the way the Go writer does -- which is the module system replacing the registry
-// (ADR 0042) showing up one more time.
+// showing up one more time.
 
 // Render writes one migration's operations as the whole TypeScript file that carries them.
 func Render(m migration.Migration, ops ir.Operations) (string, error) {
@@ -73,7 +73,7 @@ func statements(ops ir.Operations) (string, error) {
 	return body.String(), nil
 }
 
-// A chain built and never awaited is the one failure this SDK has that Go's does not (ADR 0043), so
+// A chain built and never awaited is the one failure this SDK has that Go's does not, so
 // every statement is awaited -- which is also what the template writes.
 
 // render writes one chain as the awaited statement it is.

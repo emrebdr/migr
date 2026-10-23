@@ -293,7 +293,7 @@ func TestRawIsTheOnlyAllowedOperationLeftWithNoLockVerdict(t *testing.T) {
 
 	t.Log("The inverse of what this test asserted until M9-T3: every operation but one now carries a")
 	t.Log("verdict resolved from the ALGORITHM the server applies. raw keeps LockUnknown permanently,")
-	t.Log("because nothing can know what an operator's own SQL does -- ADR 0016's point that")
+	t.Log("because nothing can know what an operator's own SQL does -- and the point is that")
 	t.Log("\"unknown means unclassified\" is the wrong reading of the verdict.")
 }
 
@@ -330,7 +330,7 @@ func TestAColumnWithAUUIDDefaultIsRefusedOnAServerWritingABinaryLog(t *testing.T
 	t.Log("binlog_format=ROW -- because the column is materialized into every row and a replica would")
 	t.Log("compute different values. SET sql_log_bin=0 makes it pass, which is what says the binary")
 	t.Log("log is the condition. MariaDB 11.4.13 started with --log-bin accepts it, so the refusal is")
-	t.Log("MySQL's alone, and the server is asked rather than the variant assumed (ADR 0016).")
+	t.Log("MySQL's alone, and the server is asked rather than the variant assumed.")
 }
 
 func TestTheOtherThreeDefaultFunctionsAreNotCaughtByThatRefusal(t *testing.T) {

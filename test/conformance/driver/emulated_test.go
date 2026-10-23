@@ -79,7 +79,7 @@ func TestAnEmulationThisServerRefusesIsAllowed(t *testing.T) {
 	t.Log("An emulation is compiled against the database and still declared against the server, so")
 	t.Log("a release that cannot perform it refuses it here rather than halfway through a rebuild.")
 	t.Log("No driver reaches this today -- MySQL's version gates name no operation it emulates --")
-	t.Log("and the next one to grow such a gate must not have to edit this suite (ADR 0064).")
+	t.Log("and the next one to grow such a gate must not have to edit this suite.")
 }
 
 func TestAnEmulationWithNoSessionToExpandItIsADisagreement(t *testing.T) {

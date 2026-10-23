@@ -132,7 +132,7 @@ func TestASessionAgeTheServerWithheldIsNotReportedAsBrandNew(t *testing.T) {
 	}
 
 	t.Log("The last case is why the second return exists: a session opened this instant really is")
-	t.Log("zero milliseconds old, and until ADR 0060 that was indistinguishable from an age the")
+	t.Log("zero milliseconds old, and until Measured existed that was indistinguishable from an age the")
 	t.Log("server withheld. The label the holder now carries is what says which, and it is set only")
 	t.Log("where a number was read.")
 }

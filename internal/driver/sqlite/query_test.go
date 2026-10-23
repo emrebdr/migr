@@ -71,7 +71,7 @@ func TestAWriteSentThroughTheReadPathIsRefusedByTheEngine(t *testing.T) {
 
 	t.Log("A writing PRAGMA is the case that decides this. It begins with PRAGMA, so a host-side")
 	t.Log("check on the leading keyword passes it, and it writes the database header -- which is")
-	t.Log("what ADR 0032's data-modifying CTE is for PostgreSQL, an engine SQLite has no CTE for.")
+	t.Log("what the data-modifying CTE is for PostgreSQL, an engine SQLite has no CTE for.")
 }
 
 func TestTheSessionCanWriteAgainAfterARead(t *testing.T) {
@@ -134,7 +134,7 @@ func TestEveryStorageClassComesBackAsTheTextTheProtocolCarries(t *testing.T) {
 
 	t.Log("The integer is past 2^53, which is where a JSON number stops being exact and why every")
 	t.Log("value crosses the wire as text. The blob renders the way PostgreSQL renders a bytea, so")
-	t.Log("one migration reading one column gets the same answer from either engine (ADR 0050).")
+	t.Log("one migration reading one column gets the same answer from either engine.")
 }
 
 func TestATextValueThatIsNotUTF8IsRefusedNamingItsColumn(t *testing.T) {

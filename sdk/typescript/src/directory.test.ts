@@ -346,9 +346,7 @@ test("a migration in another language is skipped, where a file that is not one i
     "migrations/README.md": "these are the migrations\n",
   });
 
-  t.diagnostic(
-    "One directory may hold two languages (ADR 0048), so a well-formed migration name in",
-  );
+  t.diagnostic("One directory may hold two languages, so a well-formed migration name in");
   t.diagnostic(
     "an extension this runtime does not load belongs to another runtime. A README is not",
   );

@@ -17,7 +17,6 @@ import (
 // rather than the exported sqlitetest package it used to be. That package existed so cmd/migr could
 // ask, since no test above a driver may compose SQL; Conn.Introspect answers that caller neutrally
 // as of M11-T2, so the package went at M11-T6 and the probe came in here.
-// See docs/adr/0074-the-neutral-round-trip.md.
 
 // objectQuery renders every object this database holds, which is the whole of what SQLite records.
 //

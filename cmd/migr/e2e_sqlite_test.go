@@ -16,7 +16,7 @@ import (
 
 // The whole stack against a real database, untagged, because this engine needs no daemon.
 //
-// ADR 0050: a tag names a requirement, and SQLite's is a t.TempDir(). So this is the first
+// A tag names a requirement, and SQLite's is a t.TempDir(). So this is the first
 // end-to-end CLI round trip inside make check and on both CI legs -- PostgreSQL's equivalent is
 // reachable only through the Docker job.
 //
@@ -28,7 +28,7 @@ import (
 const sqliteHistoryTable = "migr_e2e_sqlite"
 
 // sqliteMigrations cover a table with an index and SQLite's native DROP COLUMN, which is the most
-// expensive operation this engine has -- it rewrites the whole table content (ADR 0052).
+// expensive operation this engine has -- it rewrites the whole table content.
 //
 // They are .sql, so every one of them reaches the database as ir.Raw. That is the limit of what this
 // project can prove and the reason the Go project below exists: a rebuild needs a real operation, and
@@ -122,7 +122,7 @@ func sqliteDigest(t *testing.T, database string) string {
 }
 
 // The history table is excluded by opening the session with it rather than by a parameter of the
-// probe's: Introspect leaves out the table migr records its own runs in (ADR 0069), so a comparison
+// probe's: Introspect leaves out the table migr records its own runs in, so a comparison
 // of two moments cannot differ by the row the run between them wrote.
 
 // sqliteDigestOf renders what a database holds, as the neutral snapshot every driver answers with.
@@ -322,7 +322,7 @@ func TestADatabaseWithNoHistoryTableIsPrintedAsItselfRatherThanAsEveryMigrationP
 		t.Errorf("status did not say the history table is absent:\n%s", out)
 	}
 
-	t.Log("ADR 0019: read as \"no runs yet\", a fully migrated production database looks virgin.")
+	t.Log("Read as \"no runs yet\", a fully migrated production database looks virgin.")
 	t.Log("status creates nothing, so it is the command that meets history.ErrNoTable for real.")
 }
 

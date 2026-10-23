@@ -13,7 +13,7 @@ import (
 // cancelFallback is how long the server has to answer a cancel request before the socket is given up on.
 //
 // Answering is measured in milliseconds; this bound only matters when the server cannot be reached,
-// and then the session is lost either way (ADR 0083).
+// and then the session is lost either way.
 const cancelFallback = 5 * time.Second
 
 // pgx's default puts a deadline on the socket, and the closed connection sends its cancel request

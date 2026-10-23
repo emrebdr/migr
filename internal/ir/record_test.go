@@ -251,7 +251,7 @@ func TestAttributionNeverReachesTheDocument(t *testing.T) {
 			t.Errorf("attribution leaked into the IR document: found %q", leak)
 			t.Log("A call site is a machine-specific path. In the document it would make")
 			t.Log("checksums differ between CI and a laptop (M1-T6) and would break the")
-			t.Log("byte-identical-IR guarantee across SDKs (ADR 0003).")
+			t.Log("byte-identical-IR guarantee across SDKs.")
 		}
 	}
 

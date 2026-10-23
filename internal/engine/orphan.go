@@ -13,7 +13,7 @@ import (
 
 // A change stream's server-side resource that nothing reads is not litter: PostgreSQL keeps every
 // byte of WAL for a replication slot until something advances it, so an abandoned one fills the
-// disk (ADR 0094). A resource is orphaned when no copying or syncing shadow-table state owns it.
+// disk. A resource is orphaned when no copying or syncing shadow-table state owns it.
 // It is this project's own -- and migr up releases it under the migration lock -- where its state
 // cut over, so only a kill between the swap and the release can have left it, or where its derived
 // name is a version this project carries with no state at all, so only a start killed before its

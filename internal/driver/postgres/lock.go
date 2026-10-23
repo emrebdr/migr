@@ -12,7 +12,7 @@ const missingValueRelease = 11
 //
 // The files are unlinked at commit and the lock is released after it, so the hold grows with the
 // relation: measured on 16 and 17, DROP TABLE went from 2.5 ms at 224 kB to 22 ms at 471 MB, and DROP
-// INDEX from 1.6 ms at 136 kB to 30 ms at 760 MB (ADR 0081).
+// INDEX from 1.6 ms at 136 kB to 30 ms at 760 MB.
 const storageImpact = capability.LongExclusive
 
 // rawImpact is permanent rather than pending: the framework cannot know what a raw statement does.

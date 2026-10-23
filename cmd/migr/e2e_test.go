@@ -13,7 +13,7 @@ import (
 
 // The half of the end-to-end harness that names no engine, so both suites here can drive the CLI.
 //
-// It is untagged because SQLite's suite is: that engine needs no daemon (ADR 0050), so a whole
+// It is untagged because SQLite's suite is: that engine needs no daemon, so a whole
 // migr up and migr down against a real database costs a t.TempDir() and belongs in make check.
 // PostgreSQL's half stays behind //go:build integration, which may use what is here -- a tagged
 // file sees untagged declarations, and not the other way round, which is why these moved.
@@ -73,7 +73,7 @@ func migrOut(t *testing.T, config string, args ...string) string {
 }
 
 // A report and the failure it adds up to go to different streams: migr validate prints what it
-// found on stdout and one line naming the outcome on stderr (ADR 0029). So a command that reports
+// found on stdout and one line naming the outcome on stderr. So a command that reports
 // and then fails needs a reader of stdout that does not treat the exit code as a setup error.
 
 // migrReport captures what a command printed on stdout, whatever it then exited with.

@@ -7,10 +7,10 @@
 // migration is ever loaded.
 //
 // So it goes under <project>/.migr/, which is the directory migr already owns inside a project and
-// which ignores itself from the inside with a .gitignore holding "*" (ADR 0035). The database does
+// which ignores itself from the inside with a .gitignore holding "*". The database does
 // not: it goes in a temporary directory of its own, and remove() takes both away.
 //
-// Every command is spawnSync, so nothing is left running for a test to clean up after (ADR 0045) and
+// Every command is spawnSync, so nothing is left running for a test to clean up after and
 // an assertion reads like one. The documents are read from --json rather than scraped from the
 // tables, since those shapes are ones internal/cli specifies and tests.
 

@@ -180,7 +180,7 @@ func TestWhatEachMigrationDeclaredComesBackWithWhatWasLoaded(t *testing.T) {
 	if len(declared) != 1 || !slices.Equal(declared[dependent], []string{fixture.Version}) {
 		t.Errorf("the declarations came back as %v", declared)
 		t.Log("The engine already makes this call to reconcile what a runtime loaded against what it")
-		t.Log("routed there (ADR 0048), so the declarations it needs to order the run cost no second")
+		t.Log("routed there, so the declarations it needs to order the run cost no second")
 		t.Log("round trip. M7-T10 parsed the filename here and dropped this field.")
 	}
 
@@ -220,7 +220,7 @@ func TestALineThatCannotBeFramedIsRefusedOnceAndEndsTheSession(t *testing.T) {
 
 	if _, err := s.Discovered(t.Context()); err == nil {
 		t.Error("a call after the framing failure was answered")
-		t.Log("ADR 0031, A: the reader is spent. Reading on would leave whoever was waiting on the")
+		t.Log("The reader is spent. Reading on would leave whoever was waiting on the")
 		t.Log("line that could not be read waiting forever, with the migration lock held.")
 	}
 }
@@ -383,7 +383,7 @@ func TestTheCloseLadderDoesNotInheritTheCancellationThatTriggeredIt(t *testing.T
 	stop()
 
 	if err := s.Close(ctx); err != nil {
-		t.Log("ADR 0020 gave the unlock path this discipline first: a release that inherits the")
+		t.Log("The unlock path had this discipline first: a release that inherits the")
 		t.Log("cancellation fails exactly when it matters most. Ctrl-C is the common case here,")
 		t.Log("and it is the one where the courtesy is worth most.")
 		t.Fatalf("Close on a canceled context: %v", err)
@@ -582,7 +582,7 @@ func TestAPlannedMigrationsOwnStatementsComeBackHeldRatherThanRun(t *testing.T) 
 	}
 
 	t.Log("host.Call.Statements() had no reader until M6-T6, so migr plan over a Go migration")
-	t.Log("would have omitted a statement migr up commits on its own (ADR 0032, ADR 0036).")
+	t.Log("would have omitted a statement migr up commits on its own.")
 
 	if len(emitted.Direct) != 1 {
 		t.Fatalf("Emit carried out %d statements, want the one the migration sent", len(emitted.Direct))

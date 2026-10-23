@@ -14,8 +14,7 @@
 // The source is the migration file's raw bytes with every \r\n and every lone \r rewritten
 // to \n, and nothing else changed. The IR is the bare operations array, ir.Marshal of
 // Recording.Operations(). Both digests are lowercase hex, and the whole value is 135 ASCII
-// characters. That is the entire specification; docs/adr/0009-migration-checksum.md records
-// why it is that and not something else.
+// characters. That is the entire specification.
 //
 // # Two halves, two jobs
 //
@@ -39,7 +38,7 @@
 // renders engine.DriftError; internal/cli maps engine.ErrDrifted to exit code 4. Nothing else in
 // the repository compares two checksums, and nothing should — a second comparison is how two
 // answers about one migration start to disagree, and a comparison written against Checksum rather
-// than against Checksum.Source is the exact mistake ADR 0009 spent its Context section on.
+// than against Checksum.Source is the exact mistake this package exists to prevent.
 //
 // This package therefore exposes no Equal, no Verify, and no drift type. Checksum is comparable,
 // so == exists for a test that wants it, and the halves are separate fields so a caller has to
@@ -62,7 +61,7 @@
 //
 // # What is deliberately outside the hashed bytes
 //
-// The irVersion envelope. ADR 0007 puts the hashable unit at the operations array, so a version
+// The irVersion envelope. The hashable unit is at the operations array, so a version
 // bump that reshapes no operation leaves every applied migration's checksum untouched rather
 // than firing drift detection across every installation at once.
 //
@@ -102,11 +101,11 @@
 //
 // One vector has moved, once, and the circumstances are what a later reader needs. In M7-T9
 // ir.Marshal stopped escaping U+2028 and U+2029, which docs/ir.md §3.3 had always said were
-// emitted as UTF-8 (ADR 0047), so the lineSeparators vector's IR half changed while its source
+// emitted as UTF-8, so the lineSeparators vector's IR half changed while its source
 // half and every other vector stayed put. Its new value was derived by hashing the expected
 // bytes outside this package, and hashing the old bytes the same way reproduced the old value —
-// which is the difference between deriving a vector and accepting one. A decision recorded in an
-// ADR is the only thing that may move another, and v1 having never been released is the
+// which is the difference between deriving a vector and accepting one. A deliberate, documented
+// decision is the only thing that may move another, and v1 having never been released is the
 // condition that made it payable at all: after a release, the same change reads as every applied
 // migration in every installation having drifted.
 //

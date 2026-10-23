@@ -70,7 +70,7 @@ func TestNoProposedListIsOneTheRunWouldRefuse(t *testing.T) {
 	t.Log("refused here, which is what makes refusing it in the differ the cheaper answer.")
 	t.Log("The rollback half reads Stated alone because that is how the engine reads it: an add is")
 	t.Log("inverted by name, so the inverse of a create_table is a drop that records nothing -- and")
-	t.Log("ADR 0069 permits the implied half of a rollback for the reason §7 judges only an up's")
+	t.Log("An authored down permits the implied half of a rollback for the reason §7 judges only an up's")
 	t.Log("destruction. Both directions are still judged in full, as two cases rather than one.")
 }
 

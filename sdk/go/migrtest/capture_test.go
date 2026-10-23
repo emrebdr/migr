@@ -48,7 +48,7 @@ func TestBothModesEmitTheSameOperations(t *testing.T) {
 		}
 	}
 
-	t.Log("ADR 0033: the engine records operations in both modes, so a preview that emitted")
+	t.Log("The engine records operations in both modes, so a preview that emitted")
 	t.Log("something else would be a preview of a run that never happens.")
 }
 
@@ -209,7 +209,7 @@ func TestAStagedEngineIsWhatTheMigrationIsToldAboutExceptTheMode(t *testing.T) {
 	}
 
 	t.Log("A staged Mode is overwritten with the mode this call really is, as the engine's own")
-	t.Log("host does: the mode is the call's, never the session's or the stage's (ADR 0033).")
+	t.Log("host does: the mode is the call's, never the session's or the stage's.")
 }
 
 func TestACaptureFailsOnEverythingTheHalfGotWrong(t *testing.T) {

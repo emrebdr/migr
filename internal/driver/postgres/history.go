@@ -55,7 +55,7 @@ func (h pgHistory) selectStatement(order string) string {
 	return "SELECT " + quoteAll(historyColumns) + "\nFROM " + quote(h.table) + "\nORDER BY " + order
 }
 
-// runOrder is the order the runs happened, which is the key rather than the clock (ADR 0013).
+// runOrder is the order the runs happened, which is the key rather than the clock.
 const runOrder = `"batch", "ordinal"`
 
 // latestOrder reverses the run order, so one row is the most recent run.

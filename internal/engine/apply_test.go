@@ -56,7 +56,7 @@ func TestEachMigrationIsRecordedBeforeItsTransactionCommits(t *testing.T) {
 		t.Fatalf("the session was asked for\n  %v\nwant\n  %v", conn.calls, want)
 	}
 
-	t.Log("ADR 0013: the row is written inside the migration's transaction, so a crashed run")
+	t.Log("The row is written inside the migration's transaction, so a crashed run")
 	t.Log("leaves no row at all rather than one claiming a migration was applied that was not.")
 	t.Log("A row written after the commit is a window where the schema and the history disagree.")
 }
@@ -192,7 +192,7 @@ func TestAFailedRunIsRecordedOnlyAfterItsTransactionRolledBack(t *testing.T) {
 		t.Fatalf("the history holds %v, want one failed run", conn.store.runs)
 	}
 
-	t.Log("ADR 0013's log records every run including failures, and migr history is what an")
+	t.Log("The log records every run including failures, and migr history is what an")
 	t.Log("operator reads after an incident. Written inside the transaction the row would be")
 	t.Log("discarded with it, and PostgreSQL refuses every statement in an aborted one anyway.")
 }
@@ -291,7 +291,7 @@ func TestAnAbsentHistoryTableAfterEnsureIsRefusedRatherThanTreatedAsNoRuns(t *te
 		}
 	}
 
-	t.Log("An absent log reconciles to zero statuses by design (ADR 0019), so a run that read it")
+	t.Log("An absent log reconciles to zero statuses by design, so a run that read it")
 	t.Log("as 'nothing pending' would report success having applied nothing at all.")
 }
 
@@ -569,8 +569,8 @@ func TestOperationsAreEmittedOnlyForTheMigrationsThatWillRun(t *testing.T) {
 		t.Fatalf("the source was asked for %v, want what an apply run performs", src.directions)
 	}
 
-	t.Log("Emitting is not free: M6 spawns a runtime process per migration, and ADR 0009 lets a")
-	t.Log("migration branch on live query results. Asking about a migration that will not run is")
+	t.Log("Emitting is not free: M6 spawns a runtime process per migration, and a")
+	t.Log("migration may branch on live query results. Asking about a migration that will not run is")
 	t.Log("a subprocess of side effects for an answer nothing reads.")
 }
 
@@ -656,7 +656,7 @@ func TestTheRecordedChecksumPairsTheFileWithWhatTheMigrationEmitted(t *testing.T
 		t.Fatalf("the row records %s, want %s", got, want)
 	}
 
-	t.Log("The source half decides drift (ADR 0009) and the IR half records what one run emitted.")
+	t.Log("The source half decides drift and the IR half records what one run emitted.")
 	t.Log("Hashing after compiling would record the planner's output rather than the migration's,")
 	t.Log("which matters the day M13-T5 starts rewriting operations on the way through.")
 }

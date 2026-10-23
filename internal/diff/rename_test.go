@@ -136,7 +136,7 @@ func TestACheckOverARenamedColumnIsReplacedRatherThanRewritten(t *testing.T) {
 		t.Fatalf("a check over a renamed column took %v, want %v", got, want)
 	}
 
-	t.Log("An expression is engine text (ADR 0065) and every server rewrites its own -- PostgreSQL")
+	t.Log("An expression is engine text and every server rewrites its own -- PostgreSQL")
 	t.Log("turns (total > 0) into (amount > 0), MariaDB turns `total` > 0 into `amount` > 0. A")
 	t.Log("textual substitution here would be the guess this package refuses, a column name")
 	t.Log("appearing in string literals and other tables' columns too, so the check is dropped and")
@@ -561,7 +561,7 @@ func TestATableRenamedAlongsideItsOwnColumnsIsStillProposed(t *testing.T) {
 	t.Log("project cleans up its column names, so only id matched by name and the majority floor")
 	t.Log("failed -- the operator was handed a drop_table. A column accounted for by type is what")
 	t.Log("makes the table rename proposable, and confirming it is what makes the two inside it")
-	t.Log("detectable (ADR 0072, B and G).")
+	t.Log("detectable.")
 }
 
 func TestPairingTakesTheBestPairFirstWhereSeveralWouldFit(t *testing.T) {

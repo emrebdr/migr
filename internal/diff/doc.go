@@ -1,8 +1,7 @@
 // Package diff compares two schema snapshots and emits the ordered IR operations
 // that close the gap.
 //
-// Status: complete (M11-T3, M11-T4). See docs/adr/0070-the-snapshot-differ.md and
-// docs/adr/0072-rename-detection.md.
+// Status: complete (M11-T3, M11-T4).
 //
 // internal/fold is this package read backwards -- IR onto a snapshot -- and over a
 // list this differ produced the two compose to the identity. That is what judges
@@ -30,7 +29,7 @@
 // rather than replaced. The five constraint kinds are set differences under the model's
 // own Equal: there is no alter_index, so a changed index is a drop and an add. Two of
 // those Equal methods ignore a name on purpose -- a primary key's and a foreign key's,
-// because no two engines agree on one (ADR 0065) -- which is what stops a diff proposing
+// because no two engines agree on one -- which is what stops a diff proposing
 // to rebuild every key it can see.
 //
 // An unconfirmed rename therefore reaches the operations as a drop and a create, which is
@@ -82,7 +81,7 @@
 //
 // # Every operation it emits carries a complete from payload
 //
-// Nine operations can record what they replace (ADR 0008), and a differ is the one producer
+// Nine operations can record what they replace, and a differ is the one producer
 // that knows both states exactly -- so it fills every one of them, and a migration migr diff
 // writes is reversible by derivation. That is also why a drop of something the operations
 // cannot express is refused rather than emitted bare: a drop_index carrying the columns of a
@@ -141,7 +140,7 @@
 //
 // # Two limitations, measured rather than assumed
 //
-// A view's body and a check's expression are engine text (ADR 0065), so diffing two
+// A view's body and a check's expression are engine text, so diffing two
 // different engines proposes replacing every view and every check. Nothing here can know
 // that an expanded column list and a SELECT * are the same query.
 //

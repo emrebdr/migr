@@ -9,12 +9,12 @@
 //
 // So it lives here, inside the driver's own subtree, and is exported. depguard denies the
 // internal/driver/ prefix to everything but cmd/migr, so the one package that may ask is the one
-// package that may import this (ADR 0040).
+// package that may import this.
 //
 // # What is left here, and what used to be
 //
 // Drop removes a table if it is there, and exists for one case M7-T10 needed: a migration that
-// sends a statement through host.db.exec and then fails leaves that statement committed (ADR 0032),
+// sends a statement through host.db.exec and then fails leaves that statement committed,
 // and proving it means leaving a table behind in a database other suites compare. Nothing in a
 // migration can clean that up. A compensating migration whose only effect is an exec compiles to no
 // statements and the engine refuses it; one that dropped the table as an operation would be recorded
@@ -32,5 +32,4 @@
 // digest was the second one -- deleted, along with the Ask seam that let one set of probes serve a
 // caller reading through driver.Conn and a caller reading from inside an open transaction. The
 // contract absorbed that too: pgConn.probe reads through this session's transaction when it has one.
-// See docs/adr/0074-the-neutral-round-trip.md.
 package pgtest

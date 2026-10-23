@@ -21,7 +21,7 @@ var errBothSelectors = errors.New("--step and --to select differently, so a run 
 // Each is decided before the run acts on anything and each is fixed by retyping a flag, which is
 // what CLAUDE.md §5 gives exit 2 to. engine.ErrNotApplied is deliberately absent: the same command
 // line succeeds against a database that does carry the version, so the argument is not wrong --
-// the database is not where the operator thought it was, which is exit 1 (ADR 0029, D).
+// the database is not where the operator thought it was, which is exit 1.
 var mistyped = []error{engine.ErrNoSteps, engine.ErrUnknownVersion, engine.ErrNoBatch}
 
 // selected tags a refusal about the flags this run was given, leaving every other failure alone.

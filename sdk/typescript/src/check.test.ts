@@ -12,7 +12,7 @@ import { t } from "./type.ts";
 //
 // The host runs all of this again, so none of it is what makes a bad operation safe. It is here so
 // that the failure names the call that built it, and so that two SDKs refuse the same operations --
-// a rule enforced on one side only is a rule that has already diverged (ADR 0038 C).
+// a rule enforced on one side only is a rule that has already diverged.
 
 /** refusal runs one check that should fail, returning what it failed with. */
 function refusal(op: Operation): string {

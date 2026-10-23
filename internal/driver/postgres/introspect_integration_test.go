@@ -126,7 +126,7 @@ func TestEveryLogicalTypeThisDriverEmitsIsReadBackExactly(t *testing.T) {
 		}
 
 		t.Log("All eighteen are exact here, and only because this engine refuses enum outright --")
-		t.Log("the other two drivers each have collisions this one does not (ADR 0065).")
+		t.Log("the other two drivers each have collisions this one does not.")
 	})
 }
 
@@ -348,7 +348,7 @@ func TestACheckCarriesTheConditionThisEngineWroteRatherThanTheOneAskedFor(t *tes
 			t.Errorf("the condition reads back as %q", table.Checks[0].Expression)
 		}
 
-		t.Log("ADR 0065: a check expression is engine text. This server re-renders it, so the")
+		t.Log("A check expression is engine text. This server re-renders it, so the")
 		t.Log("condition that comes back is not the one the migration asked for -- which is why")
 		t.Log("nothing compares one across engines.")
 	})

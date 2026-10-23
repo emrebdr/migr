@@ -54,7 +54,7 @@ func TestAnOperationsArrayReachesTheLineWithItsSeparatorsRaw(t *testing.T) {
 	t.Log("The operations array is the one payload whose bytes are a compatibility surface")
 	t.Log("(docs/ir.md §4.2), and it crosses as a json.RawMessage this package must not touch.")
 	t.Log("encoding/json re-escapes a raw message's separators when it is escaping HTML, so")
-	t.Log("SetEscapeHTML(false) here is load-bearing and this is what says so (ADR 0047).")
+	t.Log("SetEscapeHTML(false) here is load-bearing and this is what says so.")
 
 	if !bytes.Contains(line, document) {
 		t.Errorf("the codec rewrote the operation it was handed: %s", line)

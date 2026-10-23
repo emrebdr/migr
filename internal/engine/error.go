@@ -254,7 +254,7 @@ const unrestorableTemplate = `%s: the schema this database holds contradicts wha
 %s
 
 A rollback restores what an operation recorded, so an operation recording the wrong thing restores
-the wrong schema -- which is the trust problem docs/adr/0008-reverse-operations.md left open and
+the wrong schema -- which is the trust problem a recorded payload leaves open and
 introspection closes. This is read before anything is compiled, against this database and no other.`
 
 // Error names the migration and every way its record and the live schema disagree.
@@ -480,7 +480,7 @@ The source half of its checksum moved, and it is the only half drift is decided 
 
 The recorded IR half is what that run emitted, and nothing here recomputes it: doing so
 needs a language runtime and a live database, and a migration may branch on live query
-results, so a mismatch there would not be drift (ADR 0009).
+results, so a mismatch there would not be drift.
 
 %s
 No flag rewrites a recorded checksum (invariant #6), and this run stopped before its
@@ -605,7 +605,7 @@ nothing here undoes it -- nothing here knows what the statement that failed left
 // expandedLate is why a run that stopped cannot say how many statements the migration had in all.
 const expandedLate = "\nThis engine compiles %d of this migration's operations against the database " +
 	"immediately before each one runs, and this run never reached them, so what they would have " +
-	"become is unknown here and the count above is what it had compiled (ADR 0071).\n"
+	"become is unknown here and the count above is what it had compiled.\n"
 
 // autoCommitting is why a session's own declaration explains the window, when it is the reason.
 const autoCommitting = "\nThis session reports no transactional DDL, so a migration is not one " +
@@ -614,7 +614,7 @@ const autoCommitting = "\nThis session reports no transactional DDL, so a migrat
 // splitCommitting is why a migration on transactional DDL still left statements behind it.
 const splitCommitting = "\nA statement in this migration declares it cannot run inside a transaction, so " +
 	"it ran on its own and each run of statements around it committed separately: the migration is " +
-	"not one all-or-nothing unit even on an engine whose DDL is transactional (ADR 0084).\n"
+	"not one all-or-nothing unit even on an engine whose DDL is transactional.\n"
 
 // chunkedTemplate is what a migration running in chunks left, which the next migr up carries on from.
 const chunkedTemplate = `this migration stopped partway through running in chunks -- every chunk
@@ -716,7 +716,7 @@ const dirtyStateTemplate = `%s: this migration's last run left the schema betwee
   not applied  whatever that run had left after statement %d -- the row records how far it got,
                not how far it had to go, and nothing here recomputes that: the statements were
                the ones that run emitted, and a migration may branch on live query results
-               (ADR 0009)
+               
   recorded     batch %d, ordinal %d, at %s
 
 Neither up nor down runs against this database until the dirty state is resolved explicitly, and
@@ -879,7 +879,7 @@ func directIrreversibleError(direct []driver.Query) error {
 func irreversibleError(cause error) error {
 	return fmt.Errorf("nothing here can undo it: %w -- and the whole rollback is refused before "+
 		"anything runs, because one that stopped at an operation with no inverse would leave a "+
-		"schema no migration describes (ADR 0008); author a down for this migration to roll it back",
+		"schema no migration describes; author a down for this migration to roll it back",
 		cause)
 }
 

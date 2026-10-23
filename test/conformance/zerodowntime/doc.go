@@ -1,5 +1,5 @@
 // Package zerodowntime is the suite that holds every driver's lock-impact verdicts to what a client
-// actually waits (M13-T12, ADR 0096).
+// actually waits (M13-T12).
 //
 // Every verdict before this was held by an oracle of one engine's: a relfilenode or a TABLE_ID that
 // did not move, an ALGORITHM=INSTANT the server accepted, a reader held to one lock wait per retry.
@@ -22,8 +22,9 @@
 // not parse fails the run rather than falling back. It is 1.5s rather than tighter because MySQL's
 // lock_wait_timeout takes whole seconds: a brief_exclusive statement there may hold a client for one,
 // by design, and a budget under it would fail an honest verdict -- measured, a rename held a write for
-// 543ms against an earlier 500ms budget. The worst kept promise anywhere was 206ms. Before any operation the load runs alone,
-// and a server whose own noise floor reaches the budget fails, since it cannot be judged at it.
+// 543ms against an earlier 500ms budget. The worst kept promise anywhere was 206ms. Before any
+// operation the load runs alone, and a server whose own noise floor reaches the budget fails, since
+// it cannot be judged at it.
 //
 // # Every operation, both ways, through the engine
 //
@@ -51,8 +52,9 @@
 // measured, PostgreSQL 17's retype took 3.6s with nothing else running. add_index indexes (pad, label)
 // for the same reason: measured, a plain build over the all-NULL extra column took 112ms and a lying
 // lock_free passed, where one over the pad takes 2.2s. Not over n, which every write changes: MySQL's
-// online build logs each change to an indexed column, and over (pad, n) failed with error 1799. The pad is a string(255) rather than a
-// text, since MySQL refuses to index a text without a prefix length the IR has no field for.
+// online build logs each change to an indexed column, and over (pad, n) failed with error 1799. The
+// pad is a string(255) rather than a text, since MySQL refuses to index a text without a prefix
+// length the IR has no field for.
 //
 // # A brief lock is brief only under a short lock timeout
 //

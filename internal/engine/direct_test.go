@@ -61,7 +61,7 @@ func TestAnAppliedMigrationHoldsNoStatementBecauseItRanIt(t *testing.T) {
 		t.Fatalf("an apply asked in %v, want %s", src.modes, ModeApply)
 	}
 
-	t.Log("The escape hatch is the one callback plan mode changes (ADR 0032): under apply it")
+	t.Log("The escape hatch is the one callback plan mode changes: under apply it")
 	t.Log("executes, so there is nothing to hold and nothing for a report to carry out.")
 }
 

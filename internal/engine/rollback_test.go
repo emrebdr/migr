@@ -98,7 +98,7 @@ func TestTheUndoOrderIsTheOrderTheRunsHappenedRatherThanTheOrderTheFilesAreIn(t 
 	}
 
 	t.Log("The later-timestamped migration ran first, which is what a declared dependency pointing")
-	t.Log("backwards in time does (ADR 0018). Reversing the report or sorting by version would")
+	t.Log("backwards in time does. Reversing the report or sorting by version would")
 	t.Log("undo the migration the other one was built on while that one is still applied.")
 }
 
@@ -466,7 +466,7 @@ func TestTheRecordedDownCarriesTheChecksumOfTheOperationsItActuallyRan(t *testin
 		t.Fatalf("the down row records %s, want %s", got, want)
 	}
 
-	t.Log("The IR half records what one run emitted (ADR 0009), and this run emitted the inverse.")
+	t.Log("The IR half records what one run emitted, and this run emitted the inverse.")
 	t.Log("Copying the up row's digest would be a row that lies about what it did -- so a")
 	t.Log("version's rows now carry two IR digests, and nothing may compare them to each other.")
 }

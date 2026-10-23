@@ -49,7 +49,7 @@ SELECT l.pid,
 // measuredAge names what this driver's holder duration is, PostgreSQL recording no grant time.
 //
 // The session's age bounds the hold from above: the backend cannot have held the lock for longer
-// than it has existed. ADR 0020 E chose it for that reason, and ADR 0060 is why it is now labeled --
+// than it has existed. It was chosen for that reason, and it is labeled because
 // three engines measure three different durations, and only the one that measured can say which.
 const measuredAge = "session age"
 

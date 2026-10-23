@@ -17,7 +17,7 @@ type Backoff interface {
 	Delay(retry int) (time.Duration, bool)
 }
 
-// Exponential is the backoff safety.lock_backoff and safety.lock_retries describe (ADR 0082).
+// Exponential is the backoff safety.lock_backoff and safety.lock_retries describe.
 type Exponential struct {
 	// Base is the first retry's delay, which each further retry doubles.
 	Base time.Duration

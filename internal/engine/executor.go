@@ -317,7 +317,7 @@ func (e *executor) checkRunnable(ready prepared) error {
 	return nil
 }
 
-// nothingToUndo reports a down that emitted no operations, which only an author can say (ADR 0079).
+// nothingToUndo reports a down that emitted no operations, which only an author can say.
 func nothingToUndo(compiled plan.Plan) bool {
 	return compiled.Direction == ir.Down && len(compiled.Steps) == 0
 }

@@ -33,14 +33,14 @@
 //
 // MarkerDown is optional, and one with nothing under it is the same as none:
 // both report engine.ErrNoDownAuthored, which is what has the engine derive an
-// inverse instead (ADR 0022, C4). A marker carried twice, or a down above an up,
+// inverse instead. A marker carried twice, or a down above an up,
 // is refused naming the lines.
 //
 // # A statement that cannot run inside a transaction
 //
 // MarkerNoTransaction, alone on a line directly above a statement, declares that
 // statement cannot run inside a transaction, and it becomes an ir.Raw carrying
-// no_transaction (M13-T4, ADR 0084). It marks one statement rather than a file,
+// no_transaction (M13-T4). It marks one statement rather than a file,
 // so one migration can create a table in a transaction and build its index
 // concurrently outside one. The scanner reads it, so a marker inside a quoted
 // body or a block comment is not one; and it is taken out of the statement it
@@ -78,8 +78,8 @@
 // usable a milestone early.
 //
 // Its Reverse always fails, because its effect is opaque to the framework. So a
-// .sql migration whose down section is empty can never have one derived for it
-// (ADR 0022, C4): invariant #10 is satisfied by the author writing the undo, and
+// .sql migration whose down section is empty can never have one derived for it:
+// invariant #10 is satisfied by the author writing the undo, and
 // by nothing else. The template says so where an author will read it, which is
 // the file itself.
 //
@@ -94,7 +94,7 @@
 // # The mode is a parameter this source is right to ignore
 //
 // engine.Source.Emit states whether the engine is running a migration or asking
-// it a question (ADR 0033). A .sql migration is a text file: it makes no
+// it a question. A .sql migration is a text file: it makes no
 // callbacks, reads nothing, and cannot branch, so both modes read the same bytes
 // and emit the same operations -- which a test asserts rather than assumes,
 // because it is the floor the host's identical-IR proof holds a language runtime

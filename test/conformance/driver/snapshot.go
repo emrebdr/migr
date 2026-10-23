@@ -114,7 +114,7 @@ func (s Snapshot) differences(t *testing.T, read *schema.Snapshot) []string {
 		"schema\n\nwant:\n%s\n\ngot:\n%s", render(t, want), render(t, *got)))
 }
 
-// ADR 0065 is deliberate that a guess never equals a fact, which is why this is the suite's own
+// The snapshot model is deliberate that a guess never equals a fact, which is why this is the suite's own
 // transform and not the model's: SQLite declares all three integer widths as integer and MySQL both
 // timestamps as datetime(6), so those columns read back ambiguous where PostgreSQL's read back
 // exact. A column no logical type names at all is left alone and fails the comparison, which is
@@ -185,7 +185,7 @@ func (s Snapshot) apply(ctx context.Context, t *testing.T) error {
 }
 
 // One operation is compiled and run before the next is compiled, which is load-bearing rather than
-// incidental: an emulated operation is compiled against the database (ADR 0053), so a list holding
+// incidental: an emulated operation is compiled against the database, so a list holding
 // two of them -- or one over a table an earlier operation creates -- is only compilable this way
 // until M11-T7 makes the engine do the same.
 

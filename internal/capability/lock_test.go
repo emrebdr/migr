@@ -55,7 +55,7 @@ func TestAnUnresolvedVerdictNeverRendersAsAMeasuredOne(t *testing.T) {
 		t.Error("an unresolved verdict renders as a measured table rewrite")
 		t.Log("Unknown and table_rewrite share a severity so the gate errs safely. They must not")
 		t.Log("share a rendering: claiming a rewrite the driver never detected is the confidently")
-		t.Log("wrong answer ADR 0004 exists to prevent, and it hides M13-T1's own worklist.")
+		t.Log("wrong answer the lock axis exists to prevent, and it hides M13-T1's own worklist.")
 	}
 
 	if LockUnknown.String() != "unknown" {

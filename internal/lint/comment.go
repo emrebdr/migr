@@ -15,8 +15,7 @@ import (
 const (
 	msgInBody = "comment inside a function body; extract the block into a named function " +
 		"so the name carries the explanation"
-	msgLongDoc = "doc comment must be a single line; move longer prose into the package doc, " +
-		"docs/, or an ADR"
+	msgLongDoc = "doc comment must be a single line; move longer prose into the package doc or docs/"
 )
 
 // exemptPrefixes are the comment forms that instruct tooling rather than explain code.

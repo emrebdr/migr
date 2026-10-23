@@ -319,7 +319,7 @@ func TestAQueueOnADatabaseWithNoHistoryCreatesOneRatherThanReportingNothingToDo(
 	}
 
 	t.Log("history.Read maps a missing table to an absent log, and an absent log reconciles to")
-	t.Log("zero statuses rather than to every migration pending (ADR 0019). Reading before")
+	t.Log("zero statuses rather than to every migration pending. Reading before")
 	t.Log("ensuring would therefore report nothing to do on every fresh database, forever.")
 }
 
@@ -521,7 +521,7 @@ func TestTheHistoryRowIsDiscardedWithTheMigrationItDescribes(t *testing.T) {
 		}
 	}
 
-	t.Log("ADR 0013's record-before-commit rests on a driver's store writing through the open")
+	t.Log("Record-before-commit rests on a driver's store writing through the open")
 	t.Log("transaction. Nothing in the contract can express that, so it is checked here: a store")
 	t.Log("on a second connection would leave this row behind describing a migration that is gone.")
 }

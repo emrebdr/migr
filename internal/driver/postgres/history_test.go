@@ -113,7 +113,7 @@ func TestTheReadersOrderByTheKeyAndNotByTheClock(t *testing.T) {
 		if strings.Contains(stmt, "applied_at\" DESC") || strings.Contains(stmt, "BY \"applied_at") {
 			t.Errorf("a reader orders by the clock:\n%s", stmt)
 			t.Log("Two runs can share a millisecond, and down reverses the last batch -- so a tie")
-			t.Log("there rolls two migrations back in the wrong order. ADR 0013 rejected applied_at")
+			t.Log("there rolls two migrations back in the wrong order. History rejected applied_at")
 			t.Log("as the key for exactly this.")
 		}
 

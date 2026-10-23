@@ -110,11 +110,11 @@ linters:
     # its own child, so that driver needs a negated files entry here and a rule set of
     # its own to be held by instead. postgres is the only one: pgtest holds Drop, which
     # removes a table a migration committed through host.db.exec and then failed after,
-    # and which invariant #3 will not let cmd/migr compose for itself (ADR 0040, M7-T10).
+    # and which invariant #3 will not let cmd/migr compose for itself (M7-T10).
     #
     # sqlite had the same pair from M8-T6 until M11-T6, for sqlitetest -- the catalog
     # digest the end-to-end round trip compared schemas with. Conn.Introspect answers
-    # that neutrally now, so the package went and the exemption with it (ADR 0074): the
+    # that neutrally now, so the package went and the exemption with it: the
     # blanket deny is strictly tighter than the pair that replaced it.
     depguard:
       rules:

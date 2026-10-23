@@ -4,8 +4,7 @@
 // generates a small runner main inside the user's own module, builds it with
 // go build, caches the result by content hash, and hands back the path. Starting
 // it is not this package's: an adapter returns a Command description and
-// internal/runtime.Session owns the pipes, the process group, and the kill
-// (ADR 0034, B).
+// internal/runtime.Session owns the pipes, the process group, and the kill.
 //
 // The directory is named golang rather than go because go is a reserved keyword
 // and cannot be a package name.
@@ -17,7 +16,7 @@
 // migrations directory's place in the module with its separators spelled "__",
 // and "_module" for the module's own root, so a project's migrations and its seeds
 // -- two Go packages in one module -- each keep a runner of their own rather than
-// rebuilding the other's on every alternate command (M12-T1, ADR 0076). Two names
+// rebuilding the other's on every alternate command (M12-T1). Two names
 // that collide cost a rebuild and never a wrong binary, since the stamp covers the
 // directory. A .gitignore holding "*" is written into .migr the first time, and
 // never over one somebody has edited, so migr's build products stay out of a
@@ -46,8 +45,8 @@
 // It does not cover a package the migrations import from elsewhere in the module.
 // Editing one of those does not force a rebuild, and the runner keeps whatever
 // version of it was compiled in. Deleting .migr/go is the way out. This is stated
-// here, in ADR 0035, and in a test that asserts the hole -- so widening the stamp
-// fails that test rather than quietly making these three paragraphs wrong.
+// here and in a test that asserts the hole -- so widening the stamp fails that
+// test rather than quietly making these three paragraphs wrong.
 //
 // Implemented in M6-T6 (see TASKS.md).
 package golang

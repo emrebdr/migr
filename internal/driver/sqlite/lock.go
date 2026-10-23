@@ -22,8 +22,8 @@ const heldQuery = `SELECT CAST((julianday('now') - julianday(?)) * 86400000 AS I
 // measuredHold names what this driver's holder duration is, which is not what PostgreSQL's is.
 //
 // The lock file records when the lock was taken, so this is the hold itself rather than the holder's
-// age -- the better of the two numbers, and ADR 0055 G chose it for that. Until ADR 0060 the field
-// carrying it was rendered as a session age, which is what labeling it fixes.
+// age -- the better of the two numbers, and it was chosen for that. Until Measured existed the
+// field carrying it was rendered as a session age, which is what labeling it fixes.
 const measuredHold = "time holding the lock"
 
 // errLockFileBusy is why a wait ended, and is the cause driver.LockBusyError carries underneath.

@@ -78,7 +78,7 @@ func TestDiscoverOpensNoProcess(t *testing.T) {
 	adapter, _ := New()
 
 	t.Log("Discover answers whether this machine can run the language at all, which a report may")
-	t.Log("ask without paying for a toolchain probe (ADR 0035). A node that fails when it is run")
+	t.Log("ask without paying for a toolchain probe. A node that fails when it is run")
 	t.Log("is the only way to tell that apart from one that is merely there.")
 
 	if err := adapter.Discover(t.Context()); err != nil {

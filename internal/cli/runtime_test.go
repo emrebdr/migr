@@ -75,7 +75,7 @@ func TestValidateChecksARuntimeProjectWithoutOpeningADatabase(t *testing.T) {
 		t.Errorf("validate found something in a migration that compiles:\n%s", stdout)
 	}
 
-	t.Log("ADR 0028's promise is the command's point, and a language needing a runtime does not")
+	t.Log("Opening no database is the command's point, and a language needing a runtime does not")
 	t.Log("cost it: the process starts, and every database callback it could make refuses.")
 
 	if slices.Contains(f.calls, "open") {

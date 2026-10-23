@@ -9,11 +9,11 @@ import (
 )
 
 // Two things are deliberately never compared, both because the server rewrites them: a check's
-// condition and a view's body. ADR 0065 measured that a condition asked for as "n" > 0 reads back
+// condition and a view's body. Measured: a condition asked for as "n" > 0 reads back
 // as (`n` > 0) from MySQL and (n > 0) from PostgreSQL, and that a view asked for as SELECT * comes
 // back with an expanded column list -- so comparing either would refuse every correct rollback on
 // those engines. A column's type is compared only where the catalog answered exactly, since a guess
-// must not refuse anything (ADR 0065, A1).
+// must not refuse anything.
 
 // statedBy reports what one operation states about the live schema that the live schema denies.
 func statedBy(op ir.Operation, live *schema.Snapshot) []string {

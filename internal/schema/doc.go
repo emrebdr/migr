@@ -6,8 +6,7 @@
 //
 // Status: types complete (M1-T1); snapshot model complete (M11-T1); all three drivers
 // produce one and Conn.Introspect is on the contract (M11-T2); the differ reads one back
-// into operations (M11-T3). See docs/adr/0065-the-schema-snapshot.md,
-// docs/adr/0069-per-driver-introspection.md and docs/adr/0070-the-snapshot-differ.md.
+// into operations (M11-T3).
 //
 // # Grammar
 //
@@ -27,7 +26,7 @@
 // A Type marshals to exactly the string it parses from, so the IR carries
 // "decimal(10,2)" rather than a nested object. One representation means golden files
 // stay readable, plan output needs no translation, and there is a single code path
-// that can be wrong. See docs/adr/0005-logical-type-encoding.md.
+// that can be wrong.
 //
 // That places real weight on uniqueness: every type has exactly one spelling. Two
 // SDKs emitting different bytes for the same schema would break the byte-identical-IR
@@ -194,7 +193,7 @@
 // catalog digests with this model: a digest asked an engine to describe itself, so two moments
 // compared that way differ wherever the engine reworded itself -- which is why SQLite's round
 // trip had to exempt the one table its rebuild touched, and why MySQL's had to sort its own
-// lines to survive a reversed drop_column. See docs/adr/0074-the-neutral-round-trip.md.
+// lines to survive a reversed drop_column.
 //
 // An exact column type renders as the logical type alone and a guess says so, which is
 // ColumnType.String's own rule: the renderings are never compared across engines, so a native
@@ -219,7 +218,7 @@
 // # What M11-T2 did with what this model left it
 //
 // Three measurements were a driver's problem rather than this model's, and all three are answered
-// in docs/adr/0069-per-driver-introspection.md. Two engines report a unique constraint and a unique
+// in each driver's Introspect. Two engines report a unique constraint and a unique
 // index as one object, so every driver reports every unique element as a Unique and no driver ever
 // sets Index.Unique -- which is the only vocabulary the operations have, ir.AddIndex having no such
 // field. Two engines attach a constraint nobody asked for, and each is absorbed into the element

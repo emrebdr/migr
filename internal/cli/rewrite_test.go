@@ -62,7 +62,7 @@ func TestPlanShowsThatOneDeclaredOperationBecameSeveralStatements(t *testing.T) 
 	}
 
 	t.Log("Never silent: an operator reads that one declared operation became two statements,")
-	t.Log("why, and the one key that runs it as declared instead (ADR 0085).")
+	t.Log("why, and the one key that runs it as declared instead.")
 }
 
 func TestPlanJSONCarriesTheRewriteBesideTheStatements(t *testing.T) {

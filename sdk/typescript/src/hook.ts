@@ -9,7 +9,7 @@
 // nothing.
 //
 // They are registered by install and never at import. Reaching into the process of a program that
-// merely imported this package is worse than the hole it would close (ADR 0037, E) -- and esbuild is
+// merely imported this package is worse than the hole it would close -- and esbuild is
 // imported dynamically for the same reason, so writing a migration does not load a transpiler.
 
 import { readFileSync } from "node:fs";

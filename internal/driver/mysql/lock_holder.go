@@ -23,7 +23,7 @@ const holderQuery = `SELECT IS_USED_LOCK(?)`
 //
 // TIME is seconds in the thread's *current state* and not the session's age: MySQL records no
 // connection start time anywhere. Measured against a holder three seconds into a statement, which
-// read 3. That is why driver.LockHolder carries what its duration measures (ADR 0060).
+// read 3. That is why driver.LockHolder carries what its duration measures.
 //
 // INFO is deliberately not selected: a statement carries literal column values, which is user data,
 // the same class of reason this driver refuses to render a connection string.

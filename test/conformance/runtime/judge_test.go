@@ -111,7 +111,7 @@ func TestJudgeReportsAHeldStatementThatIsNotStated(t *testing.T) {
 		})
 	}
 
-	t.Log("ADR 0036: mode plan records host.db.exec and mode apply runs it, so which of the two")
+	t.Log("Mode plan records host.db.exec and mode apply runs it, so which of the two")
 	t.Log("holds the statements is the difference between the modes and the only one.")
 }
 

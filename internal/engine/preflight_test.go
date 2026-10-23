@@ -79,7 +79,7 @@ func TestAnEmulatedOperationIsNotARefusal(t *testing.T) {
 	if found := Unsupported(ir.Operations{addIndex("by_email")}, set); found != nil {
 		t.Errorf("an emulation was reported as a refusal: %+v", found)
 		t.Log("Allowed() covers native and emulated both: the driver performs the operation, and")
-		t.Log("how it performs it is the other axis (ADR 0012).")
+		t.Log("how it performs it is the other axis.")
 	}
 }
 
@@ -178,7 +178,7 @@ func TestARollbackIsRefusedForTheSameReasonAsARun(t *testing.T) {
 	}
 
 	t.Log("Unlike the destructive gate this is direction-neutral: ir.CreateTable inverts to")
-	t.Log("DropTable, which is why permission is asked of the up half alone (ADR 0063) -- but an")
+	t.Log("DropTable, which is why permission is asked of the up half alone -- but an")
 	t.Log("operation the server will not perform is just as unrunnable backwards. A rollback")
 	t.Log("inverts its whole queue before running any of it, so migr down is preflighted whole.")
 }
@@ -201,7 +201,7 @@ func TestAPreviewMarksWhatARunRefuses(t *testing.T) {
 
 	t.Log("migr plan is the command that tells an operator what migr up will refuse, so it must")
 	t.Log("not refuse to -- CLAUDE.md §5 with no exception. The mode is what separates the two")
-	t.Log("(ADR 0033), and internal/cli is where the verdict becomes a × beside the statement.")
+	t.Log(", and internal/cli is where the verdict becomes a × beside the statement.")
 }
 
 func TestAResumeIsNotGatedByTheDeclaration(t *testing.T) {
@@ -214,5 +214,5 @@ func TestAResumeIsNotGatedByTheDeclaration(t *testing.T) {
 
 	t.Log("The schema is already half-changed, and the statements a resume runs are the ones that")
 	t.Log("run reached rather than ones a verdict was asked about. Refusing here would leave a")
-	t.Log("database between states with nothing but the asserted repairs to settle it (ADR 0063).")
+	t.Log("database between states with nothing but the asserted repairs to settle it.")
 }

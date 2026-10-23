@@ -431,7 +431,7 @@ func (s *source) Emit(_ context.Context, m migration.Migration, dir ir.Direction
 	return Emitted{Operations: s.ops[m.Version], Direct: s.heldFor(m, mode)}, nil
 }
 
-// heldFor returns the staged escape-hatch statements, which only a question ever holds (ADR 0036).
+// heldFor returns the staged escape-hatch statements, which only a question ever holds.
 func (s *source) heldFor(m migration.Migration, mode Mode) []driver.Query {
 	if mode != ModePlan {
 		return nil

@@ -459,7 +459,7 @@ func TestTheOperationCodecEmitsTheTwoSeparatorsAsUTF8(t *testing.T) {
 		t.Errorf("the codec escaped the separators: %s", document)
 		t.Log("docs/ir.md §3.3: U+2028 and U+2029 are emitted as UTF-8 like any other")
 		t.Log("non-ASCII character. encoding/json escapes both whatever SetEscapeHTML is")
-		t.Log("told, and JSON.stringify escapes neither, so this SDK undoes it (ADR 0047).")
+		t.Log("told, and JSON.stringify escapes neither, so this SDK undoes it.")
 	}
 
 	if !bytes.Contains(document, []byte(query)) {

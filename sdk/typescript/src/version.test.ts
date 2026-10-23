@@ -49,7 +49,7 @@ test("the package's major version is the protocol version it speaks", () => {
   assert.equal(
     major(VERSION),
     PROTOCOL_VERSION,
-    "@migr/sdk encodes the protocol version in its major: 1.x.y speaks protocol 1 (ADR 0041)",
+    "@migr/sdk encodes the protocol version in its major: 1.x.y speaks protocol 1",
   );
 });
 

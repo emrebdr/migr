@@ -391,7 +391,7 @@ func TestAMigrationThatSendsItsOwnStatementIsReportedWithNothingOpened(t *testin
 		t.Error("migr validate opened a database to read a statement it was only shown")
 	}
 
-	t.Log("ADR 0036's half of what a migration does, reaching a rule in a command that opened")
+	t.Log("The escape hatch's half of what a migration does, reaching a rule in a command that opened")
 	t.Log("nothing: host.db.exec under mode plan is held rather than run, so Direct is populated")
 	t.Log("with no session to send it to. This fake's Perform refuses outright, so a run that")
 	t.Log("executed the statement instead of holding it could not have exited 0.")

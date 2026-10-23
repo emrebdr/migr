@@ -23,7 +23,7 @@ func (s Diff) named(suffix string) string { return s.Prefix + "_" + suffix }
 // order exists for: a table that must be created before the key referencing it, an index that must
 // go before the column it covers, and a column whose nullability moves while it carries a default --
 // which is the one case a driver that changes a column by restating its whole definition refuses
-// unless the operation states the default too (ADR 0058).
+// unless the operation states the default too.
 
 // mutate returns the schema this suite asks the differ to reach, built out of the one it was given.
 func (s Diff) mutate(t *testing.T, before schema.Snapshot) schema.Snapshot {

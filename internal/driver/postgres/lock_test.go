@@ -47,7 +47,7 @@ func TestTwoServerVersionsDisagreeAboutAddColumnWithADefault(t *testing.T) {
 	t.Log("This is the boundary the task names, and the only version boundary in the table.")
 	t.Log("PostgreSQL 11 stores the default in pg_attribute and applies it on read instead of")
 	t.Log("writing every row. The version is closed over at construction, so both answers are")
-	t.Log("provable with no database and Resolve stays free of I/O (ADR 0012).")
+	t.Log("provable with no database and Resolve stays free of I/O.")
 	t.Log("Note the modern answer is brief_exclusive rather than lock_free: ALTER TABLE still")
 	t.Log("takes ACCESS EXCLUSIVE, and what release 11 changed is how long it holds it.")
 }
@@ -93,7 +93,7 @@ func TestAServerWithoutTheUUIDFunctionRefusesThatDefaultRatherThanCosting(t *tes
 		t.Error("a server that has the function refused the same operation")
 		t.Log("This is what M3-T2 could not answer: Compile is version-blind by contract, so the")
 		t.Log("declaration is the only place the refusal can live. Asking the server beats testing")
-		t.Log("the version -- a PostgreSQL 12 with pgcrypto has the function (ADR 0015, 0016).")
+		t.Log("the version -- a PostgreSQL 12 with pgcrypto has the function.")
 	}
 }
 
@@ -268,7 +268,7 @@ func TestAddingAColumnWithNoDefaultIsCatalogWorkOnEveryVersion(t *testing.T) {
 
 	t.Log("Not lock_free: ALTER TABLE takes ACCESS EXCLUSIVE whatever it is doing, so this")
 	t.Log("blocks readers for as long as it waits for the lock. That is the whole reason")
-	t.Log("invariant #12 requires a lock timeout on every DDL statement (ADR 0016).")
+	t.Log("invariant #12 requires a lock timeout on every DDL statement.")
 }
 
 func TestReplacingAViewLocksTheViewItOverwrites(t *testing.T) {

@@ -196,7 +196,7 @@ jobs:
         if: failure()
         run: docker compose -f test/docker-compose.yml ps
 
-  # The release images (M14-T4, ADR 0101), run as a pipeline runs them: each built from the release's
+  # The release images (M14-T4), run as a pipeline runs them: each built from the release's
   # own Dockerfile over this commit's binary, a project mounted at /work, against compose's postgres17.
   # The TypeScript half needs the SDK built, so this job sets up Node too.
   docker:
@@ -232,7 +232,7 @@ jobs:
         if: failure()
         run: docker compose -f test/docker-compose.yml ps
 
-  # The zero-downtime suite (M13-T12, ADR 0096): every operation against every server under client
+  # The zero-downtime suite (M13-T12): every operation against every server under client
   # load, each held to the lock cost it declares. A job of its own, one runner per driver, because it
   # judges latency: sharing a runner with the integration tests, or with another driver's suite, put
   # one driver's million-row rewrites on the disk another's client reads were being timed against.

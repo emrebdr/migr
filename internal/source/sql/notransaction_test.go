@@ -61,7 +61,7 @@ func TestTheMarkerDeclaresTheOneStatementBelowIt(t *testing.T) {
 	}
 
 	t.Log("A marker declares a statement rather than a file, so one migration can create a table")
-	t.Log("in a transaction and build its index concurrently outside one (ADR 0084).")
+	t.Log("in a transaction and build its index concurrently outside one.")
 }
 
 func TestAFileWithNoMarkerEmitsTheBytesItAlwaysDid(t *testing.T) {

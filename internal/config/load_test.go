@@ -379,7 +379,7 @@ lock:
 
 	if _, err := parse(bogus, "test.yaml", env(nil)); err == nil {
 		t.Error("a strategy that is not a word migr knows was accepted")
-		t.Log("Two checks answer two questions (ADR 0020): this package asks whether the value is a")
+		t.Log("Two checks answer two questions: this package asks whether the value is a")
 		t.Log("word, and the driver asks whether the engine can do it. Dropping the default must")
 		t.Log("not drop the first question.")
 	}

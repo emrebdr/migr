@@ -24,7 +24,7 @@ func TestARunCompilesAnEmulatedOperationAgainstTheSession(t *testing.T) {
 
 	t.Log("internal/cli is what hands the session to the planner, and it is the only place that")
 	t.Log("can: the planner holds a compiler, which needs no database, and the session is the")
-	t.Log("thing that has one. A driver that emulates nothing is handed nothing (ADR 0053).")
+	t.Log("thing that has one. A driver that emulates nothing is handed nothing.")
 }
 
 func TestAPreviewShowsTheOneEmulationItCanCompileExactlyAndMarksTheRest(t *testing.T) {
@@ -56,7 +56,7 @@ func TestAPreviewShowsTheOneEmulationItCanCompileExactlyAndMarksTheRest(t *testi
 	t.Log("about to happen, and the first operation's statements say what one is -- so an operator")
 	t.Log("can still read a rebuild before anything runs. What a preview cannot do is render the")
 	t.Log("ones after it, because a preview applies nothing and each is rendered from the catalog")
-	t.Log("the operations ahead of it leave (ADR 0071).")
+	t.Log("the operations ahead of it leave.")
 }
 
 func TestAPreviewReportsAnEmulationItDeferredRatherThanCountingItAsNoStatements(t *testing.T) {

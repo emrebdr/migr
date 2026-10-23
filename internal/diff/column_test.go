@@ -45,7 +45,7 @@ func TestItStatesADefaultItIsNotChanging(t *testing.T) {
 		t.Error("it changed a column's nullability without stating the default the column keeps")
 		t.Log("MySQL and MariaDB both refuse that: a column changes only by restating its whole")
 		t.Log("definition, and a redefinition drops every attribute it was not told about")
-		t.Log("(ADR 0058). Measured on both servers -- a minimal delta is error-free SQL that")
+		t.Log(". Measured on both servers -- a minimal delta is error-free SQL that")
 		t.Log("silently loses the default, which is why the driver refuses it rather than emits it.")
 
 		return
@@ -169,7 +169,7 @@ func TestItProposesNothingWhenAGuessAgrees(t *testing.T) {
 	if len(ops) != 0 || len(refused) != 0 {
 		t.Errorf("an exact int64 against a guessed one proposed %v and refused %s",
 			kindsOf(ops), describeAll(refused))
-		t.Log("ColumnType.Equal is deliberate that a guess never equals a fact (ADR 0065), so the")
+		t.Log("ColumnType.Equal is deliberate that a guess never equals a fact, so the")
 		t.Log("differ compares the logical answer instead: on SQLite every integer column reads")
 		t.Log("back ambiguous, and taking the model's equality here would refuse all of them.")
 	}

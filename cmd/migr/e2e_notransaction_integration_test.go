@@ -101,5 +101,5 @@ func TestCreateIndexConcurrentlyRunsEndToEndAgainstPostgreSQL(t *testing.T) {
 
 	t.Log("The task's done-when: a .sql migration marks one statement with migr:no-transaction,")
 	t.Log("migr up runs the table and its rows in one transaction and the index build bare, and")
-	t.Log("the history says how far it got after each part (ADR 0084).")
+	t.Log("the history says how far it got after each part.")
 }

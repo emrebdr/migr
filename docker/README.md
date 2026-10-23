@@ -1,7 +1,7 @@
 # migr images
 
 Every release publishes two multi-platform images (`linux/amd64`, `linux/arm64`) to
-`ghcr.io/emrebdr/migr`, each signed keyless with cosign (ADR 0101).
+`ghcr.io/emrebdr/migr`, each signed keyless with cosign.
 
 | Tag | Base | For | Size |
 |---|---|---|---|

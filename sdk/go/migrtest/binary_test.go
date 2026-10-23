@@ -83,7 +83,7 @@ func TestNeitherRungIsAFailureNamingBoth(t *testing.T) {
 		}
 	}
 
-	t.Log("ADR 0028 B2 and ADR 0040: a check that drops itself silently reports a pass it did")
+	t.Log("A check that drops itself silently reports a pass it did")
 	t.Log("not earn. Found is what a suite calls when it would rather skip deliberately.")
 }
 

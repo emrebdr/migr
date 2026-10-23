@@ -206,7 +206,7 @@ func TestAnOperationNamingSomethingThatIsNotThereIsStated(t *testing.T) {
 		})
 	}
 
-	t.Log("This is what catches ADR 0022's sharpest case: deriving an inverse re-emits a migration's")
+	t.Log("This is what catches derivation's sharpest case: deriving an inverse re-emits a migration's")
 	t.Log("up against a database where it is already applied, so an up that emits differently the")
 	t.Log("second time yields an inverse of something that never ran -- which lands here as a")
 	t.Log("create_table of a table that is already there.")
@@ -225,7 +225,7 @@ func TestAGuessedTypeRefusesNothing(t *testing.T) {
 		t.Errorf("a column this engine cannot resolve exactly refused a migration: %v",
 			details(found))
 		t.Log("SQLite declares all three integer widths as integer, so its answer is a guess --")
-		t.Log("and ADR 0065 is deliberate that a guess never decides anything (A1).")
+		t.Log("and the snapshot model is deliberate that a guess never decides anything.")
 	}
 }
 
@@ -706,7 +706,7 @@ func TestARollbackRefusalLandsBeforeTheMigrationItIsAboutAndAfterTheOnesBeforeIt
 			len(result.Runs))
 	}
 
-	t.Log("ADR 0022 has every refusal a rollback can make fire before its first statement, and")
+	t.Log("The engine has every refusal a rollback can make fire before its first statement, and")
 	t.Log("this one cannot: the schema each inverse runs against is the one the inverses before it")
 	t.Log("leave, so it is read immediately before each. What that leaves is a recorded partial")
 	t.Log("rollback rather than a database between states.")

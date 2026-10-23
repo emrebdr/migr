@@ -23,11 +23,11 @@ import (
 // noDatabase is what an offline validation run says for itself, since the claim is the command's point.
 const noDatabase = "no database was opened"
 
-// missedCheck is what an offline run owes about the checks it could not make (ADR 0064, M10-T3).
+// missedCheck is what an offline run owes about the checks it could not make (M10-T3).
 //
 // A capability verdict is resolved inside Open, so a run with no connection cannot ask what this
-// server will refuse -- and reporting "no problems found" without saying so would be the pass
-// ADR 0028 B2 rejected. The reference check owes the same sentence for its own reason: neither of
+// server will refuse -- and reporting "no problems found" without saying so would be a pass
+// it did not earn. The reference check owes the same sentence for its own reason: neither of
 // its two bases is sound alone, so a run with one of them judges no references at all. The remedy
 // is in the sentence, since the flag is what closes both gaps.
 const missedCheck = "Neither what this server refuses nor the references the migrations make was " +

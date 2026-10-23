@@ -27,7 +27,7 @@ func (f *folder) createTable(at int32, op ir.CreateTable) {
 
 // A new table states its key inline and an existing one states it as an operation (docs/ir.md §7.2),
 // so the inline key has no name of its own. A snapshot records one and never compares it, no two
-// engines agreeing on one (ADR 0065) -- measured, an inline key reads back as "" on SQLite,
+// engines agreeing on one -- measured, an inline key reads back as "" on SQLite,
 // <table>_pkey on PostgreSQL and PRIMARY on MySQL, so there is no name to invent here.
 
 // table renders one of an operation's table definitions as a snapshot holds it.

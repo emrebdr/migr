@@ -200,7 +200,7 @@ func TestTheAccountRendersWhoConnectedAndNothingWhenTheServerSaidNothing(t *test
 	}
 
 	t.Log("MySQL has no application_name. This driver does send a program_name connection attribute")
-	t.Log("(ADR 0057) and an ordinary user cannot read it back -- a 1142 denial on both servers --")
+	t.Log(" and an ordinary user cannot read it back -- a 1142 denial on both servers --")
 	t.Log("so the account and host are what a report can carry. They are also what an operator")
 	t.Log("recognizes: which credential and which host, rather than which binary.")
 }
@@ -238,7 +238,7 @@ func TestTheDurationThisDriverReportsSaysItIsNotASessionAge(t *testing.T) {
 	t.Log("against a holder three seconds into a statement, which read 3. MySQL records a session's")
 	t.Log("start time nowhere at all, so there is no better number -- and a holder running short")
 	t.Log("statements reads near zero however old its session is. Rendering that as a session age")
-	t.Log("would be the one thing ADR 0020 forbids: a report asserting more than it observed.")
+	t.Log("would be the one thing the lock contract forbids: a report asserting more than it observed.")
 }
 
 // ptrTo returns a pointer to a value, since the server sends a nullable and a test needs both cases.

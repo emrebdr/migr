@@ -15,8 +15,7 @@
 // driver.ErrNotReadOnly. A statement inspected here instead would be a lie
 // detector a data-modifying CTE defeats: WITH d AS (DELETE FROM users RETURNING
 // *) SELECT count(*) FROM d begins with WITH and deletes rows, and refusing it
-// by its first keyword is exactly the "merely by convention" the task ruled out
-// (ADR 0032, B).
+// by its first keyword is exactly the "merely by convention" the task ruled out.
 //
 // The sentinel lives on the driver contract for the reason ErrLockTimeout does:
 // this package cannot name a driver, and -32020 is otherwise unreachable.
@@ -42,7 +41,7 @@
 // branching on rowsAffected can tell it is being previewed rather than lied to.
 // host.schema.apply records in both modes and always did -- the engine collects
 // a migration's whole operation list before it hashes, compiles, or runs any of
-// it, so there is nothing there for plan mode to switch off (ADR 0030).
+// it, so there is nothing there for plan mode to switch off.
 //
 // # The mode is the call's, not the session's
 //
@@ -51,7 +50,7 @@
 // on initialize, and one rollback is why: a migration that authors no down is
 // asked for its down as a run and then for its up as the question the inverse
 // is derived from, on one session. A server carrying one mode could not serve
-// that conversation at all (ADR 0033).
+// that conversation at all.
 //
 // mode_test.go is the proof the task is named for. One fixture migration issues
 // its callbacks through the codec, runs twice against one fake session, and the

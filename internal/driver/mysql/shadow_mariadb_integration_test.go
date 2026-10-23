@@ -16,7 +16,7 @@ import (
 	"github.com/emrebdr/migr/internal/engine"
 )
 
-// MariaDB's cutover is a holder, a renamer and a prober beside the session (ADR 0095), and these hold it
+// MariaDB's cutover is a holder, a renamer and a prober beside the session, and these hold it
 // to what was measured on 11.4.13 before it was relied on: a writer queued behind the holder lands in
 // the new table, and a rename held back by some other session's lock on the shadow is stopped rather
 // than let through after writers went to the original.

@@ -45,8 +45,7 @@
 // It is a real value and not a placeholder: a .sql file reaches the database as
 // ir.Raw, which carries a driver name, so such a migration is engine-specific
 // and has no inverse the framework can derive. That is a property of the format
-// worth stating where it is selected, not a reason to hide the selection. See
-// docs/adr/0025-sql-source-language.md.
+// worth stating where it is selected, not a reason to hide the selection.
 //
 // # What a project permits itself to destroy
 //
@@ -58,7 +57,7 @@
 // max_lock_impact validates against capability.Ceilings, and refuses three things that mean
 // nothing: a name that is no operation, a kind that destroys nothing, and a kind named twice. An
 // absent key permits nothing and resolves to an empty list rather than nil, so migr config --json
-// prints [] rather than null. See docs/adr/0063-destructive-operations.md.
+// prints [] rather than null.
 //
 // # Lock impact
 //
@@ -87,7 +86,7 @@
 // migr config lists every rule with what this project decided it is worth. That is where an
 // operator discovers the ids, and it is CLAUDE.md §9's rule exactly: the scaffold writes only keys
 // that have no default. An id no rule answers to, and a severity outside error/warn/off, are both
-// refused by name (ADR 0066, F) -- a line that reads like permission and silently does nothing is
+// refused by name -- a line that reads like permission and silently does nothing is
 // the failure that check exists to prevent. Both goccy and encoding/json sort map keys, measured,
 // so the printed set needs no marshaller of its own.
 //
@@ -104,7 +103,7 @@
 // # Replicas are secrets too
 //
 // databases.<name>.replicas lists where a driver whose engine reports lag only on the replica reads
-// it (M13-T8, ADR 0088). Each entry is a Secret, expanded like dsn and redacted wherever it is
+// it (M13-T8). Each entry is a Secret, expanded like dsn and redacted wherever it is
 // printed; a blank one is refused naming its place. Which engines read the list is the driver's to
 // say, so PostgreSQL and SQLite refuse it in their own constructors rather than here, this package
 // naming no engine.

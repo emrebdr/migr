@@ -84,7 +84,7 @@ replace github.com/emrebdr/migr/sdk/go => %s
 	}
 
 	t.Log("It is built as the package it is -- a Go migration lives in package migrations and is")
-	t.Log("compiled into a runner by the go tool (ADR 0035), so a rendered chain that did not")
+	t.Log("compiled into a runner by the go tool, so a rendered chain that did not")
 	t.Log("compile would stop migr up rather than this test.")
 }
 

@@ -1,4 +1,4 @@
-// Turns a goreleaser dist/ into the seven npm packages of one release (ADR 0100): @migr/cli, and one
+// Turns a goreleaser dist/ into the seven npm packages of one release: @migr/cli, and one
 // @migr/cli-<os>-<arch> per binary, every one at the release's version and the wrapper pinning each
 // exactly. Run as `node npm/cli/build.mjs <dist> <out>`.
 

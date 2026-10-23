@@ -10,7 +10,7 @@ import (
 	"github.com/emrebdr/migr/internal/plan"
 )
 
-// A migration runs as a sequence of parts (ADR 0084). Consecutive statements that may share a
+// A migration runs as a sequence of parts. Consecutive statements that may share a
 // transaction are one part and run inside one; a statement that declares it cannot run inside one
 // is a part of its own and runs bare. Every part but the last commits on its own, so each one writes
 // a dirty row saying how far the migration got -- inside its transaction where it has one, and
@@ -92,7 +92,7 @@ func extend(parts []part, transactional bool, p piece) []part {
 	return parts
 }
 
-// Parts returns how many parts a compiled migration runs as, each committing on its own (ADR 0084).
+// Parts returns how many parts a compiled migration runs as, each committing on its own.
 func Parts(compiled plan.Plan) int {
 	return len(partsOf(compiled.Steps))
 }
@@ -263,7 +263,7 @@ func notRetriedBare(err error) error {
 	}
 
 	return fmt.Errorf("%w -- it ran outside a transaction, so nothing rolled back whatever it left "+
-		"behind, and it is not tried again (ADR 0084)", err)
+		"behind, and it is not tried again", err)
 }
 
 // checkExpansion refuses an expansion holding a statement that cannot run inside the transaction it expands in.

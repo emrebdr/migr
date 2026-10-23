@@ -347,7 +347,7 @@ func TestValidateReportsAMigrationNothingCanUndo(t *testing.T) {
 	}
 
 	t.Log("This is the half an SDK cannot answer: whether an operation has an inverse at all is")
-	t.Log("internal/ir's, and the engine is what reports it (ADR 0022).")
+	t.Log("internal/ir's, and the engine is what reports it.")
 }
 
 func TestAFailingCommandIsReportedWithTheDocumentItWrote(t *testing.T) {
@@ -468,7 +468,7 @@ func TestACommandThatFailedFailsTheTestRatherThanBeingParsed(t *testing.T) {
 		})
 	}
 
-	t.Log("ADR 0029: a run that committed two migrations and then failed leaves one parseable")
+	t.Log("A run that committed two migrations and then failed leaves one parseable")
 	t.Log("document on each stream, so a printed summary is no evidence that the run succeeded.")
 }
 
@@ -579,7 +579,7 @@ func TestTheLanguageAndDriverDefaultToThisSdkAndTheEngineNeedingNoDaemon(t *test
 	}
 
 	if got := (Project{}).driver(); got != "sqlite" {
-		t.Errorf("the driver defaults to %q, want the one needing no daemon (ADR 0050)", got)
+		t.Errorf("the driver defaults to %q, want the one needing no daemon", got)
 	}
 }
 

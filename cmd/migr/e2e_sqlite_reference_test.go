@@ -11,10 +11,10 @@ import (
 // foreign key to a column nothing adds, each caught by migr validate --connect before anything runs.
 //
 // Untagged, for the reason the rest of this engine's suites are: SQLite needs a t.TempDir() and the
-// Go toolchain is present by definition when go test is what is running (M6-T6, ADR 0050).
+// Go toolchain is present by definition when go test is what is running (M6-T6).
 //
 // It is this engine rather than PostgreSQL because the check reads Conn.Introspect, which every
-// driver answers the same way (ADR 0069) -- so what a second engine would add is a second catalog
+// driver answers the same way -- so what a second engine would add is a second catalog
 // rather than a second answer, and the snapshot conformance suite already holds all five to one.
 
 // strayingMigration adds a column to a table no migration in this project creates.
@@ -128,7 +128,7 @@ func TestValidateIsSilentOnTheProjectsOwnMigrationsWhetherAppliedOrNot(t *testin
 		t.Fatalf("a correct project was refused after it ran: %v", err)
 	}
 
-	t.Log("Both ends of ADR 0064's C2, measured against one real catalog. Before the run the live")
+	t.Log("Both ends of the live-catalog problem, measured against one real catalog. Before the run the live")
 	t.Log("schema holds none of what the migrations name; after it, it holds all of it and every")
 	t.Log("create_table conflicts. Reporting only what both projections refuse is what survives both.")
 }

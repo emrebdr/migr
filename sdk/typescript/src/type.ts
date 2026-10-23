@@ -6,11 +6,11 @@
 // constructed by these functions can only be spelled one way.
 //
 // A bad type throws where it was written. The Go SDK defers -- migr.String(0) is a value carrying
-// the reason it has no spelling, surfaced at Apply -- because ADR 0038 B could not have a chain
+// the reason it has no spelling, surfaced at Apply -- because Go could not have a chain
 // return an error at each link. A type constructor is not a chain link, so this one need not.
 //
 // The compile-time half is an addition and never a replacement: a computed argument is invisible
-// to the type system, so every rule below is checked at runtime too (ADR 0043).
+// to the type system, so every rule below is checked at runtime too.
 
 import { OperationError } from "./error.ts";
 

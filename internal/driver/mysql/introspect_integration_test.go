@@ -553,5 +553,5 @@ func TestTheDiffConformanceSuitePasses(t *testing.T) {
 	})
 
 	t.Log("This is the only engine that changes a column by restating its whole definition, so it")
-	t.Log("is the one that holds the differ to stating a default it is not changing (ADR 0058).")
+	t.Log("is the one that holds the differ to stating a default it is not changing.")
 }

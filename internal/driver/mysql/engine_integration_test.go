@@ -84,7 +84,7 @@ func staged(t *testing.T, ops ir.Operations) engine.Options {
 // until M11-T2, which engine.Unrestorable now refuses before anything compiles, and these cases are
 // about what a failure the *server* produces does to a run.
 //
-// An index over a text column with no prefix length would have done on MySQL (ADR 0058, error 1170)
+// An index over a text column with no prefix length would have done on MySQL (error 1170)
 // and MariaDB accepts one -- measured here, and the first variant difference these fixtures met.
 
 // refusedKey is the foreign key both servers reject, since its two sides are different types.
@@ -189,7 +189,7 @@ func TestAMigrationThatStopsPartwayIsRecordedDirtyAgainstARealServer(t *testing.
 			t.Error("the table the first statement created is gone, so nothing survived the failure")
 			t.Log("A dirty run is dirty because its statements outlived the failure. On this engine")
 			t.Log("the CREATE TABLE implicitly committed the transaction the executor opened, so")
-			t.Log("the rollback took nothing back with it (ADR 0057).")
+			t.Log("the rollback took nothing back with it.")
 		}
 
 		if strings.Contains(rec.Error, "\n") {
@@ -202,7 +202,7 @@ func TestAMigrationThatStopsPartwayIsRecordedDirtyAgainstARealServer(t *testing.
 		}
 
 		t.Log("This is the first dirty row any real server has produced by failing. PostgreSQL and")
-		t.Log("SQLite both declare transactional DDL, so ADR 0024 could only describe this half.")
+		t.Log("SQLite both declare transactional DDL, so the dirty-run path could only be described there.")
 	})
 }
 
@@ -503,7 +503,7 @@ func TestTheDeclarationAndTheRunNeverDisagreeAboutWhatThisServerPerforms(t *test
 // What M11-T7 changed, measured on the one engine in compose whose DDL commits as it goes.
 //
 // This driver emulates exactly one operation -- alter_column, which it performs by restating the
-// column's whole definition (ADR 0058) -- so two of them in one migration is the shape where an
+// column's whole definition -- so two of them in one migration is the shape where an
 // expansion rendered from a stale catalog is observable: the second MODIFY restates the nullability
 // the catalog holds, which is the one the first MODIFY had just changed.
 //
@@ -666,7 +666,7 @@ func TestAResumeIsRefusedWhereAnOperationIsCompiledAsItRuns(t *testing.T) {
 			t.Errorf("the migration reconciled to %q, want pending", state)
 		}
 
-		t.Log("ADR 0062's own argument, one layer further in: the recorded index names a statement")
+		t.Log("The resume refusal's own argument, one layer further in: the recorded index names a statement")
 		t.Log("in the list that run emitted, and an expansion's statements are a function of a")
 		t.Log("schema this run has already changed -- so re-rendering them here numbers a different")
 		t.Log("list. Before this it re-rendered them silently and resumed into the wrong place.")

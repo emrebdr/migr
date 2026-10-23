@@ -240,7 +240,7 @@ func TestNothingThisDriverCompilesLeavesTheTransaction(t *testing.T) {
 
 	t.Log("SQLite's DDL is transactional and this driver composes nothing that cannot run in a")
 	t.Log("transaction. Only a raw statement declaring no_transaction -- a VACUUM -- does, and")
-	t.Log("the representative raw here declares nothing (ADR 0084).")
+	t.Log("the representative raw here declares nothing.")
 }
 
 func TestEveryComposedStatementIsTerminatedAndRawIsNot(t *testing.T) {

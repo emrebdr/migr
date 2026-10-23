@@ -146,8 +146,8 @@ func TestALockStrategyThisDriverDoesNotImplementIsRefused(t *testing.T) {
 	}
 
 	t.Log("file is the strategy M8-T5 implements, so it is accepted here and Lock refuses by name")
-	t.Log("until then -- a driver that silently substituted its own would be the surprise ADR 0020")
-	t.Log("refuses.")
+	t.Log("until then -- a driver that silently substituted its own would be the surprise the lock")
+	t.Log("strategy contract refuses.")
 }
 
 func TestAHistoryTableNameThisDriverCannotCarryIsRefused(t *testing.T) {

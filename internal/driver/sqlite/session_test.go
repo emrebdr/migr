@@ -109,7 +109,7 @@ func TestTheSessionIsOnePinnedConnectionAndNotAPool(t *testing.T) {
 		t.Errorf("the table created on this session is found %s times, want 1", got)
 		t.Log("An in-memory database belongs to the connection that opened it, so a pooled session")
 		t.Log("would answer from a second, empty database -- and report success while doing it.")
-		t.Log("That is why Open pins one *sql.Conn for the session's life (ADR 0050).")
+		t.Log("That is why Open pins one *sql.Conn for the session's life.")
 	}
 }
 
@@ -124,7 +124,7 @@ func TestNoSecondConnectionToTheDatabaseIsAvailableWhileASessionHoldsOne(t *test
 		t.Error("a second connection was handed out while the session holds one")
 		t.Log("The pool is capped at one so nothing can reach this database except through the")
 		t.Log("pinned connection -- which for :memory: would be a different database, and for the")
-		t.Log("three pragmas above would be a session carrying SQLite's defaults (ADR 0050).")
+		t.Log("three pragmas above would be a session carrying SQLite's defaults.")
 
 		_ = second.Close()
 	}
@@ -232,5 +232,5 @@ func TestTheVersionIsDetectedRatherThanAssumed(t *testing.T) {
 
 	t.Log("The version names the SQLite this binary links, not the file it opened -- modernc.org/")
 	t.Log("sqlite is a transpiled library -- so it is a fact about the build. Invariant #13 still")
-	t.Log("holds the way it reads: it is asked for, never hardcoded (ADR 0050).")
+	t.Log("holds the way it reads: it is asked for, never hardcoded.")
 }

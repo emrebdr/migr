@@ -1,6 +1,6 @@
 // One column replaced through four migrations of its own: expand, backfill, swap, contract.
 //
-// The same declaration as the Go SDK's ReplaceColumn, emitting the same bytes (ADR 0079). Each phase
+// The same declaration as the Go SDK's ReplaceColumn, emitting the same bytes. Each phase
 // is a migration object a file exports as its default, and the replacement is restated in every one
 // of those files, so an applied file cannot change what it emits underneath its checksum. Swap and
 // contract are unsafe while an older app version is still serving, and each says so with a warning

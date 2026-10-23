@@ -14,7 +14,7 @@ import (
 )
 
 // A shadow-table migration is four stages, and each is recorded in the transaction of the work it
-// reports, so a run that stops anywhere leaves exactly what committed (ADR 0089). The stream is
+// reports, so a run that stops anywhere leaves exactly what committed. The stream is
 // opened before the copy reads a row, so every write the copy misses is in the log after the
 // position the start recorded. Copying interleaves a chunk with a read of the log; syncing is the
 // same read with nothing left to copy, and it does not end by itself: it is a state that is held

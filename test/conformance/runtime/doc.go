@@ -24,7 +24,7 @@
 // emit for each direction, and, where the migration reads or writes, exactly what it is told.
 // testdata/sources/<language> holds that language's expression of the same fixture, under the same
 // filename stem -- which is also how one fixture carries one version across languages, since
-// Register derives a migration's version from its filename (ADR 0037, B).
+// Register derives a migration's version from its filename.
 //
 // The manifest is the contract and neither language is. A fixture's own bytes are held to being
 // exactly what ir.Marshal emits, so a definition no SDK could match fails at load rather than
@@ -46,8 +46,8 @@
 //
 // The escape hatch is the difference. Under mode plan, Emitted.Direct carries the statements the
 // migration sent itself and the database saw none of them; under mode apply, Direct is empty and
-// the database saw exactly those statements, in order. That is ADR 0032 and ADR 0036 end to end
-// from a real SDK.
+// the database saw exactly those statements, in order. That is the escape hatch's
+// two modes end to end from a real SDK.
 //
 // # No exemptions, structurally
 //

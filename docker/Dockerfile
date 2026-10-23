@@ -1,4 +1,4 @@
-# The minimal image (M14-T4, ADR 0101): the static binary on distroless, which carries the CA
+# The minimal image (M14-T4): the static binary on distroless, which carries the CA
 # certificates a TLS connection to a managed database verifies against, tzdata, and a non-root user,
 # and nothing else -- no shell, no package manager. It runs .sql projects; a TypeScript project
 # needs node.Dockerfile's image, and a Go project copies /usr/local/bin/migr into its own toolchain.

@@ -2,7 +2,7 @@
 //
 // docs/ir.md §3.2 fixes member order and §3.6 omits an unset optional rather than writing null, and
 // §4.2 makes both a compatibility surface: the emitted bytes are hashed, so reordering a member
-// invalidates every applied migration. ADR 0038 also exports the operations so a chain and a
+// invalidates every applied migration. The operations are also exported so a chain and a
 // hand-written literal both work -- and a literal written in the wrong order would stringify in the
 // wrong order. So nothing here trusts how a value was written: the encoder rebuilds every object
 // from the shape below, which is what Go gets from struct field order and its json tags.

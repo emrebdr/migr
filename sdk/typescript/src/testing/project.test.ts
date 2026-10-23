@@ -141,7 +141,7 @@ function stage(...files: { name: string; body: string }[]): string {
   return dir;
 }
 
-/** staged stages a project and hands back both it and the cleanup every case owes it (ADR 0045). */
+/** staged stages a project and hands back both it and the cleanup every case owes it. */
 function staged(...files: { name: string; body: string }[]): {
   p: Project;
   dir: string;

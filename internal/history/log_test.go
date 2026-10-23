@@ -109,7 +109,7 @@ func TestRunsAreSortedIntoTheOrderTheRunsHappened(t *testing.T) {
 		t.Errorf("the runs came back as %v, want %v", got, want)
 		t.Log("The store contract promises this order, but NewLog is a hole a caller reaches")
 		t.Log("directly, and three drivers must not be able to reach three answers about one")
-		t.Log("log. Sorting at construction puts the invariant on the type (ADR 0013).")
+		t.Log("log. Sorting at construction puts the invariant on the type.")
 	}
 }
 
@@ -142,7 +142,7 @@ func TestAppliedAtDoesNotDecideTheOrderRunsAreFoldedIn(t *testing.T) {
 
 	if !slices.Equal(got, want) {
 		t.Errorf("the runs came back as %v, want %v", got, want)
-		t.Log("ADR 0013 rejected applied_at as the key: two rows can share a millisecond, and")
+		t.Log("applied_at is not the key: two rows can share a millisecond, and")
 		t.Log("a tie there rolls two migrations back in the wrong order. (batch, ordinal) is")
 		t.Log("the key, and a clock that disagrees with it does not get a vote.")
 	}

@@ -17,5 +17,5 @@ func TestTheConformanceSuitePassesOverALiveSession(t *testing.T) {
 
 	t.Log("PostgreSQL passes this suite untagged over a session double, because reaching a real one")
 	t.Log("needs Docker. SQLite's real session is an in-memory database and a pinned connection, so")
-	t.Log("the declaration the suite reads is the one Open actually built (ADR 0050).")
+	t.Log("the declaration the suite reads is the one Open actually built.")
 }

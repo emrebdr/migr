@@ -64,7 +64,7 @@ func TestNothingOnThisEngineIsLockFree(t *testing.T) {
 
 	t.Log("SQLite takes one database-wide write lock and has no per-table locking at all, so even")
 	t.Log("CREATE TABLE stops every other writer for as long as it runs -- and in the default")
-	t.Log("rollback-journal mode, which this driver does not change (ADR 0050), it stops readers")
+	t.Log("rollback-journal mode, which this driver does not change, it stops readers")
 	t.Log("too. PostgreSQL calls create_table lock_free because it blocks nothing that already")
 	t.Log("exists; here that would pass --require-safe for an operation that halts the database.")
 }

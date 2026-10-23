@@ -15,7 +15,7 @@ import (
 
 // A declared dependency, resolved against a real server, pointing backwards in time.
 //
-// This is the case timestamps cannot express and ADR 0018 exists for: two branches each add a
+// This is the case timestamps cannot express and declared dependencies exist for: two branches each add a
 // migration, and the one written second carries the earlier timestamp. `migration.Order` has
 // overlaid the declarations onto the version order since M4-T2, and until M7-T11 nothing in
 // internal/cli passed it any -- `discover` called `Order(found, nil)`, so every declaration both
@@ -24,8 +24,8 @@ import (
 // The proof is the server rather than a digest. The .ts migration at 190000 adds a column to the
 // table the .go migration at 190100 creates, so in timestamp order PostgreSQL refuses the first
 // statement of the run. And the edge crosses languages: a TypeScript migration declares a Go one,
-// which is two sessions over one pinned driver.Conn, each reporting its own half of one graph
-// (ADR 0048, ADR 0049).
+// which is two sessions over one pinned driver.Conn, each reporting its own half of one graph.
+//
 
 // depsHistoryTable keeps this suite's runs out of the tables the other e2e suites use, and each
 // test keeps its own so the append-only log one leaves behind is never the log the next one reads.
@@ -178,7 +178,7 @@ func TestADeclaredDependencyAppliesBeforeTheMigrationThatDeclaresIt(t *testing.T
 		if runs[i].Version != want || runs[i].Ordinal != int32(i+1) {
 			t.Errorf("ordinal %d is %s, want %s", runs[i].Ordinal, runs[i].Version, want)
 			t.Log("The declared migration ran first though its timestamp is later, which is what a")
-			t.Log("merged branch looks like (ADR 0018). In timestamp order the server would have")
+			t.Log("merged branch looks like. In timestamp order the server would have")
 			t.Log("refused the first statement, so this fails on PostgreSQL rather than on a digest.")
 		}
 	}
@@ -193,7 +193,7 @@ func TestADeclaredDependencyAppliesBeforeTheMigrationThatDeclaresIt(t *testing.T
 	}
 
 	t.Log("A rollback undoes by (batch, ordinal) descending rather than by version, so it gave the")
-	t.Log("column back before the table it was on -- which is the half of ADR 0022 a declared edge")
+	t.Log("column back before the table it was on -- which is the half of the whole-queue inversion a declared edge")
 	t.Log("pointing backwards is what makes observable.")
 }
 
@@ -225,7 +225,7 @@ func TestStatusPrintsVersionOrderOverADirectoryARuntimeOrders(t *testing.T) {
 	if !strings.Contains(out, "version order") {
 		t.Errorf("status claimed an order it started no runtime to read:\n%s", out)
 		t.Log("The run applied these in the opposite order and the history says so. A report starts")
-		t.Log("no runtime by design (ADR 0027), so it names its basis and points at migr plan --")
+		t.Log("no runtime by design, so it names its basis and points at migr plan --")
 		t.Log("which is what keeps two commands from printing two orders and calling both the run's.")
 	}
 

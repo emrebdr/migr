@@ -214,7 +214,7 @@ func TestAnOperationOnATableThisMigrationCreatesCostsNothing(t *testing.T) {
 	}
 
 	t.Log("An index on a table its own migration created blocks nobody, the table having had no")
-	t.Log("readers or writers when the migration began -- ADR 0085's created-here rule, read for")
+	t.Log("readers or writers when the migration began -- the rewrites' created-here rule, read for")
 	t.Log("cost rather than for a rewrite, which is what keeps --require-safe from failing every")
 	t.Log("migration that creates a table and indexes it.")
 }

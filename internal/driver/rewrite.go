@@ -10,7 +10,7 @@ import (
 // RewriteName names one way a driver performs an operation more safely, which safety.rewrites switches.
 type RewriteName string
 
-// The rewrites a driver may answer with, each one a key under safety.rewrites (ADR 0085).
+// The rewrites a driver may answer with, each one a key under safety.rewrites.
 const (
 	// RewriteNotValid adds a check or foreign key NOT VALID and validates it on its own.
 	RewriteNotValid RewriteName = "not_valid"

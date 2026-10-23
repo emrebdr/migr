@@ -89,7 +89,7 @@ func TestAQueryGoesThroughTheTransactionWhenOneIsOpen(t *testing.T) {
 
 	if session.runner() != runner(tx) {
 		t.Error("a statement would have bypassed the open transaction and run in autocommit")
-		t.Log("M3-T6's history store writes through this session, and ADR 0013 requires the record")
+		t.Log("M3-T6's history store writes through this session, and the contract requires the record")
 		t.Log("to be inside the migration's transaction so a crashed run leaves no row at all.")
 	}
 }

@@ -4,7 +4,7 @@
 // It finds node, asks it what it is and where this project's @migr/sdk is, and
 // hands back the migr-runtime-node the package installs. Starting it is not this
 // package's: an adapter returns a Command description and internal/runtime.Session
-// owns the pipes, the process group, §8.2's timers and the kill (ADR 0034, B).
+// owns the pipes, the process group, §8.2's timers and the kill.
 //
 // # What one probe answers
 //
@@ -24,7 +24,7 @@
 // otherwise be reported as a missing install.
 //
 // Discover opens no process at all. It answers "can this machine run the language",
-// which a report may ask without paying for a toolchain probe (ADR 0035).
+// which a report may ask without paying for a toolchain probe.
 //
 // # Where the path comes from
 //
@@ -48,7 +48,7 @@
 // It also leaves the environment alone, which is §9's rule. Clearing NODE_OPTIONS to
 // defend the protocol stream was considered and rejected: it would break a legitimate
 // --max-old-space-size, and a print from a preloaded module fails loudly as a line the
-// engine cannot frame, which is the hole ADR 0044 already documents for module scope.
+// engine cannot frame, which is the hole the SDK already documents for module scope.
 //
 // # Where the cross-language proof lives
 //

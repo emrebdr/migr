@@ -17,7 +17,7 @@ const txLockParam = "_txlock"
 
 // txLockImmediate begins a transaction holding the write lock, waited for under busy_timeout. A
 // deferred one reads first and fails at once with SQLITE_BUSY_SNAPSHOT where another connection wrote
-// in between, which in WAL is every busy database (M13-T12, ADR 0096).
+// in between, which in WAL is every busy database (M13-T12).
 const txLockImmediate = txLockParam + "=immediate"
 
 // parseDSN reports the connection string to open, or why this driver will not open the one it was given.

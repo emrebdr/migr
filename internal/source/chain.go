@@ -109,7 +109,7 @@ const (
 // ErrNotRenderable marks an operation no language writes, which is the one the IR has no builder for.
 var ErrNotRenderable = fmt.Errorf("no migration source expresses it")
 
-// A migration migr diff writes has to be reversible by derivation, which is ADR 0070's own stated
+// A migration migr diff writes has to be reversible by derivation, which is the differ's own stated
 // payoff -- so every recorded-state payload the differ filled in is rendered too. A renderer that
 // dropped them would write migrations this project's own migr validate rejects, and the reason the
 // differ declines to emit a drop it cannot record would have been spent for nothing.

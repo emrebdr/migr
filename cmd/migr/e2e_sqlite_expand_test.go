@@ -10,8 +10,8 @@ import (
 
 // Two emulated operations in one compilation, end to end, which is what M11-T7 is.
 //
-// ADR 0022 compiled every operation before running any of them and ADR 0053 compiles an emulated
-// one against the database, so the second expansion in one compilation was rendered from a catalog
+// The engine compiled every operation before running any of them and an emulated one is compiled
+// against the database, so the second expansion in one compilation was rendered from a catalog
 // the first had already changed. Measured on this engine before the fix: a migration whose up is
 // alter_column ... NOT NULL then add_primary_key came out as "tag" varchar(64) with no NOT NULL at
 // all, because the key's rebuild re-rendered the table from the pre-alter catalog.
@@ -21,7 +21,7 @@ import (
 // operation reading what the operation before it left, and nothing in them is about SQLite.
 //
 // Untagged like the rest of this engine's suites: a t.TempDir() and the Go toolchain are the whole
-// requirement (ADR 0050, M6-T6).
+// requirement (M6-T6).
 
 // expandHistoryTable keeps this suite's runs out of every other table here.
 const expandHistoryTable = "migr_e2e_sqlite_expand"
@@ -221,7 +221,7 @@ func TestARollbackOfTwoEmulatedMigrationsInOneRunUndoesBoth(t *testing.T) {
 		t.Errorf("the rollback did not restore the schema:\n%s", after)
 	}
 
-	t.Log("Both inverses are compiled before either runs (ADR 0022, which irreversibility needs),")
+	t.Log("Both inverses are compiled before either runs (irreversibility needs that),")
 	t.Log("so this is the same defect across migrations rather than within one: the older inverse's")
 	t.Log("rebuild re-created what the newer one had just removed, and the key survived its own")
 	t.Log("rollback. What changed is when each one is rendered, not when it is decided.")
@@ -258,11 +258,11 @@ func TestATableCreatedAndThenKeyedInOneRunCompilesAtAll(t *testing.T) {
 		t.Fatalf("down: %v", err)
 	}
 
-	t.Log("This is the list migr diff writes for a new table with a reference (M11-T3, ADR 0070),")
+	t.Log("This is the list migr diff writes for a new table with a reference (M11-T3),")
 	t.Log("and before this task it could not compile on this engine at all: add_foreign_key is one")
 	t.Log("of the seven rebuilds, so Expand read a catalog the create_table ahead of it in the same")
 	t.Log("migration had not reached -- \"this database has no such table\". An apply emits one")
-	t.Log("migration at a time (ADR 0021), so only one migration holding both reaches it, and that")
+	t.Log("migration at a time, so only one migration holding both reaches it, and that")
 	t.Log("is exactly the file migr diff writes. M11-T5 was unusable on this engine until it landed.")
 }
 

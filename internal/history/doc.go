@@ -8,8 +8,7 @@
 //
 // Status: contract complete (M2-T5), the first Store satisfying it in M3-T6 (PostgreSQL),
 // reconciliation complete (M4-T3), the executor that writes through it in M4-T5, and the drift
-// this fold decides reported as exit code 4 in M4-T7. See docs/adr/0013-migration-history.md,
-// docs/adr/0019-history-reconciliation.md and docs/adr/0021-apply-executor.md.
+// this fold decides reported as exit code 4 in M4-T7.
 //
 // # Two vocabularies, deliberately kept apart
 //
@@ -36,7 +35,7 @@
 // and missing blocks neither — so one bool would be three different answers. M4-T5, M4-T6 and
 // M4-T9 each switch on State with no default instead, which is what makes exhaustive name every
 // one of them the day a sixth state arrives -- and M13-T14's did: waiting, a dirty forward run whose
-// shadow table is held in sync, which Read derives by reading the shadow rows beside the log (ADR 0093).
+// shadow table is held in sync, which Read derives by reading the shadow rows beside the log.
 //
 // # The table is a log, not a state
 //
@@ -66,10 +65,11 @@
 // carries and what drift is measured against. A failed run put it in no state, so it is not one.
 //
 // Both switches are total and carry no default, so exhaustive breaks the build the day another
-// outcome or a third direction arrives -- which is exactly what happened when Resolved did (M9-T6). The trailing return each one needs is also the answer for
-// a pair this build cannot interpret: it changes nothing. Such a record neither claims
-// applied-ness nor revokes it, and no store can produce one — but NewLog is a hole a caller
-// reaches directly, and a total function is cheaper than the argument.
+// outcome or a third direction arrives -- which is exactly what happened when Resolved did (M9-T6).
+// The trailing return each one needs is also the answer for a pair this build cannot interpret: it
+// changes nothing. Such a record neither claims applied-ness nor revokes it, and no store can
+// produce one — but NewLog is a hole a caller reaches directly, and a total function is cheaper
+// than the argument.
 //
 // # Precedence, stated once
 //
@@ -82,7 +82,7 @@
 // where that mattered: migr resolve reads the recorded row, and an assertion over an edited file
 // settles the dirty state and leaves the drift to be reported on its own.
 //
-// Drift compares Checksum.Source and nothing else (ADR 0009), with a plain comparison. A recorded
+// Drift compares Checksum.Source and nothing else, with a plain comparison. A recorded
 // digest of all zeroes decodes cleanly — checksum.Parse checks length, case and hex, and 128
 // zeroes pass all three — so it reaches this fold, and skipping a digest that reports Zero would
 // let a row describing nothing pass as agreement.
@@ -148,8 +148,7 @@
 // run, read through Latest, so a batch belongs to one database: no lock spans two, migr down
 // reverses one database's last batch, and a shared number could name a batch that database never
 // used. An ordinal numbers the runs an invocation actually performed rather than the migrations it
-// considered, so a queue that skipped two already-applied migrations still starts at one. See
-// docs/adr/0021-apply-executor.md.
+// considered, so a queue that skipped two already-applied migrations still starts at one.
 //
 // A rollback is its own invocation and takes its own batch, so its rows cannot collide with the ones
 // they undo. The order it undoes in is byRun reflected — (batch, ordinal) descending, read from the
@@ -160,7 +159,7 @@
 // WHERE clause: a down row, a failed row and a dirty row each count as the most recent run, which is
 // correct for allocating the next batch and wrong for selecting one to undo. The batch a bare
 // rollback acts on is the highest Batch among the anchor runs of the migrations the database still
-// carries — Status.Recorded, which is also the batch migr status prints (M4-T8, ADR 0023).
+// carries — Status.Recorded, which is also the batch migr status prints (M4-T8).
 //
 // # This package reads no clock
 //
@@ -188,20 +187,20 @@
 // lives in the error column, which is why Validate's "an error is required" covers this outcome too,
 // and the column being string(16) rather than an enum is why a fourth value changed no table.
 // An older migr meeting one reports ErrCorrupt, which is this package's rule for a recorded value a
-// build cannot read working as designed. See docs/adr/0062-resolving-a-dirty-migration.md.
+// build cannot read working as designed.
 //
 // Record is called inside the migration's transaction and MarkFailed after its rollback, which is
 // the only order either can have: the transaction being discarded cannot carry a row describing
 // itself, and PostgreSQL refuses every statement in an aborted one until it ends (M4-T5). MarkDirty
 // is written on that same path since M4-T9, chosen over MarkFailed when the failing run's statements
 // outlived the failure rather than when the driver declares no transactional DDL — a standalone run
-// and an earlier committed one both survive on a driver that declares it has (ADR 0024).
+// and an earlier committed one both survive on a driver that declares it has.
 //
 // M4-T6 is what first writes a down row, and what first produces the case this package's own fold
 // was written for: a failed down leaves the fold unchanged, so "a failed rollback leaves the
 // migration applied" stopped being a claim and became a path. A down row's Checksum.IR covers the
 // inverse operations that run emitted, so one version's rows can carry two different IR digests and
-// nothing may compare them to each other (ADR 0022). Outcome, Error, and LastStatement are
+// nothing may compare them to each other. Outcome, Error, and LastStatement are
 // consequently read-side fields: populated by List and Latest, ignored on write. The alternative
 // was a second struct differing in three fields, which is a worse trade than three documented
 // fields.
@@ -217,14 +216,14 @@
 // the window: the error column held ten lines of it, including advice about resolving the state and a
 // statement index already sitting in the column beside it. A row is read by migr history, by
 // migr status --json and by the refusal the next run gets, so a presentation stored inside it is a
-// second copy to keep in agreement (ADR 0061).
+// second copy to keep in agreement.
 //
 // # Ensure cannot be idempotent through IR alone
 //
 // Schema returns the operations that create the table, and ir.CreateTable has no IfNotExists.
 // A driver therefore checks existence with its own internal query — which the driver contract
 // already allows — and compiles Schema only when the table is absent. Adding IfNotExists to the
-// IR would be a wire-format change with its own ADR, and the history table is a poor reason for
+// IR would be a wire-format change of its own, and the history table is a poor reason for
 // one.
 //
 // Schema returns no error even though every schema.Parse call inside it can fail. The spellings
@@ -239,7 +238,7 @@
 // # A corrupt row is not drift
 //
 // CorruptError reports a recorded value this build cannot read back — a checksum that will not
-// parse being the case ADR 0009 anticipated. It unwraps to both ErrCorrupt and the underlying
+// parse being the case the checksum format anticipated. It unwraps to both ErrCorrupt and the underlying
 // cause, so a caller can act on "this row is unreadable" and still say which part of it was.
 //
 // It is deliberately not a checksum mismatch. Drift is exit code 4 and means someone edited an
@@ -272,7 +271,7 @@
 //
 // # Import direction, now enforced by the thing it warned about
 //
-// This package must never import internal/driver. ADR 0011 recorded that as a review rule,
+// This package must never import internal/driver. That is a review rule,
 // noting that depguard cannot catch it — its deny prefix deliberately leaves the contract package
 // importable so that core can depend on it.
 //
@@ -285,7 +284,7 @@
 // # The one table that is not a log
 //
 // A chunked data operation's cursor moves with every chunk, so it can be neither a row per chunk,
-// which would bury the log, nor an edited row, which would make it not one (M12-T3, ADR 0078).
+// which would bury the log, nor an edited row, which would make it not one (M12-T3).
 // Checkpointer is a store's second table, <history table>_progress, created from ProgressSchema by
 // Ensure: one row per migration and direction saying how far a run in progress got, written in the
 // transaction of the chunk it describes and deleted in the one that appends the applied row. It is
@@ -295,7 +294,7 @@
 // # The deploy a batch ran under
 //
 // A batch is one invocation and says nothing about which deploy it belonged to, which is what a step
-// of a change across deploys is judged by (M13-T7, ADR 0087). Releaser is a store's third table,
+// of a change across deploys is judged by (M13-T7). Releaser is a store's third table,
 // <history table>_releases, created from ReleaseSchema by Ensure: one row per batch naming the release
 // the operator gave it, written in the transaction of that batch's first applied row, so a batch that
 // applied nothing names none. Like the checkpoint table it is beside the log rather than in it -- the
@@ -305,7 +304,7 @@
 // # Where a shadow-table migration stands
 //
 // Shadows is a store's fourth table, <history table>_shadows, created from ShadowSchema by Ensure
-// (M13-T9, ADR 0089): one row per shadow-table migration naming its table, its copy, the name the
+// (M13-T9): one row per shadow-table migration naming its table, its copy, the name the
 // original retires under, its capture resource, its stage, how far the copy got and the log position
 // every change before it was applied from. Like the checkpoint table it says where a run is and the
 // fold never reads it. Its confirmed column is the one the engine reads and never writes -- SaveShadow

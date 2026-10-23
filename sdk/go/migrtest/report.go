@@ -8,7 +8,7 @@ import (
 // The documents migr prints under --json, read as types rather than scraped as tables.
 //
 // Every shape here is one internal/cli already specifies and tests -- runSummary in summary.go,
-// validation in validate.go, and the one-line failure ADR 0029 puts on stderr. Reading the table
+// validation in validate.go, and the one-line failure migr puts on stderr. Reading the table
 // instead would make this helper depend on column widths, and --json switches both streams so a run
 // that printed a summary and then failed leaves exactly one parseable document on each.
 

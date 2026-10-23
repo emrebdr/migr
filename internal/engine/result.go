@@ -47,11 +47,11 @@ type Run struct {
 	Held time.Duration
 	// Retries is how many times a statement or a chunk was tried again after giving up on a lock.
 	Retries int
-	// Rewritten is how many of its operations ran as a safer sequence (ADR 0085).
+	// Rewritten is how many of its operations ran as a safer sequence.
 	Rewritten int
 	// Repairs are what the run cleaned up after statements outside any transaction, a resume's included.
 	Repairs []Cleanup
-	// Shadow is what a shadow-table migration's cutover left, and nil for every other run (ADR 0089).
+	// Shadow is what a shadow-table migration's cutover left, and nil for every other run.
 	Shadow *ShadowRun
 }
 

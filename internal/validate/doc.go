@@ -5,11 +5,7 @@
 // third outcome for the halves nothing could judge (M6-T10); destructive-operation detection
 // (M10-T1); capability preflight (M10-T2); a pluggable lint rule set (M10-T4); reference integrity
 // (M10-T3); and the lock ceiling (M13-T6) -- each of which adds a Check rather than a second
-// report. See
-// docs/adr/0028-validation-report.md, docs/adr/0040-running-a-go-migration.md,
-// docs/adr/0063-destructive-operations.md, docs/adr/0064-capability-preflight.md,
-// docs/adr/0066-the-lint-rule-contract.md, docs/adr/0075-reference-integrity.md and
-// docs/adr/0086-lock-impact-gate.md.
+// report.
 //
 // # The lock check runs only where a ceiling was asked for
 //
@@ -44,7 +40,7 @@
 // basis by itself:
 //
 //   - the live schema alone refuses every operation of every migration that has already run, since
-//     the schema is what they built. That is ADR 0064's C2 reached from the other side;
+//     the schema is what they built. That is the live-catalog problem reached from the other side;
 //   - the project's own beginning alone refuses every operation of a migration migr diff wrote. A
 //     drift correction re-adds an index the project already created and drops a column the project
 //     never had, so replaying it from nothing cannot work -- and reporting that would have migr
@@ -74,7 +70,7 @@
 //
 // That survived M10-T2 and M10-T3, the two tasks that made migr validate able to connect. What
 // Options gained is a *capability.Set and a *schema.Snapshot: two values the caller read, one
-// answering with no I/O by contract (ADR 0012) and the other a plain description, so the command
+// answering with no I/O by contract and the other a plain description, so the command
 // opens a database and this package still cannot. Nil means the run
 // opened none and the capability check does not run — and nil rather than a zero Set because an
 // unbuilt one refuses every operation, which is also what driver.Offline's own set does on purpose.
@@ -87,7 +83,7 @@
 // reading would make a CI gate refuse something migrations are allowed to do. Reporting it as
 // passing would be worse, since a half nothing judged would be indistinguishable from one that
 // was. What decides it is the caller's, not this package's: internal/cli owns the offline session
-// and knows whether it was reached (ADR 0040, C).
+// and knows whether it was reached.
 //
 // # The two refusals, and why they are two checks
 //
@@ -106,7 +102,6 @@
 // Both halves are judged, a derived down included. A rollback that cannot run is the thing this
 // command exists to find before anyone tries it, and the reason the destructive check judges the up
 // half alone does not apply — an operation no server will perform is just as unrunnable backwards.
-// See ADR 0064.
 //
 // Opening no database is not the same as needing no configuration. Which engine to compile for
 // comes from migr.yaml, and there is no answer without one.
@@ -165,6 +160,5 @@
 // it inverts, and stopping at "it inverted" would pass a rollback nothing can run.
 //
 // Both halves are read as questions, in engine.ModePlan. This command opens no database at all, and
-// a check that ran a migration's escape-hatch writes on the way past would not be a check (M6-T4,
-// ADR 0033).
+// a check that ran a migration's escape-hatch writes on the way past would not be a check (M6-T4).
 package validate

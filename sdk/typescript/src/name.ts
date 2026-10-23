@@ -2,7 +2,7 @@
 //
 // It is a copy on purpose: importing the engine's would make this package require the CLI module,
 // which is what a separate package exists to prevent. The grammar is frozen by every migration
-// anybody has written, so the duplication is the cheap kind (ADR 0037, B).
+// anybody has written, so the duplication is the cheap kind.
 //
 // Where the Go SDK recovers a filename with runtime.Caller, this one is handed it: a module is a
 // file, so the loader knows the path before it knows the migration. Nothing here can disagree with

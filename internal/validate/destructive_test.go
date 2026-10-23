@@ -155,7 +155,7 @@ func TestADestructiveOperationStopsNoOtherCheck(t *testing.T) {
 
 	if got := checksFound(report); !slices.Equal(got, []Check{CheckDestructive, CheckCompile}) {
 		t.Errorf("the report holds %q, want both the destruction and the refusal", got)
-		t.Log("Compiling does not depend on being permitted, so ADR 0028's rule leaves both")
+		t.Log("Compiling does not depend on being permitted, so reporting every problem leaves both")
 		t.Log("reported: an operator fixing one sees the other in the same pass.")
 	}
 }

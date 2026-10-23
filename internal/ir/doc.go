@@ -9,8 +9,8 @@
 //
 // Status: complete for irVersion 3 — the operation set (M1-T2), the recorder (M1-T3), the
 // versioned envelope (M1-T4), reverse operations (M1-T5), the specification (M1-T7), the three
-// data operations version 2 added (M12-T2, ADR 0077), and raw's no_transaction, which is all
-// version 3 added (M13-T4, ADR 0084). Each version is a superset of the last, so this build reads
+// data operations version 2 added (M12-T2), and raw's no_transaction, which is all
+// version 3 added (M13-T4). Each version is a superset of the last, so this build reads
 // all three, and a document is stamped with the oldest one that carries every operation it holds
 // -- which is what keeps a version-1 document's bytes exactly as they were. Since version 3 that
 // is a question about an operation's fields as well as its kind, so Since reads the operation.
@@ -43,21 +43,21 @@
 // never heard of; decoding first would report that unknown operation, which is true, useless,
 // and points at the wrong problem. Version-first reports an unreadable irVersion, which tells
 // the operator to upgrade the CLI. A missing irVersion is its own error and is never defaulted
-// to 1 — assuming a version is the lenient behavior ADR 0003 rejected, because it is how a
+// to 1 — assuming a version is the lenient behavior this format rejects, because it is how a
 // mismatch becomes a migration that reports success having done less than it said.
 //
-// irVersion is the one camelCase key in an otherwise snake_case format. CLAUDE.md §4.1,
-// invariant #5, and ADR 0003 all name it that way, and ADRs are immutable records, so renaming
-// it would leave a committed document describing a key that does not exist. The inconsistency
+// irVersion is the one camelCase key in an otherwise snake_case format. docs/ir.md,
+// both SDKs and every applied migration's checksum name it that way, so renaming it would be a
+// breaking change to the format for the sake of its spelling. The inconsistency
 // is deliberate and documented rather than quietly corrected.
 //
 // # The checksum boundary
 //
-// Operations() is the hashable unit; the envelope sits outside it. ADR 0003 recorded, without
-// being able to settle, that an irVersion bump would change every applied migration's checksum
+// Operations() is the hashable unit; the envelope sits outside it. The format's design recorded,
+// without being able to settle, that an irVersion bump would change every applied migration's checksum
 // and fire drift detection across every installation. Keeping the version out of the hashed
 // bytes narrows that to bumps which genuinely reshape operations — where the checksum *should*
-// change, because the emitted IR really did. See docs/adr/0007-ir-document-envelope.md.
+// change, because the emitted IR really did.
 //
 // # Document shape
 //
@@ -74,7 +74,7 @@
 // unique constraint; there is no unique flag on AddIndex that would let one fact be
 // written two ways. CreateTable carries its primary key because a key is intrinsic to the
 // table and inlining it avoids a second lock event, but every other constraint is its own
-// operation. See docs/adr/0006-ir-operation-shape.md.
+// operation.
 //
 // # Encode with Marshal, not encoding/json
 //
@@ -82,7 +82,7 @@
 // even to the output of a MarshalJSON method. JavaScript's JSON.stringify does not. A
 // check expression such as "total >= 0" would therefore serialize to different bytes in
 // the Go and TypeScript SDKs for the same logical migration — breaking the
-// byte-identical-IR guarantee of ADR 0003, and changing the checksum with it. Marshal
+// byte-identical-IR guarantee, and changing the checksum with it. Marshal
 // turns escaping off; use it for anything that reaches the wire, a golden file, or a hash.
 //
 // It gets two things wrong, not one, and the second needs more than a flag. U+2028 and
@@ -91,14 +91,14 @@
 // as UTF-8 like any other non-ASCII character. So Marshal rewrites them afterwards, with a
 // scanner rather than a replacement: the same six bytes appear in the output when an author
 // wrote that escape as text, with the backslash doubled, and rewriting that leaves a stray
-// backslash in front of a raw separator. See ADR 0047.
+// backslash in front of a raw separator.
 //
 // Nesting needs nothing further. An operation reaches an array as a json.RawMessage, which
 // encoding/json compacts rather than re-encodes, and that path escapes separators only when
 // it is also escaping HTML — so one rewrite at the leaf is enough and doing it twice is a
 // no-op.
 //
-// Unknown fields are rejected rather than ignored. ADR 0003 settled why: decoding what you
+// Unknown fields are rejected rather than ignored. The reason: decoding what you
 // understand and skipping the rest turns a version mismatch into a migration that reports
 // success having done less than it said.
 //
@@ -140,14 +140,14 @@
 // missing one — which drops a default the migration never recorded whenever the payload is merely
 // silent. It also makes alter_column an involution: reversing a fully recorded one twice returns
 // the original, which no other operation can claim, because it is the only one whose inverse
-// records its own prior state. See docs/adr/0010-recorded-absence-of-a-default.md.
+// records its own prior state.
 //
 // ReverseAll inverts a list and reverses its order, but only if every operation in it can be
 // inverted. A partial reversal that stops halfway is worse than refusing to start.
 //
 // internal/engine is what calls it, and only for a migration whose source authored no down of its
 // own — an authored one beats a derived one, which is what invariant #10 promises. Failing whole is
-// what lets a rollback refuse before undoing anything (M4-T6, ADR 0022).
+// what lets a rollback refuse before undoing anything (M4-T6).
 //
 // # Destructiveness
 //
@@ -168,7 +168,7 @@
 // destroys only when it retypes. It is a declared list, which is the "table somewhere else"
 // this section warns about -- so a test holds it to Destructive() across the whole fixture
 // set, one operation per kind, and a twenty-first destructive operation fails that test on
-// the day it is added rather than being quietly unpermittable (ADR 0063).
+// the day it is added rather than being quietly unpermittable.
 //
 // # Recording
 //
@@ -197,7 +197,7 @@
 // None of it reaches the wire. A call site is a machine-specific path: in the IR it would make
 // a migration hash differently on CI than on a laptop, breaking checksum stability, and the Go
 // and TypeScript SDKs report call sites differently for the same migration, breaking the
-// byte-identical-IR guarantee of ADR 0003. A Recording therefore marshals to exactly the
+// byte-identical-IR guarantee. A Recording therefore marshals to exactly the
 // operations array, and attribution serves error messages and plan output only.
 //
 // OpError is how CLAUDE.md invariant #9 — every user-facing error names the migration and the

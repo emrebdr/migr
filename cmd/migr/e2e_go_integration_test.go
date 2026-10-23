@@ -308,8 +308,8 @@ func TestValidateChecksAGoProjectWithoutOpeningADatabase(t *testing.T) {
 
 	out := migrOut(t, config, "validate")
 
-	t.Log("ADR 0028's promise survives a language that needs a runtime: the process starts, the")
-	t.Log("module is built, and every database callback it could make refuses (ADR 0040).")
+	t.Log("migr validate's promise survives a language that needs a runtime: the process starts, the")
+	t.Log("module is built, and every database callback it could make refuses.")
 
 	if !strings.Contains(out, "no problems found") {
 		t.Fatalf("validate found something in migrations the stack then runs:\n%s", out)

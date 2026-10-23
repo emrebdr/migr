@@ -35,7 +35,7 @@ const (
 // and the count went back to 0, where ALGORITHM=INSTANT is error 4092. MariaDB keeps no such count.
 const maxRowVersions = 64
 
-// The conditions an instant change holds on, each read from the table by Assess (ADR 0081).
+// The conditions an instant change holds on, each read from the table by Assess.
 const (
 	instantTableCondition = "the table is not ROW_FORMAT=COMPRESSED and carries no FULLTEXT index"
 	rowVersionCondition   = ", and has fewer than 64 instant row versions -- which only a session " +

@@ -1,4 +1,4 @@
-# Releases (M14-T1, ADR 0098). Pushing a tag vX.Y.Z builds the six binaries .goreleaser.yaml names,
+# Releases (M14-T1). Pushing a tag vX.Y.Z builds the six binaries .goreleaser.yaml names,
 # signs checksums.txt keyless through this job's OIDC token, attests every archive's provenance,
 # publishes a GitHub release, commits the Homebrew cask to emrebdr/homebrew-tap, and publishes
 # @migr/cli and its six platform packages to npm, and pushes and signs the two images on ghcr.io.
@@ -63,7 +63,7 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
-      # The images are built for linux/amd64 and linux/arm64 (ADR 0101), the second under emulation.
+      # The images are built for linux/amd64 and linux/arm64, the second under emulation.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -89,10 +89,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The job's own token cannot push to emrebdr/homebrew-tap; this one is scoped to that repository
-          # alone (ADR 0099). A snapshot pushes nothing and needs none.
+          # alone. A snapshot pushes nothing and needs none.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
-      # The seven npm packages of this release (M14-T3, ADR 0100), from the binaries goreleaser built.
+      # The seven npm packages of this release (M14-T3), from the binaries goreleaser built.
       - name: npm packages
         run: node npm/cli/build.mjs dist dist/npm
 

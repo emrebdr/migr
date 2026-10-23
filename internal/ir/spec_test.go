@@ -115,7 +115,7 @@ func TestACheckedVectorStillCarriesBothSeparatorsRaw(t *testing.T) {
 		t.Log("One vector holds both characters raw, which is the only form that is a")
 		t.Log("byte-exact vector -- and an invisible one, so an editor or a reformatter can")
 		t.Log("normalize it away. All three copies of the IR would then agree on a document")
-		t.Log("that no longer states the rule they are being held to (§3.3, ADR 0047).")
+		t.Log("that no longer states the rule they are being held to (§3.3).")
 	}
 }
 

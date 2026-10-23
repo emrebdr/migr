@@ -49,7 +49,7 @@ func resolved(report history.Report) ([]history.Status, error) {
 	statuses, present := report.Resolved()
 	if !present {
 		return nil, fmt.Errorf("%w, though creating it reported success -- reading that as "+
-			"'no runs yet' would make a fully migrated database look virgin (ADR 0019)",
+			"'no runs yet' would make a fully migrated database look virgin",
 			history.ErrNoTable)
 	}
 

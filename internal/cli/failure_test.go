@@ -288,7 +288,7 @@ func TestAReportOverABrokenDatabaseStillSucceeds(t *testing.T) {
 		t.Errorf("migr up over that same database exited %d, want %d", got, ExitDrift)
 		t.Log("The five states are a report's output rather than its failure, and migr up is the")
 		t.Log("gate. Two commands answering different questions is not an inconsistency between")
-		t.Log("them (ADR 0027, E).")
+		t.Log("them.")
 	}
 }
 
@@ -373,7 +373,7 @@ func TestARunThatCommittedSomethingLeavesOneDocumentOnEachStream(t *testing.T) {
 		t.Errorf("stdout is not one document: %v\n%s", decErr, stdout)
 		t.Log("A run that committed the first migration and failed on the second owes both")
 		t.Log("answers, and putting the failure beside the summary would make stdout two")
-		t.Log("documents, which nothing can parse (ADR 0029, A).")
+		t.Log("documents, which nothing can parse.")
 	}
 
 	got := decodeFailure(t, strings.TrimSpace(stderr))

@@ -68,7 +68,7 @@ func (f fixture) named(suffix string) string {
 //
 // What survives from the old shape is the prefix scope, because one engine gives every test in this
 // package the same database: the snapshot reads the whole of it, and what this fixture owns is the
-// part of it this comparison is about. The history table is excluded by Introspect itself (ADR 0069)
+// part of it this comparison is about. The history table is excluded by Introspect itself
 // rather than by the filter, which matters because eachServer names it after the running test and
 // the prefix would otherwise match it.
 
@@ -346,7 +346,7 @@ var mappableSpellings = []string{
 // labelDefault is the one default here that MySQL takes only as a parenthesised expression.
 //
 // A text, blob or json column refuses a bare literal default with error 1101, so this driver
-// parenthesises one (ADR 0058) -- which no other column in the fixture reaches, every other text
+// parenthesises one -- which no other column in the fixture reaches, every other text
 // column being left without a default. Found by the mutation sweep: dropping the parentheses passed
 // everything until a column needed them.
 const labelDefault = "unset"
@@ -401,7 +401,7 @@ func TestASnapshotDescribesTheFixtureAndNotMigrsOwnBookkeeping(t *testing.T) {
 			t.Log("exactly -- so the prefix scope matches it and only Introspect's own exclusion")
 			t.Log("keeps it out. A comparison carrying migr's bookkeeping describes something other")
 			t.Log("than the schema the migration changed, and every migr diff over this database")
-			t.Log("would propose dropping the migration history (ADR 0069).")
+			t.Log("would propose dropping the migration history.")
 		}
 	})
 }
@@ -625,7 +625,7 @@ func TestATeardownIsRebuiltFromWhatItRecorded(t *testing.T) {
 
 	t.Log("Ten of these eleven operations carry a from payload, and this is what it is for: the")
 	t.Log("whole structure is reconstructed from recorded prior state and from nothing else.")
-	t.Log("ADR 0008 calls that payload trust rather than proof; against a live server it is")
+	t.Log("That is payload trust rather than proof; against a live server it is")
 	t.Log("measured, which is the strongest check available before introspection lands.")
 }
 
@@ -662,7 +662,7 @@ func TestOnlyAnAuthoredUndoTakesARawOperationBack(t *testing.T) {
 	})
 
 	t.Log("A prefix length is this engine's partial index: no v1 operation carries one, which is")
-	t.Log("the same refusal add_index over a longtext column runs into (ADR 0058). So the one")
+	t.Log("the same refusal add_index over a longtext column runs into. So the one")
 	t.Log("statement raw exists for is a statement an operator would really reach for.")
 }
 

@@ -51,13 +51,13 @@
 //
 // It also fails one migration shape outright: an up that sends statements of its own and authors no
 // down. A statement has no inverse to derive, so the engine refuses that rollback rather than half
-// reverting it (ADR 0036), and this says so before a rollback does.
+// reverting it, and this says so before a rollback does.
 //
-// What it does not do is invert anything. All twenty inverses live in the engine, because ADR 0022
-// put them in one place so that two SDKs could not reach two answers for one migration -- a copy
-// here would be a third, and the day it drifted it would pass a down the engine refuses. So whether
-// every operation can be inverted is answered by the engine, through Running.Validate, and whether a
-// rollback actually leaves the database where it found it is answered by Running.RoundTrip.
+// What it does not do is invert anything. All twenty inverses live in the engine, so that two
+// SDKs could not reach two answers for one migration -- a copy here would be a third, and the day
+// it drifted it would pass a down the engine refuses. So whether every operation can be inverted is
+// answered by the engine, through Running.Validate, and whether a rollback actually leaves the
+// database where it found it is answered by Running.RoundTrip.
 //
 // # Running against a throwaway database
 //
@@ -70,8 +70,8 @@
 //	p.RoundTrip(t)
 //	p.Down(t, "--step", "1")
 //
-// The database is a SQLite file in the test's own t.TempDir(), because that engine needs no daemon
-// (ADR 0050); Driver and DSN together point it at a real PostgreSQL or MySQL instead. Each project
+// The database is a SQLite file in the test's own t.TempDir(), because that engine needs no daemon;
+// Driver and DSN together point it at a real PostgreSQL or MySQL instead. Each project
 // records its runs in a history table named for the test, since the database is the thing that
 // remembers and one table shared between cases makes the second case meet the first one's drift.
 //
@@ -79,7 +79,7 @@
 // that is measured: docs/protocol.md §9 makes the directory holding migr.yaml the runtime's working
 // directory, and both adapters probe from it -- the Go one runs go list -m there. A config outside
 // the module fails with "this project is not inside a Go module" before a migration is ever loaded.
-// That directory ignores itself from the inside (ADR 0035) and what this helper puts there is
+// That directory ignores itself from the inside and what this helper puts there is
 // removed when the test ends.
 //
 // The binary is MIGR_BIN, or migr on PATH. When there is neither, this fails and names both rather
@@ -112,5 +112,5 @@
 // is what invariant #3 forbids. The repository's own end-to-end suites measure the same property the
 // same way.
 //
-// Status: all three helpers (M10-T6, ADR 0068).
+// Status: all three helpers (M10-T6).
 package migrtest

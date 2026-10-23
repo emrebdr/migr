@@ -329,7 +329,7 @@ func TestPlanOfAnUnauthoredDownRefusesBeforeAnythingRuns(t *testing.T) {
 		t.Errorf("plan --down refused with %v, want the file named", err)
 		t.Log("A .sql migration reaches the database as ir.Raw, which has no inverse, so its")
 		t.Log("derived down is a refusal rather than statements. This is where an operator can")
-		t.Log("learn that before migr down finds it out newest-first (ADR 0022, ADR 0025).")
+		t.Log("learn that before migr down finds it out newest-first.")
 	}
 }
 
@@ -535,7 +535,7 @@ func TestPlanPrintsAHeldStatementBeforeTheOperationsItPrecedes(t *testing.T) {
 	operation := strings.Index(printed, "ALTER TABLE users")
 
 	t.Log("Every callback fires while the migration is deciding what it does, which is before")
-	t.Log("the engine has compiled anything or opened a transaction (ADR 0032).")
+	t.Log("the engine has compiled anything or opened a transaction.")
 
 	if held < 0 || operation < 0 || held > operation {
 		t.Errorf("the held statement is not printed above the operations:\n%s", printed)

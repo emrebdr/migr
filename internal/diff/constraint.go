@@ -13,7 +13,7 @@ import (
 // alter_index, so a changed index is a drop and an add, and a renamed one is too.
 //
 // Two of those Equal methods deliberately ignore a name, because no two engines agree on one: a
-// primary key's and a foreign key's (ADR 0065). So a key whose name moved is no change at all, which
+// primary key's and a foreign key's. So a key whose name moved is no change at all, which
 // is what keeps a diff between two engines from proposing to rebuild every key it can see.
 
 // planConstraints emits what the two schemas' constraints differ by, for every table that will exist.

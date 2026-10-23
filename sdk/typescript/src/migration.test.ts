@@ -69,7 +69,7 @@ test("a migration must have an up", () => {
 test("dependencies is a declaration the type will not let be a computation", () => {
   const m = defineMigration({
     up() {},
-    // @ts-expect-error ADR 0018: dependencies are declared, never computed
+    // @ts-expect-error dependencies are declared, never computed
     dependencies() {
       return ["20260727T153000"];
     },

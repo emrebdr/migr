@@ -16,7 +16,8 @@ import (
 	"github.com/emrebdr/migr/internal/ir"
 )
 
-// A shadow is created LIKE the table, changed, filled a keyed chunk at a time, and swapped in under LOCK TABLES.
+// A shadow is created LIKE the table, changed, filled a keyed chunk at a time, and swapped in under
+// LOCK TABLES.
 //
 // Each chunk is INSERT ... SELECT ... FOR SHARE ON DUPLICATE KEY UPDATE k = k: a row a replay already
 // wrote is kept, and nothing else is downgraded -- INSERT IGNORE would also turn a truncation or a NULL

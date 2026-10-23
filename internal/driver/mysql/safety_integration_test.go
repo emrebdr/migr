@@ -66,6 +66,6 @@ func TestAPreviewLowersOnlyTheFirstQueuedMigrationsVerdictFromItsTable(t *testin
 	})
 
 	t.Log("Declared, an add_column is table_rewrite on both servers because a COMPRESSED or FULLTEXT")
-	t.Log("table is rebuilt (ADR 0081). The preview reads the first migration's table and lowers it;")
+	t.Log("table is rebuilt. The preview reads the first migration's table and lowers it;")
 	t.Log("the second is judged before the first has run, so it keeps the worst.")
 }

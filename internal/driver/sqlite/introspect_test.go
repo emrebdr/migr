@@ -155,7 +155,7 @@ func TestAnAmbiguousTypeNeverComparesEqualToAnExactOne(t *testing.T) {
 
 	if big.Equal(exact) {
 		t.Error("an ambiguous int64 compared equal to an exact one")
-		t.Log("ADR 0065: a guess never equals a fact. This driver cannot tell the three integer")
+		t.Log("A guess never equals a fact. This driver cannot tell the three integer")
 		t.Log("widths apart, so an engine that can must not compare equal to it.")
 	}
 }
@@ -595,7 +595,7 @@ func TestASnapshotCanBeTakenInsideAnOpenTransaction(t *testing.T) {
 	if !inside.Equal(*introspect(t, c)) {
 		t.Error("the snapshot read inside a transaction differs from the one read outside it")
 		t.Log("The engine's own check runs before the transaction a migration's statements open,")
-		t.Log("and a resume reads one inside it, so both must work (ADR 0017).")
+		t.Log("and a resume reads one inside it, so both must work.")
 	}
 }
 
@@ -649,7 +649,7 @@ func TestTheSnapshotConformanceSuitePasses(t *testing.T) {
 
 	conformance.Snapshot{Driver: d, Conn: openFile(t), Prefix: "migr_snap"}.Run(t)
 
-	t.Log("Untagged, for ADR 0050's reason: this engine's requirement is a t.TempDir() and a few")
+	t.Log("Untagged, because a tag names a requirement and this engine's is a t.TempDir() and a few")
 	t.Log("milliseconds, so one third of the cross-engine claim is inside make check.")
 }
 

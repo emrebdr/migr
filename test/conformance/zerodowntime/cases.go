@@ -103,6 +103,11 @@ func one(op ir.Operation) ir.Operations {
 	return ir.Operations{op}
 }
 
+// pointerTo returns a pointer to a copy of v, for the optional fields an operation's payload holds.
+func pointerTo[T any](v T) *T {
+	return &v
+}
+
 // scenarios are every case the suite runs, in the order it runs them.
 func scenarios() []scenario {
 	return append(schemaScenarios(), dataScenarios()...)
@@ -185,8 +190,8 @@ func notNull(name string, side, rewrittenOnly bool) scenario {
 			return one(ir.DropColumn{Table: table(n), Column: "zd_nn",
 				From: &ir.Column{Name: "zd_nn", Type: ty.int32, Nullable: true}})
 		}, change: func(n names, _ types, _ Load, _ string) ir.Operations {
-			return one(ir.AlterColumn{Table: table(n), Column: "zd_nn", Nullable: new(false),
-				From: &ir.ColumnState{Nullable: new(true)}})
+			return one(ir.AlterColumn{Table: table(n), Column: "zd_nn", Nullable: pointerTo(false),
+				From: &ir.ColumnState{Nullable: pointerTo(true)}})
 		}}
 }
 

@@ -38,6 +38,9 @@ const (
 	hiddenID      = 9000000
 )
 
+// shadowCopyBound is how long a copy may take before a case fails naming why, well inside go test's own timeout.
+const shadowCopyBound = 5 * time.Minute
+
 // logicalServer is the compose server that permits logical decoding.
 const logicalServer = 1
 
@@ -135,6 +138,7 @@ func (sc *shadowCase) options(t *testing.T, watch func(engine.ShadowProgress)) e
 	}
 	opts.Pacer = engine.Steady{Rows: 500, Pause: 5 * time.Millisecond}
 	opts.CaptureLag = 5 * time.Second
+	opts.MigrationTimeout = shadowCopyBound
 	opts.Shadowed = watch
 
 	return opts

@@ -16,6 +16,9 @@ import (
 // batchCap is how many changes one read hands over before it stops at the next commit.
 const batchCap = 10000
 
+// peekRows is how many messages one read asks the slot for: a change's own, and its transaction's begin and commit.
+const peekRows = 4 * batchCap
+
 // slotBusy is object_in_use, which dropping a slot a connection is still reading through answers.
 const slotBusy = "55006"
 
@@ -25,9 +28,9 @@ const (
 	busyPoll = 250 * time.Millisecond
 )
 
-// peekQuery reads, without consuming, every pgoutput message the slot holds up to a position.
-const peekQuery = `SELECT lsn::text, data FROM pg_logical_slot_peek_binary_changes($1, $2::pg_lsn, NULL,
-  'proto_version', '1', 'publication_names', $3)`
+// peekQuery reads, without consuming, up to a number of the slot's pgoutput messages before a position, ending at a commit.
+const peekQuery = `SELECT lsn::text, data FROM pg_logical_slot_peek_binary_changes($1, $2::pg_lsn, $3::int,
+  'proto_version', '1', 'publication_names', $4)`
 
 // slotQuery reads where a slot stands, and whether some connection is reading through it now.
 const slotQuery = `SELECT confirmed_flush_lsn::text, active FROM pg_replication_slots
@@ -98,6 +101,8 @@ type slotStream struct {
 	start pglogrepl.LSN
 	// acknowledged is how far the slot has been advanced, which an advance never moves back from.
 	acknowledged pglogrepl.LSN
+	// consumed is how many messages past the slot's position the cursor already stands beyond, which a read asks for on top.
+	consumed int
 	// decoder carries the relations read and the cursor every read skips to.
 	decoder *decoder
 	// gone reports a resumed stream whose slot no longer exists, which can still be dropped and read nothing.
@@ -235,12 +240,7 @@ func (s *slotStream) Next(ctx context.Context) (capture.Batch, error) {
 		return capture.Batch{}, fmt.Errorf("the WAL ends at %q, which is not a WAL position: %w", end, err)
 	}
 
-	messages, err := s.peek(ctx, upto)
-	if err != nil {
-		return capture.Batch{}, err
-	}
-
-	got, err := s.decoder.decode(messages, batchCap)
+	got, err := s.read(ctx, upto)
 	if err != nil {
 		return capture.Batch{}, err
 	}
@@ -253,7 +253,9 @@ func (s *slotStream) batch(got read, upto pglogrepl.LSN, now time.Time) capture.
 	batch := capture.Batch{Changes: got.changes, Through: capture.Position(got.through.String())}
 
 	if got.full {
-		batch.Behind = max(now.Sub(got.committed), 0)
+		if !got.committed.IsZero() {
+			batch.Behind = max(now.Sub(got.committed), 0)
+		}
 
 		return batch
 	}
@@ -267,9 +269,38 @@ func (s *slotStream) batch(got read, upto pglogrepl.LSN, now time.Time) capture.
 	return batch
 }
 
-// peek reads every message the slot holds up to a position, leaving the slot where it is.
-func (s *slotStream) peek(ctx context.Context, upto pglogrepl.LSN) ([]decoded, error) {
-	rows, err := s.conn.Query(ctx, peekQuery, s.name, upto.String(), s.name)
+// read decodes the next batch past the cursor, asking for more of the slot until a capped peek reaches past it.
+func (s *slotStream) read(ctx context.Context, upto pglogrepl.LSN) (read, error) {
+	limit := s.consumed + peekRows
+
+	for {
+		messages, err := s.peek(ctx, upto, limit)
+		if err != nil {
+			return read{}, err
+		}
+
+		before := s.decoder.after
+
+		got, err := s.decoder.decode(messages, batchCap)
+		if err != nil {
+			return read{}, err
+		}
+
+		capped := len(messages) >= limit
+		if !capped || s.decoder.after > before {
+			s.consumed = got.consumed
+			got.full = got.full || capped
+
+			return got, nil
+		}
+
+		limit *= 2
+	}
+}
+
+// peek reads up to a number of the messages the slot holds before a position, leaving the slot where it is.
+func (s *slotStream) peek(ctx context.Context, upto pglogrepl.LSN, limit int) ([]decoded, error) {
+	rows, err := s.conn.Query(ctx, peekQuery, s.name, upto.String(), limit, s.name)
 	if err != nil {
 		return nil, fmt.Errorf("reading the replication slot %s: %w", s.name, err)
 	}
@@ -324,6 +355,9 @@ func (s *slotStream) Acknowledge(ctx context.Context, through capture.Position) 
 	}
 
 	s.acknowledged = at
+	if at >= s.decoder.after {
+		s.consumed = 0
+	}
 
 	return nil
 }

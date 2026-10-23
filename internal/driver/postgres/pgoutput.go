@@ -65,6 +65,8 @@ type read struct {
 	committed time.Time
 	// full reports a read that stopped at a commit boundary with more of the log still to read.
 	full bool
+	// consumed is how many of the messages read lead up to the cursor, every one of them now behind it.
+	consumed int
 }
 
 // newDecoder returns a decoder for one table's changes, past a position.
@@ -77,13 +79,19 @@ func newDecoder(table string, columns []string, after pglogrepl.LSN) *decoder {
 func (d *decoder) decode(messages []decoded, limit int) (read, error) {
 	out := read{through: d.after}
 
-	for _, m := range messages {
+	for i, m := range messages {
 		committed, err := d.message(m)
 		if err != nil {
 			return read{}, err
 		}
 
-		if !committed || m.lsn <= d.after {
+		if !committed {
+			continue
+		}
+
+		out.consumed = i + 1
+
+		if m.lsn <= d.after {
 			continue
 		}
 

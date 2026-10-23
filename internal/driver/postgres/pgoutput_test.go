@@ -159,6 +159,26 @@ func TestAReadStopsAtTheCommitThatFillsTheBatch(t *testing.T) {
 	}
 }
 
+func TestAReadCountsTheMessagesBehindTheCursorSoACappedPeekAsksPastThem(t *testing.T) {
+	d := newDecoder("people", peopleColumns, 100)
+	first := transaction(100, relationMessage(peopleColumns...), insert(s("1"), s("old"), nil))
+	second := transaction(200, insert(s("2"), s("a"), nil), insert(s("3"), s("b"), nil))
+	messages := append(append(first, second...), transaction(300, insert(s("4"), s("c"), nil))...)
+
+	got, err := d.decode(messages, 2)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if got.consumed != len(first)+len(second) || got.through != 200 {
+		t.Errorf("the read consumed %d messages through %s, want the %d up to the commit it stopped at",
+			got.consumed, got.through, len(first)+len(second))
+		t.Log("A capped peek starts at the slot's position, which the cutover's catch-up never advances: a")
+		t.Log("read that asked for no more than the messages it had already handed over saw nothing new and")
+		t.Log("reported the stream caught up with a backlog unread, losing every row in it.")
+	}
+}
+
 func TestAnUpdateLeavingAToastedColumnAloneIsPartialAndAKeyMoveCarriesItsOldKey(t *testing.T) {
 	d := newDecoder("people", peopleColumns, 0)
 	messages := transaction(100, relationMessage(peopleColumns...),

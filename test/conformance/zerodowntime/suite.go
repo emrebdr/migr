@@ -48,6 +48,8 @@ type Suite struct {
 	Prefix string
 	// Capture opens a change stream where the server permits one, and is nil where the shadow case is skipped.
 	Capture func(ctx context.Context, req capture.Request) (capture.Stream, error)
+	// ShadowOnly runs the shadow-table cases alone, on a server there for its change stream whose sibling runs the rest.
+	ShadowOnly bool
 }
 
 // run is one Suite's run: what it was given, and every kind it has judged or seen honestly refused.
@@ -89,14 +91,19 @@ func (s Suite) Run(t *testing.T) {
 
 	r.prepare(t)
 
-	for _, sc := range scenarios() {
+	cases := s.cases()
+	for _, sc := range cases {
 		t.Run(sc.name, func(t *testing.T) {
 			r.runCase(t, sc)
 		})
 	}
 
-	if r.ran < len(scenarios()) {
-		t.Logf("-run filtered out %d of %d cases, so coverage is not judged", len(scenarios())-r.ran, len(scenarios()))
+	if s.ShadowOnly {
+		return
+	}
+
+	if r.ran < len(cases) {
+		t.Logf("-run filtered out %d of %d cases, so coverage is not judged", len(cases)-r.ran, len(cases))
 
 		return
 	}
@@ -104,6 +111,32 @@ func (s Suite) Run(t *testing.T) {
 	for _, missing := range unreached(r.reached) {
 		t.Errorf("no case ran %s on %s, so its verdict was never held to a client's wait", missing, s.Driver.Name())
 	}
+}
+
+// cases are the scenarios this suite runs: every one, or the shadow-table ones where it is ShadowOnly.
+func (s Suite) cases() []scenario {
+	if !s.ShadowOnly {
+		return scenarios()
+	}
+
+	var online []scenario
+
+	for _, sc := range scenarios() {
+		if sc.online {
+			online = append(online, sc)
+		}
+	}
+
+	return online
+}
+
+// seeded is how many rows the loaded table holds: SeededRows, or SideRows where no case but the shadow ones reads it.
+func (s Suite) seeded() int {
+	if s.ShadowOnly {
+		return SideRows
+	}
+
+	return SeededRows
 }
 
 // unreached lists every kind no case reached, in the IR's own order.
@@ -135,11 +168,11 @@ func (r *run) prepare(t *testing.T) {
 	r.create(t, conn, ir.AddIndex{Table: r.n.main, Name: r.s.Prefix + "_label_idx", Columns: []string{"label"}})
 	r.create(t, conn, ir.AddIndex{Table: r.n.main, Name: r.s.Prefix + "_pad_idx", Columns: []string{"pad"}})
 
-	if err := r.s.Load.Seed(ctx, r.n.main, SeededRows); err != nil {
-		t.Fatalf("seeding %s with %d rows: %v", r.n.main, SeededRows, err)
+	if err := r.s.Load.Seed(ctx, r.n.main, r.s.seeded()); err != nil {
+		t.Fatalf("seeding %s with %d rows: %v", r.n.main, r.s.seeded(), err)
 	}
 
-	load := startLoad(ctx, r.s.Load, r.n.main, SeededRows, sinceEpoch)
+	load := startLoad(ctx, r.s.Load, r.n.main, r.s.seeded(), sinceEpoch)
 
 	time.Sleep(settle)
 

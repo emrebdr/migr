@@ -16,14 +16,19 @@ import (
 )
 
 // zdServers are the servers the zero-downtime suite holds this driver to; three of them permit capture.
+//
+// The two that exist for their change stream run the shadow-table cases alone: a GTID set or a binary
+// log changes how a shadow is captured, and no lock any other operation takes, which the server of the
+// same engine beside each already holds to its verdict.
 var zdServers = []struct {
 	name, env, dsn string
 	variant        Variant
+	shadowOnly     bool
 }{
-	{"mysql80", "MIGR_TEST_MYSQL80_DSN", "migr:migr@tcp(127.0.0.1:55480)/migr", MySQL},
-	{"mysql80gtid", "MIGR_TEST_MYSQL80GTID_DSN", "migr:migr@tcp(127.0.0.1:55481)/migr", MySQL},
-	{"mariadb114", "MIGR_TEST_MARIADB114_DSN", "migr:migr@tcp(127.0.0.1:55411)/migr", MariaDB},
-	{"mariadb114binlog", "MIGR_TEST_MARIADB114BINLOG_DSN", "migr:migr@tcp(127.0.0.1:55412)/migr", MariaDB},
+	{"mysql80", "MIGR_TEST_MYSQL80_DSN", "migr:migr@tcp(127.0.0.1:55480)/migr", MySQL, false},
+	{"mysql80gtid", "MIGR_TEST_MYSQL80GTID_DSN", "migr:migr@tcp(127.0.0.1:55481)/migr", MySQL, true},
+	{"mariadb114", "MIGR_TEST_MARIADB114_DSN", "migr:migr@tcp(127.0.0.1:55411)/migr", MariaDB, false},
+	{"mariadb114binlog", "MIGR_TEST_MARIADB114BINLOG_DSN", "migr:migr@tcp(127.0.0.1:55412)/migr", MariaDB, true},
 }
 
 // zdLockWait is the suite's lock wait on this driver: lock_wait_timeout holds whole seconds, so one rather than half the budget.
@@ -136,7 +141,9 @@ func TestEveryOperationKeepsItsLockPromiseUnderLoad(t *testing.T) {
 				dsn = override
 			}
 
-			zdSuite(t, dsn, s.variant).Run(t)
+			suite := zdSuite(t, dsn, s.variant)
+			suite.ShadowOnly = s.shadowOnly
+			suite.Run(t)
 		})
 	}
 }

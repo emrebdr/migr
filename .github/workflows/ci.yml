@@ -158,15 +158,53 @@ jobs:
       - name: Integration tests
         run: make test-integration
 
-      # The zero-downtime suite (M13-T12, ADR 0096): every operation against every server under
-      # client load, each held to the lock cost it declares. Here, after the integration tests,
-      # because it needs the same containers and the target leaves them running.
-      - name: Zero-downtime suite
-        run: make test-zerodowntime
-
       # Four containers now, and a driver's live tests fail rather than skip when their
       # server is absent -- so a failure here is either the SQL or a server that never
       # came healthy, and nothing in the Go output tells those apart.
       - name: Report server state
         if: failure()
+        run: docker compose -f test/docker-compose.yml ps
+
+  # The zero-downtime suite (M13-T12, ADR 0096): every operation against every server under client
+  # load, each held to the lock cost it declares. A job of its own, one runner per driver, because it
+  # judges latency: sharing a runner with the integration tests, or with another driver's suite, put
+  # one driver's million-row rewrites on the disk another's client reads were being timed against.
+  # Each leg starts only the servers its driver runs against, and SQLite's starts none.
+  zerodowntime:
+    name: zero-downtime (${{ matrix.servers || matrix.driver }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - driver: postgres
+            services: postgres16 postgres17
+          - driver: mysql
+            servers: mysql
+            services: mysql80 mysql80gtid
+          - driver: mysql
+            servers: mariadb
+            services: mariadb114 mariadb114binlog
+          - driver: sqlite
+            services: none
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            **/go.mod
+            **/go.sum
+
+      - name: Zero-downtime suite
+        run: >-
+          make test-zerodowntime ZD_PACKAGES=./internal/driver/${{ matrix.driver }}/
+          ZD_SERVERS="${{ matrix.servers }}" ZD_SERVICES="${{ matrix.services }}"
+
+      - name: Report server state
+        if: failure() && matrix.driver != 'sqlite'
         run: docker compose -f test/docker-compose.yml ps

@@ -77,6 +77,15 @@
 // rather than a benchmark does. The same change on the loaded table runs only where a session performs
 // it as a safer sequence, PostgreSQL's validated check, which is the promise a full table is needed for.
 //
+// # Where it runs
+//
+// It measures latency, so nothing else may share its disk: run beside another driver's suite on one CI
+// runner, MySQL's million-row rewrites starved a PostgreSQL read for 4s during a concurrent index build
+// that took no lock a read waits for. make test-zerodowntime runs one package at a time, and CI runs
+// each driver -- MySQL and MariaDB apart -- on a runner of its own. A server there only for its change
+// stream is Suite.ShadowOnly: it runs the shadow-table cases alone, over a side-sized table, since a GTID
+// set or a binary log changes how a shadow is captured and no other operation's lock.
+//
 // The latency clock is the one place this package reads the wall clock, and it says so in the
 // directive beside it: nothing here plans, and a latency is a duration of real time.
 package zerodowntime

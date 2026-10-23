@@ -124,3 +124,24 @@ func TestEveryKindIsReachedByACaseGoingUpOrComingDown(t *testing.T) {
 		t.Errorf("no case reaches %v, so a driver's verdict on it would never be held", missing)
 	}
 }
+
+func TestAShadowOnlyServerRunsTheShadowCasesAndNothingElse(t *testing.T) {
+	shadowed := Suite{ShadowOnly: true}.cases()
+	if len(shadowed) == 0 {
+		t.Fatal("a shadow-only server runs no case at all")
+	}
+
+	for _, sc := range shadowed {
+		if !sc.online {
+			t.Errorf("a shadow-only server runs %q, which its sibling server already holds", sc.name)
+		}
+	}
+
+	if all := (Suite{}).cases(); len(all) != len(scenarios()) {
+		t.Errorf("a full server runs %d of %d cases", len(all), len(scenarios()))
+	}
+
+	if (Suite{ShadowOnly: true}).seeded() != SideRows || (Suite{}).seeded() != SeededRows {
+		t.Error("a shadow-only server seeds the million rows only the other cases read")
+	}
+}

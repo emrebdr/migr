@@ -149,12 +149,22 @@ test-integration:
 # lock-impact verdict against MIGR_ZERODOWNTIME_BUDGET (1.5s unset). It brings the databases up for
 # test-integration's reason, and runs only the packages that carry the tag -- the three drivers, each
 # running test/conformance/zerodowntime from its own package, as every conformance suite is run.
+#
+# One package at a time (-p 1), since it measures latency: run together on one CI runner, MySQL's
+# million-row rewrites starved a PostgreSQL read for 4s while a concurrent index build was judged.
+# ZD_PACKAGES, ZD_SERVERS and ZD_SERVICES narrow it -- to one driver, to the servers whose subtest name
+# begins with ZD_SERVERS, and to the containers those need -- which is how CI runs each slice on a
+# runner of its own. ZD_SERVICES=none starts no container, which SQLite needs none of.
+ZD_PACKAGES ?= ./internal/driver/postgres/ ./internal/driver/mysql/ ./internal/driver/sqlite/
+ZD_SERVERS  ?=
+ZD_SERVICES ?=
 test-zerodowntime:
-	@echo "==> docker compose up  ($(COMPOSE))"
-	@docker compose -f $(COMPOSE) up -d --wait
-	@go test -tags=zerodowntime -count=1 -timeout 60m -run TestEveryOperationKeepsItsLockPromiseUnderLoad \
-	  ./internal/driver/postgres/ ./internal/driver/mysql/ ./internal/driver/sqlite/
-	@echo "    containers left running; 'make clean' tears them down"
+	@if [ "$(ZD_SERVICES)" != none ]; then \
+	  echo "==> docker compose up  ($(COMPOSE)) $(ZD_SERVICES)"; \
+	  docker compose -f $(COMPOSE) up -d --wait $(ZD_SERVICES) || exit 1; \
+	fi
+	@go test -tags=zerodowntime -count=1 -p 1 -timeout 20m \
+	  -run 'TestEveryOperationKeepsItsLockPromiseUnderLoad/^$(ZD_SERVERS)' $(ZD_PACKAGES)
 
 # The cross-language proof: every SDK emits byte-identical IR for the fixtures in
 # test/conformance/runtime, which belong to no language. It builds the TypeScript SDK

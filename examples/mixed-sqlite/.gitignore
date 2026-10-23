@@ -1,0 +1,4 @@
+node_modules/
+.migr/
+app.db
+*.db-migr.lock

@@ -1,0 +1,11 @@
+{
+  "name": "ts-mysql",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/migrations.test.ts"
+  },
+  "dependencies": {
+    "@migr/sdk": "file:../../sdk/typescript"
+  }
+}

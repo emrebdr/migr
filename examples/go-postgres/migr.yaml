@@ -1,0 +1,8 @@
+version: 1
+migrations:
+  dir: ./migrations
+  language: go
+databases:
+  default:
+    driver: postgres
+    dsn: ${DATABASE_URL:-postgres://app:app@localhost:55432/app?sslmode=disable}

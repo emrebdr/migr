@@ -88,8 +88,10 @@ Each table lists one row per operation, plus a row per payload that changes the 
 
 The cost of a data operation (`data_copy`, `data_backfill`, `data_transform`) is declared as one
 statement. In a data-only migration it runs in chunks of `safety.chunk_rows`, each its own short
-transaction — measured, clients waited 20–40 ms — so its row is an over-report there. A data
-operation beside a schema change in one migration runs as the one statement its row describes.
+transaction (measured, clients waited 20–40 ms), so `migr plan`, `migr validate --require-safe` and
+the run judge it at `brief_exclusive`, printed as `brief_exclusive (declared table_rewrite, one chunk
+at a time)`. A data operation beside a schema change in one migration runs as the one statement its
+row describes, and is judged at that row.
 
 ### PostgreSQL 16 and 17
 
@@ -491,6 +493,9 @@ change what an applied migration emits without changing its source checksum.
 
 Each phase declares itself a step of the change. migr runs a step only under a **later release**
 than the one that applied the step before it, so two phases never land in one deploy.
+
+[`examples/zero-downtime`](../examples/zero-downtime/README.md) runs this sequence against
+PostgreSQL with an app serving throughout, and fails if any of its queries does.
 
 ### Naming the release
 

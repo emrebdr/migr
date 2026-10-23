@@ -11,6 +11,8 @@ import (
 	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
+	"github.com/emrebdr/migr/internal/ir"
+	"github.com/emrebdr/migr/internal/plan"
 	"github.com/emrebdr/migr/internal/validate"
 )
 
@@ -358,4 +360,24 @@ func TestRequireSafeIsRefusedWhereNothingReadsIt(t *testing.T) {
 			t.Errorf("migr %s --require-safe exited %d, want the flag refused", command, ExitCode(err))
 		}
 	}
+}
+
+func TestAChunkedOperationSaysWhatItWasDeclaredAndThatItRunsAChunkAtATime(t *testing.T) {
+	step := plan.Step{Op: ir.DataBackfill{Table: "users", Column: "plan"}, Chunked: true,
+		Verdict: capability.Native(capability.TableRewrite)}
+
+	op := operation{Lock: step.Lock(), Declared: declaredOf(step), Chunks: &chunks{Table: "users"}}
+
+	if got, want := op.describeLock(capability.BriefExclusive),
+		"  brief_exclusive (declared table_rewrite, one chunk at a time)"; got != want {
+		t.Errorf("the chunked backfill renders %q, want %q", got, want)
+	}
+
+	step.Chunked = false
+
+	if declared := declaredOf(step); declared != "" {
+		t.Errorf("a backfill run as one statement reports a declared cost %q beside its own", declared)
+	}
+
+	t.Log("The verdict stays the declaration, as a rewrite's does, so a plan says what chunking saved.")
 }

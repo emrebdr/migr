@@ -1,0 +1,8 @@
+{
+  "name": "mixed-sqlite",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@migr/sdk": "file:../../sdk/typescript"
+  }
+}

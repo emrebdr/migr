@@ -1,0 +1,10 @@
+version: 1
+migrations:
+  dir: ./migrations
+  language: go              # only what `migr create` writes; every file runs in its own extension's language
+databases:
+  default:
+    driver: sqlite
+    dsn: ${DATABASE_URL:-./app.db}
+validation:
+  allow_destructive: [raw]  # every .sql statement is a raw operation

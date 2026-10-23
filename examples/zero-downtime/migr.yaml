@@ -1,0 +1,10 @@
+version: 1
+migrations:
+  dir: ./migrations
+  language: go
+databases:
+  default:
+    driver: postgres
+    dsn: ${DATABASE_URL:-postgres://app:app@localhost:55433/app?sslmode=disable}
+validation:
+  allow_destructive: [data_transform, drop_column]   # the backfill rewrites a column, the contract drops one

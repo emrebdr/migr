@@ -232,6 +232,41 @@ jobs:
         if: failure()
         run: docker compose -f test/docker-compose.yml ps
 
+  # The example projects (M14-T6), each run as its README says against its own compose.yaml, with
+  # this commit's migr and SDKs. Ubuntu only, like every job that starts a database.
+  examples:
+    name: examples
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            **/go.mod
+            **/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: sdk/typescript/.nvmrc
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: sdk/typescript
+
+      - name: Examples
+        run: make test-examples
+
+      - name: Report server state
+        if: failure()
+        run: docker ps -a
+
   # The zero-downtime suite (M13-T12): every operation against every server under client
   # load, each held to the lock cost it declares. A job of its own, one runner per driver, because it
   # judges latency: sharing a runner with the integration tests, or with another driver's suite, put

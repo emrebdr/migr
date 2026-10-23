@@ -181,7 +181,7 @@ type operation struct {
 	Rewrite *rewriteDoc `json:"rewrite,omitempty"`
 	// Lock is what the operation costs a live database as it would run, a rewrite's cost where it has one.
 	Lock capability.LockImpact `json:"lock"`
-	// Declared is what it would cost as declared, present only where a rewrite made it cheaper.
+	// Declared is what it would cost as declared, present only where a rewrite or chunking made it cheaper.
 	Declared capability.LockImpact `json:"declared_lock,omitempty"`
 	// RewritesTable reports an operation that writes every row of its table to new storage.
 	RewritesTable bool `json:"rewrites_table,omitempty"`
@@ -587,9 +587,9 @@ func shownStatements(step plan.Step) []driver.Statement {
 	return step.Statements
 }
 
-// declaredOf is what a rewritten operation would have cost as declared, and nothing where that is its cost.
+// declaredOf is what a rewritten or chunked operation would have cost as declared, and nothing where that is its cost.
 func declaredOf(step plan.Step) capability.LockImpact {
-	if step.Rewrite == nil || step.Fresh || step.Verdict.Lock() == step.Lock() {
+	if (step.Rewrite == nil && !step.Chunked) || step.Fresh || step.Verdict.Lock() == step.Lock() {
 		return ""
 	}
 
@@ -1130,6 +1130,8 @@ func (o operation) describeLock(ceiling capability.LockImpact) string {
 		described += " (through a shadow table: the rename at cutover)"
 	case o.NewTable:
 		described += " (on a table this migration creates)"
+	case o.Declared != "" && o.Chunks != nil:
+		described += fmt.Sprintf(" (declared %s, one chunk at a time)", o.Declared)
 	case o.Declared != "":
 		described += fmt.Sprintf(" (declared %s, rewritten)", o.Declared)
 	case o.Assessed:

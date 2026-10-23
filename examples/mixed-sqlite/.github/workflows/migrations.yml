@@ -1,0 +1,31 @@
+# Validates every migration and runs them up and back down against a throwaway SQLite file.
+# Copy this file into .github/workflows/ of your own repository.
+name: Migrations
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install migr and the TypeScript SDK
+        run: npm ci && npm install --global @migr/cli
+      - name: Validate
+        run: migr validate
+      - name: Round trip
+        env:
+          DATABASE_URL: ${{ runner.temp }}/ci.db
+        run: |
+          migr up
+          migr down --step 3
+          migr status

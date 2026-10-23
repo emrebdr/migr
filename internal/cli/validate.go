@@ -157,13 +157,14 @@ func overCeiling(problems []fault) int {
 	return n
 }
 
-// validating compiles for a validation run, rewriting as the session would where the lock check reads it.
+// validating compiles for a validation run, rewriting and chunking as a run would where the lock check reads it.
 func (t *target) validating(d driver.Compiler, answered asked, required bool) plan.Planner {
 	if !required {
 		return plan.Planner{Compiler: d}
 	}
 
-	return plan.Planner{Compiler: d, Rewriter: answered.rewriter, Rewrites: t.cfg.Safety.Enabled()}
+	return plan.Planner{Compiler: d, Rewriter: answered.rewriter, Rewrites: t.cfg.Safety.Enabled(),
+		ChunkRows: t.cfg.Safety.Rows()}
 }
 
 // ceilingFor is the ceiling a run gates on, and nothing for one that was not asked to.

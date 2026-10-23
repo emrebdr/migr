@@ -100,3 +100,8 @@ line.
 - **No portability.** The SQL is the engine's. Moving to another database means rewriting it.
 - **No `migr diff` over a `.sql` project.** Engine SQL has no readable effect, so migr can't
   project the schema the migrations describe.
+
+## Example project
+
+[`examples/mixed-sqlite`](../../examples/mixed-sqlite/README.md) keeps a `.sql` migration beside Go
+and TypeScript ones in one directory, on SQLite.

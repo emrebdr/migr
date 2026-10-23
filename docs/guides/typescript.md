@@ -214,3 +214,8 @@ both module formats, how a migration is loaded, and what each helper returns.
 `ghcr.io/emrebdr/migr:<version>-node` runs a TypeScript project with nothing else installed. The
 project's own `node_modules`, with `@migr/sdk` in it, comes along in the mount. The
 [zero-downtime guide's CI job](../zero-downtime.md#a-github-actions-job) uses it.
+
+## Example project
+
+[`examples/ts-mysql`](../../examples/ts-mysql/README.md) is a TypeScript project on MySQL with an
+enum, an authored down, a chunked data migration, and tests using `@migr/sdk/testing`.

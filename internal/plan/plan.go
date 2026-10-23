@@ -63,13 +63,15 @@ type Step struct {
 	Shadowed bool
 }
 
-// Lock returns what the step costs a live database: a shadow's rename, nothing on a fresh table, else its rewrite's or verdict's.
+// Lock returns what the step costs a live database: a shadow's rename, nothing on a fresh table, one chunk, else its rewrite's or verdict's.
 func (s Step) Lock() capability.LockImpact {
 	switch {
 	case s.Shadowed:
 		return capability.BriefExclusive
 	case s.Fresh && s.Verdict.Allowed():
 		return capability.LockFree
+	case s.Chunked && s.Verdict.Allowed() && !s.Verdict.Lock().AtMost(capability.BriefExclusive):
+		return capability.BriefExclusive
 	case s.Rewrite != nil:
 		return s.Rewrite.Lock
 	default:

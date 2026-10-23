@@ -1,0 +1,40 @@
+# Tests the migrations, gates them on what they cost a live database, and applies them to an empty
+# PostgreSQL 17. Copy this file into .github/workflows/ of your own repository.
+name: Migrations
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U app -d app" --health-interval 1s --health-retries 30
+    env:
+      DATABASE_URL: postgres://app:app@localhost:5432/app?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install migr
+        run: npm install --global @migr/cli
+      - name: Test
+        run: go test ./...
+      - name: Gate on lock cost
+        run: migr validate --require-safe
+      - name: Apply to an empty database
+        run: migr up

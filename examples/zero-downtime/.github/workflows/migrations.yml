@@ -1,0 +1,57 @@
+# Gates every pull request on what its migrations cost a live database, and applies them on deploy
+# under the release being deployed, so the steps of one change land a deploy apart.
+# Copy this file into .github/workflows/ of your own repository.
+name: Migrations
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U app -d app" --health-interval 1s --health-retries 30
+    env:
+      DATABASE_URL: postgres://app:app@localhost:5432/app?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install migr
+        run: npm install --global @migr/cli
+      - name: Gate on lock cost
+        run: migr validate --require-safe
+
+  migrate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install migr
+        run: npm install --global @migr/cli
+      - name: Migrate under this release
+        run: migr up --release "$GITHUB_SHA"

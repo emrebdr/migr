@@ -169,5 +169,10 @@ Every command exits with a code a script can branch on:
 
 - Gate CI on what a migration costs a live database, change a column across deploys, and run large
   changes through a shadow table: the [zero-downtime guide](zero-downtime.md).
+- Four complete projects, each with tests and a CI workflow to copy:
+  [Go on PostgreSQL](../examples/go-postgres/README.md),
+  [TypeScript on MySQL](../examples/ts-mysql/README.md),
+  [all three languages on SQLite](../examples/mixed-sqlite/README.md), and a
+  [zero-downtime column change](../examples/zero-downtime/README.md).
 - Write an SDK of your own against the [operation IR](ir.md) and the
   [runtime protocol](protocol.md).

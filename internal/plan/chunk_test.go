@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/ir"
 	"github.com/emrebdr/migr/internal/schema"
 )
@@ -70,4 +71,41 @@ func TestAPlannerWhoseDriverCannotRenderAChunkSaysSo(t *testing.T) {
 	if !errors.Is(err, ErrNoChunkCompiler) {
 		t.Errorf("rendering a chunk through a driver with no ChunkCompiler reported %v", err)
 	}
+}
+
+func TestAChunkedDataStepCostsOneChunkAndKeepsItsDeclaration(t *testing.T) {
+	column := ir.AddColumn{Table: "users", Column: ir.Column{Name: "plan", Type: fill(t).Type,
+		Nullable: true}}
+
+	cases := []struct {
+		name string
+		ops  ir.Operations
+		rows int
+		want capability.LockImpact
+	}{
+		{"data alone, in chunks", ir.Operations{fill(t)}, 10, capability.BriefExclusive},
+		{"chunking switched off", ir.Operations{fill(t)}, 0, capability.TableRewrite},
+		{"data beside a schema change", ir.Operations{fill(t), column}, 10, capability.TableRewrite},
+	}
+
+	for _, c := range cases {
+		planner := chunking()
+		planner.ChunkRows = c.rows
+		planner.Capabilities = declaring(t, capability.TableRewrite)
+
+		compiled, err := planner.Compile(added(t), ir.Up, c.ops)
+		if err != nil {
+			t.Fatalf("%s: Compile: %v", c.name, err)
+		}
+
+		step := compiled.Steps[0]
+
+		if step.Lock() != c.want || step.Verdict.Lock() != capability.TableRewrite {
+			t.Errorf("%s: the backfill costs %s and was declared %s, want %s over table_rewrite",
+				c.name, step.Lock(), step.Verdict.Lock(), c.want)
+		}
+	}
+
+	t.Log("Each chunk is its own short transaction over a key range, so what a client waits for is")
+	t.Log("one chunk. A data operation beside a schema change runs as the one statement it declares.")
 }

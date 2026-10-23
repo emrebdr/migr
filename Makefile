@@ -33,7 +33,7 @@ GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 FUZZTIME         ?= 30s
 
 .PHONY: help build test test-integration test-conformance test-zerodowntime fuzz lint golden-update tools fmt vet \
-        tidy check clean release-check release-snapshot npm-snapshot docker-image test-docker docs docs-dev
+        tidy check clean release-check release-snapshot npm-snapshot docker-image test-docker test-examples docs docs-dev
 
 # Run a command in every Go module. The subshell cd means any tool path passed in
 # must be absolute -- a relative ./bin/tool resolves at the root and vanishes in sdk/go.
@@ -106,6 +106,7 @@ help:
 	@echo "  npm-snapshot      release-snapshot, then the seven npm packages packed into dist/npm"
 	@echo "  docker-image      build both release images for this machine, as migr:test and migr:test-node"
 	@echo "  test-docker       run both images against compose's postgres17 as a pipeline would (Docker)"
+	@echo "  test-examples     run every project in examples/ as its README does, each on its own database (Docker)"
 
 # `go build` stamps VCS info from git by default. If .git is present but git
 # refuses to read it -- a container copy whose ownership does not match the build
@@ -155,6 +156,9 @@ test-docker: docker-image
 	@docker compose -f $(COMPOSE) up -d --wait postgres17
 	@MIGR_IMAGE=migr:test MIGR_NODE_IMAGE=migr:test-node MIGR_VERSION=$(VERSION) COMPOSE=$(COMPOSE) \
 	  SDK_DIR=$(TSDIR) test/docker/run.sh
+
+test-examples: build
+	@test/examples/run.sh
 
 npm-snapshot: release-snapshot
 	@node $(NPMCLI)/build.mjs dist dist/npm

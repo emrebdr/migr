@@ -346,6 +346,20 @@ releases it as it installs.
 
 ---
 
+## Examples
+
+Four complete projects in [`examples/`](examples/), each with a README, tests and a GitHub Actions
+workflow to copy, and each run end to end by this repository's CI:
+
+| Project | Shows |
+|---|---|
+| [`go-postgres`](examples/go-postgres/) | Go migrations on PostgreSQL: derived, authored and irreversible downs, `CREATE INDEX CONCURRENTLY`, the SDK's test helpers |
+| [`ts-mysql`](examples/ts-mysql/) | TypeScript migrations on MySQL: an enum, an authored down, a data migration run in chunks |
+| [`mixed-sqlite`](examples/mixed-sqlite/) | SQL, Go and TypeScript in one directory on SQLite, a dependency across languages, an emulated table rebuild |
+| [`zero-downtime`](examples/zero-downtime/) | a column replaced across five deploys with `--release`, while an app keeps serving with no failed query |
+
+---
+
 ## Building from source
 
 Requires **Go 1.26** and **Node 24** — the TypeScript SDK arrived in M7, and `make lint`, `make
@@ -407,6 +421,7 @@ docs/                  the documentation site, built by VitePress (make docs)
   zero-downtime.md     what each engine can change under live traffic, and how to run it
   ir.md                the operation IR wire format, specified
   protocol.md          the runtime protocol between the engine and an SDK, specified
+examples/              four complete projects, each run end to end by CI (make test-examples)
 ```
 
 Most of these are currently a `doc.go` recording the package's purpose and the milestone that

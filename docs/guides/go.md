@@ -246,3 +246,10 @@ by accident. `Reversal` runs `Up` too, so it needs the same stage.
 undone. It opens no database, so a migration that reads is reported **unchecked** rather than
 failed. `migr validate --connect` also asks the target server what it refuses, and checks every
 reference a migration makes. `--require-safe` gates each up half on its lock cost.
+
+## Example projects
+
+[`examples/go-postgres`](../../examples/go-postgres/README.md) is a Go project on PostgreSQL with
+the three kinds of down and tests using every `migrtest` helper.
+[`examples/zero-downtime`](../../examples/zero-downtime/README.md) replaces a column with
+`ReplaceColumn` across five deploys while an app keeps serving.

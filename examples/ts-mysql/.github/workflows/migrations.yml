@@ -1,0 +1,40 @@
+# Tests the migrations, checks them against what a MySQL 8.0 server refuses, and runs them up and back
+# down on an empty one. Copy this file into .github/workflows/ of your own repository.
+name: Migrations
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_USER: app
+          MYSQL_PASSWORD: app
+          MYSQL_DATABASE: app
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uapp -papp" --health-interval 1s --health-retries 60
+    env:
+      DATABASE_URL: app:app@tcp(127.0.0.1:3306)/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install
+        run: npm ci && npm install --global @migr/cli
+      - name: Test
+        run: npm test
+      - name: Check against the server
+        run: migr validate --connect
+      - name: Round trip
+        run: |
+          migr up
+          migr down --step 3

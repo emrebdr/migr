@@ -1,0 +1,25 @@
+{
+  "name": "@migr/cli",
+  "version": "0.0.0",
+  "description": "The migr binary for your platform, run through npx or a package script.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emrebdr/migr.git",
+    "directory": "npm/cli"
+  },
+  "homepage": "https://github.com/emrebdr/migr#readme",
+  "bin": {
+    "migr": "bin/migr.js"
+  },
+  "files": [
+    "bin/migr.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

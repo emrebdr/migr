@@ -12,6 +12,8 @@
 MODULES          := . sdk/go
 BIN              := bin/migr
 TSDIR            := sdk/typescript
+# The npm wrapper (M14-T3): plain Node with no dependencies, so it needs no install to test.
+NPMCLI           := npm/cli
 COMPOSE          := test/docker-compose.yml
 # The fallback is load-bearing: git can fail inside a container whose ownership
 # does not match the build user, and a build should not die over a version string.
@@ -31,7 +33,7 @@ GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 FUZZTIME         ?= 30s
 
 .PHONY: help build test test-integration test-conformance test-zerodowntime fuzz lint golden-update tools fmt vet \
-        tidy check clean release-check release-snapshot
+        tidy check clean release-check release-snapshot npm-snapshot
 
 # Run a command in every Go module. The subshell cd means any tool path passed in
 # must be absolute -- a relative ./bin/tool resolves at the root and vanishes in sdk/go.
@@ -99,6 +101,7 @@ help:
 	@echo ""
 	@echo "  release-check     validate .goreleaser.yaml (needs goreleaser $(GORELEASER_VERSION))"
 	@echo "  release-snapshot  build every release archive into dist/, unsigned, publishing nothing"
+	@echo "  npm-snapshot      release-snapshot, then the seven npm packages packed into dist/npm"
 
 # `go build` stamps VCS info from git by default. If .git is present but git
 # refuses to read it -- a container copy whose ownership does not match the build
@@ -121,12 +124,18 @@ release-snapshot:
 	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser not found: go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)"; exit 1; }
 	@goreleaser release --snapshot --clean --skip=sign
 
+npm-snapshot: release-snapshot
+	@node $(NPMCLI)/build.mjs dist dist/npm
+	@cd dist/npm && for p in cli-*/ cli/; do npm pack --silent "./$$p" >/dev/null || exit 1; done && ls *.tgz
+
 # The TypeScript side runs first because `npm test` builds sdk/typescript/dist, and a Go test --
 # internal/source/typescript's typecheck of what migr diff renders -- resolves @migr/sdk through that
 # package's exports map, which names dist. A fresh checkout has no dist, so run the other way round the
 # Go test fails on CI and passes on any machine that built once.
 test:
 	$(call ts_run,npm test)
+	@echo "==> node --test  ($(NPMCLI))"
+	@cd $(NPMCLI) && node --test
 	$(call go_each,go test ./...)
 
 # `go test -fuzz` drives exactly ONE target per run -- a pattern matching two is an

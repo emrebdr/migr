@@ -291,6 +291,17 @@ Naming the cask in full is what trusts it under Homebrew's
 [tap trust](https://docs.brew.sh/Tap-Trust); a short `brew install migr` needs
 `brew trust --cask emrebdr/tap/migr` first.
 
+In a JavaScript project, from npm, on any of the six platforms below:
+
+```console
+$ npx @migr/cli version                 # run it once
+$ npm install --save-dev @migr/cli      # or pin it beside @migr/sdk, then `npx migr`
+```
+
+npm downloads only the binary for your platform, released at the same version as `@migr/cli`. The
+package is scoped because the unscoped name `migr` on npm belongs to an unrelated project; its
+command is still `migr`.
+
 Every release on [GitHub Releases](https://github.com/emrebdr/migr/releases) carries one archive per
 platform — `linux`, `darwin` and `windows`, each on `amd64` and `arm64` — named
 `migr_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows), plus a `checksums.txt`. The binary is static,
@@ -504,6 +515,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0097](docs/adr/0097-unattended-cutover-lag.md) | An unattended cutover counts a stream within safety.cutover_lag as caught up, and the guide's lock tables are generated |
 | [0098](docs/adr/0098-release-signing.md) | A release is signed once, keyless, on its checksum file, and every archive carries a provenance attestation |
 | [0099](docs/adr/0099-homebrew-cask.md) | Homebrew installs migr from a cask in emrebdr/homebrew-tap, written by each release with a token scoped to that repository |
+| [0100](docs/adr/0100-npm-wrapper.md) | npm installs migr as @migr/cli, which pins one optional package per platform to its own version |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

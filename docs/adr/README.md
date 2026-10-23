@@ -109,6 +109,7 @@ only makes sense alongside another document, that ADR needs rewriting.
 | [0097](0097-unattended-cutover-lag.md) | An unattended cutover counts a stream within safety.cutover_lag as caught up, and the guide's lock tables are generated | Accepted | M13-T13: docs/zero-downtime.md; --unattended cuts over at a read whose lag is at most safety.cutover_lag (1s, at most half of lock_timeout); drivertest.LockTable holds each engine's table in the guide to its declaration |
 | [0098](0098-release-signing.md) | A release is signed once, keyless, on its checksum file, and every archive carries a provenance attestation | Accepted | M14-T1: .goreleaser.yaml builds six CGO-free targets; release.yml signs checksums.txt with cosign through the job's OIDC token and attests every archive; no key, no notarization |
 | [0099](0099-homebrew-cask.md) | Homebrew installs migr from a cask in emrebdr/homebrew-tap, written by each release with a token scoped to that repository | Accepted | M14-T2: homebrew_casks rather than the deprecated brews; completions shipped in every archive; quarantine cleared by postflight_steps, since Homebrew 7 deprecates postflight; pre-releases skip the tap |
+| [0100](0100-npm-wrapper.md) | npm installs migr as @migr/cli, which pins one optional package per platform to its own version | Accepted | M14-T3: `migr` on npm is taken, so `npx @migr/cli`; six @migr/cli-<os>-<arch> optional dependencies pinned exactly, checked at build, publish and run; platform packages published before the wrapper |
 
 ## When to write one
 

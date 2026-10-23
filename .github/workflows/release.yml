@@ -1,7 +1,8 @@
 # Releases (M14-T1, ADR 0098). Pushing a tag vX.Y.Z builds the six binaries .goreleaser.yaml names,
 # signs checksums.txt keyless through this job's OIDC token, attests every archive's provenance,
-# publishes a GitHub release, and commits the Homebrew cask to emrebdr/homebrew-tap. sdk/go's own
-# tags are sdk/go/vX.Y.Z, which `v*` does not match.
+# publishes a GitHub release, commits the Homebrew cask to emrebdr/homebrew-tap, and publishes
+# @migr/cli and its six platform packages to npm. sdk/go's own tags are sdk/go/vX.Y.Z, which `v*`
+# does not match.
 #
 # Run by hand, it builds a snapshot through the same signing and attestation steps and uploads dist/
 # as a workflow artifact instead of publishing, so the path can be proven before a real tag.
@@ -47,6 +48,8 @@ jobs:
           node-version-file: sdk/typescript/.nvmrc
           cache: npm
           cache-dependency-path: sdk/typescript/package-lock.json
+          # Writes the .npmrc npm publish authenticates through, reading NODE_AUTH_TOKEN.
+          registry-url: https://registry.npmjs.org
 
       - name: Install SDK dependencies
         run: npm ci
@@ -72,6 +75,24 @@ jobs:
           # alone (ADR 0099). A snapshot pushes nothing and needs none.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
+      # The seven npm packages of this release (M14-T3, ADR 0100), from the binaries goreleaser built.
+      - name: npm packages
+        run: node npm/cli/build.mjs dist dist/npm
+
+      # Platform packages first and @migr/cli last, each skipped where the registry already holds it,
+      # after this runner's binary has reported the packages' version.
+      - name: Publish to npm
+        if: github.event_name == 'push'
+        run: node npm/cli/publish.mjs dist/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Rehearse npm publish
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          node npm/cli/publish.mjs dist/npm --dry-run
+          cd dist/npm && for p in cli-*/ cli/; do npm pack --silent "./$p"; done
+
       - name: Attest provenance
         uses: actions/attest-build-provenance@v2
         with:
@@ -90,3 +111,4 @@ jobs:
             dist/*.zip
             dist/checksums.txt*
             dist/homebrew/Casks/migr.rb
+            dist/npm/*.tgz

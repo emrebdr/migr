@@ -278,6 +278,34 @@ against that same one exits 4, and `migr validate` exits 2. They answer differen
 
 ---
 
+## Installing
+
+Every release on [GitHub Releases](https://github.com/emrebdr/migr/releases) carries one archive per
+platform — `linux`, `darwin` and `windows`, each on `amd64` and `arm64` — named
+`migr_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows), plus a `checksums.txt`. The binary is static,
+needing no C library and no installer: unpack it and put `migr` on your `PATH`.
+
+**Verify what you downloaded.** `checksums.txt` is signed keyless with
+[cosign](https://docs.sigstore.dev/cosign/), by a certificate issued to this repository's release
+workflow, so there is no public key to fetch:
+
+```console
+$ cosign verify-blob \
+    --certificate checksums.txt.pem --signature checksums.txt.sig \
+    --certificate-identity-regexp '^https://github.com/emrebdr/migr/\.github/workflows/release\.yml@refs/tags/v' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    checksums.txt
+$ sha256sum --check --ignore-missing checksums.txt   # shasum -a 256 -c on macOS
+```
+
+Each archive also carries a build-provenance attestation, which the GitHub CLI checks alone:
+`gh attestation verify migr_<version>_<os>_<arch>.tar.gz --repo emrebdr/migr`.
+
+The macOS binaries are not notarized. One downloaded through a browser is quarantined, and
+`xattr -d com.apple.quarantine ./migr` releases it; `curl` sets no quarantine.
+
+---
+
 ## Building from source
 
 Requires **Go 1.26** and **Node 24** — the TypeScript SDK arrived in M7, and `make lint`, `make
@@ -461,6 +489,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0095](docs/adr/0095-mariadb-binlog-shadow.md) | MariaDB keeps a shadow table current from its binary log, and swaps it in through a rename queued behind a write lock |
 | [0096](docs/adr/0096-zero-downtime-suite.md) | Every operation's lock verdict is held to what a client under load actually waits |
 | [0097](docs/adr/0097-unattended-cutover-lag.md) | An unattended cutover counts a stream within safety.cutover_lag as caught up, and the guide's lock tables are generated |
+| [0098](docs/adr/0098-release-signing.md) | A release is signed once, keyless, on its checksum file, and every archive carries a provenance attestation |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

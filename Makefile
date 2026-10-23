@@ -18,6 +18,9 @@ COMPOSE          := test/docker-compose.yml
 VERSION          ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS          := -X github.com/emrebdr/migr/internal/version.Version=$(VERSION)
 GOLANGCI_VERSION := v2.11.4
+# Only a maintainer and the release job run goreleaser, so `make tools` leaves it out; the release
+# workflow pins the same version.
+GORELEASER_VERSION := v2.17.1
 GOLANGCI         := $(CURDIR)/bin/golangci-lint
 # Absolute, because the loop below cd's into each module. Relying on golangci-lint's
 # upward config search would let the nested module silently pick up a different one.
@@ -28,7 +31,7 @@ GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 FUZZTIME         ?= 30s
 
 .PHONY: help build test test-integration test-conformance test-zerodowntime fuzz lint golden-update tools fmt vet \
-        tidy check clean
+        tidy check clean release-check release-snapshot
 
 # Run a command in every Go module. The subshell cd means any tool path passed in
 # must be absolute -- a relative ./bin/tool resolves at the root and vanishes in sdk/go.
@@ -93,6 +96,9 @@ help:
 	@echo "  fmt vet tidy      formatting, vet, and go mod tidy across both modules"
 	@echo "  check             lint + test, the CLAUDE.md §10 gate"
 	@echo "  clean             remove build output and tear down containers"
+	@echo ""
+	@echo "  release-check     validate .goreleaser.yaml (needs goreleaser $(GORELEASER_VERSION))"
+	@echo "  release-snapshot  build every release archive into dist/, unsigned, publishing nothing"
 
 # `go build` stamps VCS info from git by default. If .git is present but git
 # refuses to read it -- a container copy whose ownership does not match the build
@@ -104,6 +110,16 @@ build:
 	@echo "==> go build -o $(BIN) ./cmd/migr  ($(VERSION))"
 	@go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/migr
 	$(call ts_run,npm run build)
+
+# A release is .github/workflows/release.yml, never a laptop (ADR 0098): signing needs that job's OIDC
+# token. These two prove the configuration and the six archives locally, signing skipped.
+release-check:
+	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser not found: go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)"; exit 1; }
+	@goreleaser check
+
+release-snapshot:
+	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser not found: go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)"; exit 1; }
+	@goreleaser release --snapshot --clean --skip=sign
 
 # The TypeScript side runs first because `npm test` builds sdk/typescript/dist, and a Go test --
 # internal/source/typescript's typecheck of what migr diff renders -- resolves @migr/sdk through that

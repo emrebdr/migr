@@ -1,0 +1,97 @@
+# Release builds (M14-T1, ADR 0098). Tagging vX.Y.Z on main runs .github/workflows/release.yml, which
+# runs this. The binary is pure Go -- SQLite is modernc.org/sqlite -- so CGO stays off and all six
+# targets cross-compile from one Linux runner.
+#
+# The archive names below are a contract: the Homebrew tap, the npm wrapper and the Docker image
+# (M14-T2..T4) download them by name.
+
+version: 2
+
+project_name: migr
+
+before:
+  hooks:
+    - go mod tidy -diff
+
+builds:
+  - id: migr
+    main: ./cmd/migr
+    binary: migr
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    # The v keeps the form `make build` stamps from git describe; the commit still comes from the
+    # go tool's VCS stamping.
+    ldflags:
+      - -s -w -X github.com/emrebdr/migr/internal/version.Version=v{{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: migr
+    ids: [migr]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # Stamped with the commit's time, as the binary is, so one tag always produces the same archive.
+    files:
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# Keyless: cosign signs with a certificate Sigstore issues against the release job's GitHub OIDC token,
+# so there is no key to keep. Signing the checksum file covers every archive through its hash.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --yes
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - ${artifact}
+
+# sdk/go is a module of its own, tagged sdk/go/vX.Y.Z; none of those is a release of this binary.
+git:
+  ignore_tags:
+    - "sdk/*"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^feat(\([^)]*\))?!?:'
+      order: 0
+    - title: Fixes
+      regexp: '^fix(\([^)]*\))?!?:'
+      order: 1
+    - title: Other changes
+      order: 999
+  filters:
+    exclude:
+      - '^docs(\([^)]*\))?:'
+      - '^test(\([^)]*\))?:'
+      - '^chore(\([^)]*\))?:'
+
+release:
+  github:
+    owner: emrebdr
+    name: migr
+  prerelease: auto
+  draft: false

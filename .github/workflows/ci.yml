@@ -110,6 +110,16 @@ jobs:
       - name: Smoke run
         run: ./bin/migr
 
+      # The release job runs .goreleaser.yaml only on a tag, so a config it would refuse is caught here,
+      # on the change that broke it. One OS is enough: the check reads a file.
+      - name: Release config
+        if: matrix.os == 'ubuntu-latest'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: v2.17.1
+          args: check
+
   # The tagged tests are the only ones that can say whether the SQL this repository
   # emits is right rather than merely plausible, and until this job existed nothing
   # ran them outside a developer's laptop. ubuntu-latest only: GitHub's macOS runners

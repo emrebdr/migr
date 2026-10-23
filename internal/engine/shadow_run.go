@@ -41,7 +41,8 @@ func (e *executor) performShadow(ctx context.Context, ready prepared, from *hist
 		Holds:     job.paused.holds,
 		Held:      job.paused.waited,
 		Shadow: &ShadowRun{Table: job.shadow.Table, Retired: job.shadow.Retired,
-			Copied: job.state.Copied, Applied: job.state.Applied, Unattended: job.unattended},
+			Copied: job.state.Copied, Applied: job.state.Applied, Unattended: job.unattended,
+			Behind: job.cutBehind},
 	}, nil
 }
 
@@ -357,8 +358,8 @@ func (e *executor) holdShadow(ctx context.Context, job *shadowJob, stream captur
 			return err
 		}
 
-		if e.opts.Unattended && len(batch.Changes) == 0 {
-			job.unattended = true
+		if e.opts.Unattended && e.caughtUp(batch) {
+			job.unattended, job.cutBehind = true, batch.Behind
 
 			return nil
 		}
@@ -375,6 +376,11 @@ func (e *executor) holdShadow(ctx context.Context, job *shadowJob, stream captur
 			}
 		}
 	}
+}
+
+// caughtUp reports a read an unattended run may cut over after: nothing new, or a stream within safety.cutover_lag.
+func (e *executor) caughtUp(batch capture.Batch) bool {
+	return len(batch.Changes) == 0 || (e.opts.CutoverLag > 0 && batch.Behind <= e.opts.CutoverLag)
 }
 
 // confirmed reports whether someone has confirmed this migration's cutover, which only its state row says.

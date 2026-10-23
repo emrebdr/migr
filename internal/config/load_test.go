@@ -319,6 +319,7 @@ databases:
 		{field: "safety.statement_timeout", got: cfg.Safety.StatementTimeout.Duration(), want: 30 * time.Second},
 		{field: "safety.max_lock_impact", got: cfg.Safety.MaxLockImpact, want: capability.BriefExclusive},
 		{field: "safety.replica_lag_threshold", got: cfg.Safety.ReplicaLagThreshold.Duration(), want: 5 * time.Second},
+		{field: "safety.cutover_lag", got: cfg.Safety.CutoverLag.Duration(), want: time.Second},
 		{field: "runtime.handshake_timeout", got: cfg.Runtime.HandshakeTimeout.Duration(),
 			want: protocol.DefaultHandshake},
 		{field: "runtime.request_timeout", got: cfg.Runtime.RequestTimeout.Duration(),

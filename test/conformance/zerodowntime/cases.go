@@ -56,6 +56,8 @@ type scenario struct {
 	keyless bool
 	// online reports a change declared through a shadow table, which runs up alone.
 	online bool
+	// unattended reports a shadow-table change nobody confirms, which has to cut over by itself under the load.
+	unattended bool
 	// rewrittenOnly reports a case run only where the session performs its change as a safer sequence.
 	rewrittenOnly bool
 	// setup are the operations the case needs in place first, which are not measured.
@@ -159,12 +161,15 @@ func schemaScenarios() []scenario {
 		}, down: func(_ names, l Load, driverName string) ir.Operations {
 			return one(ir.Raw{Driver: driverName, SQL: l.Raw()})
 		}},
-		{name: "shadow table (alter_column)", side: true, online: true,
-			change: func(n names, ty types, _ Load, _ string) ir.Operations {
-				return one(ir.AlterColumn{Table: n.side, Column: "extra", Type: &ty.int64,
-					From: &ir.ColumnState{Type: &ty.int32}})
-			}},
+		{name: "shadow table (alter_column)", side: true, online: true, change: shadowedRetype},
+		{name: "shadow table (alter_column), unattended", side: true, online: true, unattended: true,
+			change: shadowedRetype},
 	}
+}
+
+// shadowedRetype widens the side table's extra column, which the shadow cases run through a copy.
+func shadowedRetype(n names, ty types, _ Load, _ string) ir.Operations {
+	return one(ir.AlterColumn{Table: n.side, Column: "extra", Type: &ty.int64, From: &ir.ColumnState{Type: &ty.int32}})
 }
 
 // notNull is the case tightening a backfilled column: on a side table everywhere, and on the loaded one where it is rewritten.

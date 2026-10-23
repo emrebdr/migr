@@ -86,6 +86,7 @@ type Safety struct {
 	AutoRewrite         *bool                         `yaml:"auto_rewrite"          json:"auto_rewrite"`
 	Rewrites            map[driver.RewriteName]Switch `yaml:"rewrites" json:"rewrites"`
 	ReplicaLagThreshold Duration                      `yaml:"replica_lag_threshold" json:"replica_lag_threshold"`
+	CutoverLag          Duration                      `yaml:"cutover_lag"           json:"cutover_lag"`
 	ChunkRows           *int                          `yaml:"chunk_rows"            json:"chunk_rows"`
 	ChunkPause          Duration                      `yaml:"chunk_pause"           json:"chunk_pause"`
 }

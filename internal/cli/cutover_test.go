@@ -259,7 +259,7 @@ func TestUnattendedCutsOverWithoutAConfirmationByFlagOrByEnvironment(t *testing.
 				t.Fatalf("an unattended up exited %d: %v\n%s", ExitCode(err), err, stderr)
 			}
 
-			if !strings.Contains(stdout, "cut over unattended through a shadow table") {
+			if !strings.Contains(stdout, "cut over unattended, ") {
 				t.Errorf("the run does not say it cut over unattended:\n%s", stdout)
 			}
 

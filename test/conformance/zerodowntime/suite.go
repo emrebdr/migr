@@ -12,6 +12,7 @@ import (
 
 	"github.com/emrebdr/migr/internal/capability"
 	"github.com/emrebdr/migr/internal/capture"
+	"github.com/emrebdr/migr/internal/config"
 	"github.com/emrebdr/migr/internal/driver"
 	"github.com/emrebdr/migr/internal/engine"
 	"github.com/emrebdr/migr/internal/history"
@@ -215,7 +216,11 @@ func (r *run) runCase(t *testing.T, sc scenario) {
 	}
 
 	opts := optionsFor(r.s.Driver, conn, src, files, online, r.s.Capture)
-	if sc.online {
+
+	switch {
+	case sc.unattended:
+		opts = unattended(t, opts)
+	case sc.online:
 		r.confirmWhenHeld(t, historyTable, change.Version)
 	}
 
@@ -251,6 +256,26 @@ func (r *run) runCase(t *testing.T, sc scenario) {
 			t.Fatalf("undoing the setup, which the next case needs gone: %v", err)
 		}
 	}
+}
+
+// unattended has a run cut over by itself, at the lag migr up's default gives the suite's lock wait, logging each held read's lag.
+func unattended(t *testing.T, opts engine.Options) engine.Options {
+	t.Helper()
+
+	wait, err := LockWait()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts.Unattended = true
+	opts.CutoverLag = min(config.DefaultCutoverLag, wait/2)
+	opts.Shadowed = func(p engine.ShadowProgress) {
+		if p.Holding {
+			t.Logf("held read: %d changes, %s behind", p.Batch, p.Behind)
+		}
+	}
+
+	return opts
 }
 
 // confirmWhenHeld confirms a shadow-table migration's cutover from a second session once it holds, as an operator would.
@@ -428,7 +453,7 @@ func (r *run) underLoad(t *testing.T, sc scenario, dir ir.Direction, conn driver
 
 	var err error
 	if dir == ir.Up {
-		_, err = engine.Apply(t.Context(), conn, opts)
+		err = r.apply(t, sc, conn, opts)
 	} else {
 		_, err = engine.Rollback(t.Context(), conn, opts)
 	}
@@ -447,6 +472,39 @@ func (r *run) underLoad(t *testing.T, sc scenario, dir ir.Direction, conn driver
 	}
 
 	return measured{Case: sc.name, Direction: dir, Worst: worst, Query: query, Queries: count}, failures, err
+}
+
+// apply runs a case up, holding an unattended shadow case to cutting over by itself within unattendedBound.
+func (r *run) apply(t *testing.T, sc scenario, conn driver.Conn, opts engine.Options) error {
+	t.Helper()
+
+	ctx := t.Context()
+
+	if sc.unattended {
+		var stop context.CancelFunc
+
+		ctx, stop = context.WithTimeout(ctx, unattendedBound)
+		defer stop()
+	}
+
+	result, err := engine.Apply(ctx, conn, opts)
+	if err != nil {
+		if sc.unattended && errors.Is(err, engine.ErrAwaitingCutover) {
+			return fmt.Errorf("an unattended run under the load did not cut over within %s: %w", unattendedBound, err)
+		}
+
+		return err
+	}
+
+	if sc.unattended {
+		for _, ran := range result.Runs {
+			if ran.Shadow != nil {
+				t.Logf("%s: cut over unattended %s behind the log", sc.name, ran.Shadow.Behind)
+			}
+		}
+	}
+
+	return nil
 }
 
 // checkNoWriteLost holds a shadowed table to every committed write: a write the cutover let into the retired original is lost.

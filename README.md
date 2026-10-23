@@ -333,6 +333,7 @@ test/
   conformance/         shared driver, runtime, and zero-downtime suites
   integration/         Docker-backed end-to-end tests
 docs/
+  zero-downtime.md     what each engine can change under live traffic, and how to run it
   ir.md                the operation IR wire format, specified
   protocol.md          the runtime protocol between the engine and an SDK, specified
   adr/                 architecture decision records
@@ -352,6 +353,11 @@ engine and a language SDK.
 The IR's wire format is written down in [`docs/ir.md`](docs/ir.md) and the runtime protocol in
 [`docs/protocol.md`](docs/protocol.md) — the two documents a third-party SDK implements against.
 Both are checked by the test suite against the code they specify, so neither can drift from it.
+
+Running migrations against a database serving traffic is [`docs/zero-downtime.md`](docs/zero-downtime.md):
+each engine's lock cost per operation — tables generated from the drivers and held to them by a
+test — what cannot be made zero-downtime, shadow tables and their cutover, expand/contract across
+deploys, and gating CI on lock cost.
 
 The reasoning behind each contract — including the options that were rejected and why — lives in
 [`docs/adr/`](docs/adr/README.md):
@@ -454,6 +460,7 @@ The reasoning behind each contract — including the options that were rejected 
 | [0094](docs/adr/0094-postgres-logical-shadow.md) | PostgreSQL keeps a shadow table current through a replication slot, and no slot outlives the migration that made it |
 | [0095](docs/adr/0095-mariadb-binlog-shadow.md) | MariaDB keeps a shadow table current from its binary log, and swaps it in through a rename queued behind a write lock |
 | [0096](docs/adr/0096-zero-downtime-suite.md) | Every operation's lock verdict is held to what a client under load actually waits |
+| [0097](docs/adr/0097-unattended-cutover-lag.md) | An unattended cutover counts a stream within safety.cutover_lag as caught up, and the guide's lock tables are generated |
 
 Worth reading before proposing a change to any of the three contracts. The rejected options are
 usually the part that answers "why is it like this?".

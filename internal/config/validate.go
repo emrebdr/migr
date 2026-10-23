@@ -348,6 +348,8 @@ func validateSafety(v *validator, s Safety) {
 		v.add("safety.replica_lag_threshold", "must be positive, got %s", s.ReplicaLagThreshold)
 	}
 
+	validateCutoverLag(v, s)
+
 	if s.Rows() < 0 {
 		v.add("safety.chunk_rows", "must not be negative, got %d; 0 runs every data operation as "+
 			"one statement", s.Rows())
@@ -356,6 +358,18 @@ func validateSafety(v *validator, s Safety) {
 	if s.ChunkPause <= 0 {
 		v.add("safety.chunk_pause", "must be positive, got %s: chunks run back to back are an "+
 			"unthrottled backfill, which is itself an outage", s.ChunkPause)
+	}
+}
+
+// validateCutoverLag checks how far an unattended cutover may trail, which its catch-up under the lock must fit.
+func validateCutoverLag(v *validator, s Safety) {
+	switch {
+	case s.CutoverLag <= 0:
+		v.add("safety.cutover_lag", "must be positive, got %s", s.CutoverLag)
+	case s.LockTimeout > 0 && s.CutoverLag >= s.LockTimeout:
+		v.add("safety.cutover_lag", "must be shorter than safety.lock_timeout (%s), got %s: an "+
+			"unattended cutover replays what it trails by under its lock, within that bound",
+			s.LockTimeout, s.CutoverLag)
 	}
 }
 

@@ -89,6 +89,8 @@ type ShadowRun struct {
 	Applied int64
 	// Unattended reports a cutover made without a confirmation, because the run was told not to wait for one.
 	Unattended bool
+	// Behind is how far the stream trailed the log at the read an unattended run cut over after.
+	Behind time.Duration
 }
 
 // ShadowName derives the copy a migration changes a table through, unique to the migration.
@@ -157,6 +159,8 @@ type shadowJob struct {
 	cut bool
 	// unattended reports a cutover this run made without reading a confirmation.
 	unattended bool
+	// cutBehind is how far the stream trailed at the read the unattended cutover followed.
+	cutBehind time.Duration
 	// resumed reports a run carrying on from a recorded stage.
 	resumed bool
 	// paused is how often and how long a pacer held its copy back.

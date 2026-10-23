@@ -74,3 +74,28 @@ func TestAStatementThatBlocksNoWriteIsUnboundedUnlessMigrYAMLBoundsIt(t *testing
 	t.Log("A concurrent build blocks no write, so it is bounded apart from statement_timeout; it")
 	t.Log("waits for its lock first, so a bound no longer than lock_timeout could never let it run.")
 }
+
+func TestACutoverLagTheCatchUpCouldNotFitIsRefused(t *testing.T) {
+	for _, block := range []string{
+		"safety:\n  cutover_lag: -1s\n",
+		"safety:\n  lock_timeout: 2s\n  cutover_lag: 2s\n",
+	} {
+		_, err := loadSeeding(t, block, "")
+		if _, found := fieldProblem(err, "safety.cutover_lag"); !found {
+			t.Errorf("%q loaded, or failed without naming safety.cutover_lag: %v", block, err)
+		}
+	}
+
+	cfg, err := loadSeeding(t, "safety:\n  cutover_lag: 250ms\n", "")
+	if err != nil || cfg.Safety.CutoverLag.Duration() != 250*time.Millisecond {
+		t.Fatalf("cutover_lag: 250ms resolved to %v (%v)", cfg, err)
+	}
+
+	short, err := loadSeeding(t, "safety:\n  lock_timeout: 500ms\n", "")
+	if err != nil || short.Safety.CutoverLag.Duration() != 250*time.Millisecond {
+		t.Errorf("an unset cutover_lag under lock_timeout: 500ms resolved to %v (%v), want half of it", short, err)
+	}
+
+	t.Log("An unattended cutover replays what the stream trails by under the cutover's lock, which")
+	t.Log("gives up at lock_timeout -- so a lag no shorter than that could never be caught up in it.")
+}

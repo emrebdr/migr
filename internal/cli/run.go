@@ -58,7 +58,8 @@ const unattendedVariable = "MIGR_UNATTENDED"
 // registerUnattended binds the flag that cuts a shadow-table migration over without waiting for a confirmation.
 func registerUnattended(cmd *cobra.Command, opts *options) {
 	cmd.Flags().BoolVar(&opts.unattended, "unattended", false,
-		"cut a shadow-table migration over as soon as its copy is caught up, confirming nothing; "+
+		"cut a shadow-table migration over once its copy is within safety.cutover_lag of the log, "+
+			"confirming nothing; "+
 			unattendedVariable+" when unset")
 }
 

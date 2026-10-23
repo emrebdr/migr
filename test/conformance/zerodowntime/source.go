@@ -32,6 +32,9 @@ const (
 	captureLagBound = 5 * time.Second
 )
 
+// unattendedBound is how long an unattended shadow case may hold before it is called stuck: ADR 0096 found it never cut over.
+const unattendedBound = 3 * time.Minute
+
 // staged is a case's two migrations, answering a down with the engine's derivation unless the case authors one.
 type staged struct {
 	// setup and change are what each migration emits going up.

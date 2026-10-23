@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emrebdr/migr/internal/capture"
 	"github.com/emrebdr/migr/internal/history"
 )
 
@@ -216,6 +217,90 @@ func TestUnattendedCutsOverOnceCaughtUpWithNothingConfirmed(t *testing.T) {
 		t.Errorf("the held reads applied %v changes, want reads until one found nothing new", heldReads)
 		t.Log("Unattended skips the confirmation, not the catching up: the swap catches up under its")
 		t.Log("lock, so cutting over while the stream still trails holds that lock for longer.")
+	}
+}
+
+// sustained writes on every read of the held log until the cutover locks writers out, and confirms after a bound.
+func sustained(w *world, perRead, confirmAfter int) *int {
+	polls := 0
+	next := 1000
+	locked := false
+
+	w.at = func(point string) {
+		locked = locked || point == "cutover"
+
+		state, found := w.states[shadowVersion]
+		if point != "next" || locked || !found || state.Stage != history.StageSyncing {
+			return
+		}
+
+		polls++
+
+		for range perRead {
+			next++
+			w.write(capture.Insert, next, "written-while-held")
+		}
+
+		if polls == confirmAfter {
+			w.confirm()
+		}
+	}
+
+	return &polls
+}
+
+func TestUnattendedCutsOverUnderSustainedWritesOnceTheStreamIsWithinTheLag(t *testing.T) {
+	w := newWorld(6)
+	w.batch = 100
+	polls := sustained(w, 1, 50)
+	c := connect(t, w)
+
+	opts := shadowRun(t, c)
+	opts.Unattended = true
+	opts.CutoverLag = time.Millisecond
+
+	result, err := Apply(t.Context(), c, opts)
+	if err != nil {
+		t.Fatalf("an unattended run under sustained writes returned %v", err)
+	}
+
+	checkCutOver(t, w)
+
+	if len(result.Runs) != 1 || result.Runs[0].Shadow == nil || !result.Runs[0].Shadow.Unattended {
+		t.Errorf("the run cut over after %d reads without saying it was unattended: %+v", *polls, result.Runs)
+		t.Log("Every read here carries a write, so a run waiting for a read of nothing new never cuts")
+		t.Log("over by itself -- ADR 0096 measured exactly that under eight writers.")
+
+		return
+	}
+
+	if behind := result.Runs[0].Shadow.Behind; behind > opts.CutoverLag {
+		t.Errorf("it cut over %s behind, above the %s it was given", behind, opts.CutoverLag)
+	}
+}
+
+func TestUnattendedKeepsHoldingWhileTheStreamTrailsByMoreThanTheLag(t *testing.T) {
+	w := newWorld(6)
+	w.batch = 1
+	polls := sustained(w, 2, 12)
+	c := connect(t, w)
+
+	opts := shadowRun(t, c)
+	opts.Unattended = true
+	opts.CutoverLag = time.Millisecond
+
+	result, err := Apply(t.Context(), c, opts)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	checkCutOver(t, w)
+
+	if len(result.Runs) != 1 || result.Runs[0].Shadow == nil || result.Runs[0].Shadow.Unattended {
+		t.Errorf("a stream falling further behind on every read was cut over unattended after %d reads: %+v",
+			*polls, result.Runs)
+		t.Log("The swap replays the backlog under its lock, so cutting over while it grows holds that lock")
+		t.Log("for as long as the backlog takes -- which is what safety.cutover_lag bounds.")
 	}
 }
 

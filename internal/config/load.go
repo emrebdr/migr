@@ -26,6 +26,9 @@ const DefaultFilename = "migr.yaml"
 // DefaultSeedsDir is where seeds live when migr.yaml names no other directory.
 const DefaultSeedsDir = "./seeds"
 
+// DefaultCutoverLag is how far a stream may trail and an unattended cutover still count it caught up, at most half of lock_timeout.
+const DefaultCutoverLag = time.Second
+
 // Load reads, expands, defaults, and validates the config at path.
 func Load(path string) (*Config, error) {
 	src, err := os.ReadFile(path)
@@ -120,6 +123,7 @@ func applyDefaults(cfg *Config) {
 	setDuration(&cfg.Safety.LockBackoff, driver.DefaultLockBackoff)
 	setDuration(&cfg.Safety.StatementTimeout, 30*time.Second)
 	setDuration(&cfg.Safety.ReplicaLagThreshold, 5*time.Second)
+	setDuration(&cfg.Safety.CutoverLag, min(DefaultCutoverLag, cfg.Safety.LockTimeout.Duration()/2))
 	setDuration(&cfg.Safety.ChunkPause, driver.DefaultChunkPause)
 
 	if cfg.Safety.ChunkRows == nil {

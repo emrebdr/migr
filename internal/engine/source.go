@@ -110,6 +110,8 @@ type Options struct {
 	Shadowed func(ShadowProgress)
 	// Unattended cuts a shadow-table migration over as soon as its copy is caught up, waiting for no confirmation.
 	Unattended bool
+	// CutoverLag is how far a stream may trail and still count as caught up unattended, and zero needs a read of nothing new.
+	CutoverLag time.Duration
 	// Released is told about every orphaned change-stream resource a run released, and an unset one tells nobody.
 	Released func(ReleasedCapture)
 }

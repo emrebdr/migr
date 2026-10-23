@@ -216,7 +216,7 @@ func TestUnattendedCutsOverOnMySQLWithNothingConfirmed(t *testing.T) {
 	})
 
 	out := migrOut(t, config, "up", "--unattended")
-	if !strings.Contains(out, "cut over unattended through a shadow table") {
+	if !strings.Contains(out, "cut over unattended, ") {
 		t.Errorf("an unattended up does not say it cut over unattended:\n%s", out)
 	}
 

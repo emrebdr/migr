@@ -74,6 +74,8 @@ type cutOver struct {
 	Applied int64 `json:"applied"`
 	// Unattended reports a cutover made without a confirmation, because --unattended asked for none.
 	Unattended bool `json:"unattended,omitempty"`
+	// BehindMillis is how far the stream trailed the log when an unattended run cut over, in milliseconds.
+	BehindMillis *int64 `json:"behind_ms,omitempty"`
 }
 
 // cutOverOf renders what a cutover left, and nothing for a run that was not one.
@@ -82,8 +84,14 @@ func cutOverOf(run *engine.ShadowRun) *cutOver {
 		return nil
 	}
 
-	return &cutOver{Table: run.Table, Retired: run.Retired, Copied: run.Copied, Applied: run.Applied,
+	rendered := &cutOver{Table: run.Table, Retired: run.Retired, Copied: run.Copied, Applied: run.Applied,
 		Unattended: run.Unattended}
+	if run.Unattended {
+		behind := run.Behind.Milliseconds()
+		rendered.BehindMillis = &behind
+	}
+
+	return rendered
 }
 
 // ranOf renders one run an invocation performed.
@@ -164,10 +172,10 @@ func describeExecuted(run ran) string {
 	return described
 }
 
-// describeAttended says that a cutover was made with no confirmation, and nothing for one that was confirmed.
-func describeAttended(unattended bool) string {
-	if unattended {
-		return "unattended "
+// describeAttended says a cutover was made with no confirmation and how far behind, and nothing for a confirmed one.
+func describeAttended(shadow *cutOver) string {
+	if shadow.Unattended && shadow.BehindMillis != nil {
+		return fmt.Sprintf("unattended, %s behind the log, ", time.Duration(*shadow.BehindMillis)*time.Millisecond)
 	}
 
 	return ""
@@ -176,7 +184,7 @@ func describeAttended(unattended bool) string {
 // describeCutOver says what a shadow-table migration did: the copy, the replay, and what it kept.
 func describeCutOver(run ran) string {
 	described := fmt.Sprintf("cut over %sthrough a shadow table: %s copied and %s replayed from the "+
-		"log, the original kept as %s", describeAttended(run.Shadow.Unattended), describeRows(int(run.Shadow.Copied)),
+		"log, the original kept as %s", describeAttended(run.Shadow), describeRows(int(run.Shadow.Copied)),
 		describeChanges(run.Shadow.Applied), run.Shadow.Retired)
 	if run.Resumed {
 		described += ", resumed"

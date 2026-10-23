@@ -110,12 +110,12 @@ func people(t *testing.T, session *pgConn) {
 	peopleOf(t, session, rewriteRows)
 }
 
-// peopleOf fills the table the rewrites change with a number of rows.
+// peopleOf fills the table the rewrites change with a number of rows, where autovacuum, which a bulk insert wakes, cannot queue a brief lock.
 func peopleOf(t *testing.T, session *pgConn, rows int) {
 	t.Helper()
 
 	for _, sql := range []string{
-		"CREATE TABLE people (id int PRIMARY KEY, v int, parent int)",
+		"CREATE TABLE people (id int PRIMARY KEY, v int, parent int) WITH (autovacuum_enabled = false)",
 		fmt.Sprintf("INSERT INTO people SELECT i, i, i FROM generate_series(1, %d) i", rows),
 		"ANALYZE people",
 	} {
@@ -140,6 +140,26 @@ func rewriteCases() []rewriteCase {
 			Columns: []string{"parent"}, ReferencesTable: "people", ReferencesColumns: []string{"id"}}},
 		{name: "add_index", op: ir.AddIndex{Table: "people", Name: "people_v", Columns: []string{"v"}}},
 	}
+}
+
+// briefStatements counts what a rewrite runs under a lock writes queue behind, each able to hold the one write in flight.
+func briefStatements(t *testing.T, session *pgConn, op ir.Operation) int {
+	t.Helper()
+
+	rewrite, rewritten := session.Rewrite(op)
+	if !rewritten {
+		t.Fatalf("%s has no rewrite on this server", op.Kind())
+	}
+
+	brief := 0
+
+	for _, stmt := range rewrite.Statements {
+		if !stmt.Unblocking {
+			brief++
+		}
+	}
+
+	return brief
 }
 
 // rewriteRun applies one operation over a filled table under a writer, and reports what the writer saw.
@@ -171,11 +191,14 @@ func TestARewrittenOperationLetsWritesThroughWhereThePlainOneBlocksThem(t *testi
 	for at, server := range servers {
 		for _, c := range rewriteCases() {
 			t.Run(server.name+"/"+c.name, func(t *testing.T) {
-				var plainBlocked, writes, blocked int
+				var plainBlocked, writes, blocked, brief int
 
 				t.Run("plain", func(t *testing.T) { _, plainBlocked, _ = rewriteRun(t, at, c.op, nil) })
 				t.Run("rewritten", func(t *testing.T) {
-					writes, blocked, _ = rewriteRun(t, at, c.op, driver.RewriteNames())
+					var session *pgConn
+
+					writes, blocked, session = rewriteRun(t, at, c.op, driver.RewriteNames())
+					brief = briefStatements(t, session, c.op)
 				})
 
 				if plainBlocked == 0 {
@@ -183,9 +206,10 @@ func TestARewrittenOperationLetsWritesThroughWhereThePlainOneBlocksThem(t *testi
 						"to tell a rewrite from no rewrite", c.name)
 				}
 
-				if blocked != 0 {
-					t.Errorf("the rewritten %s left %d of %d writes waiting past %s, where the plain "+
-						"one left %d", c.name, blocked, writes+blocked, writerWait, plainBlocked)
+				if blocked > brief || blocked >= plainBlocked {
+					t.Errorf("the rewritten %s left %d of %d writes waiting past %s, where its %d brief "+
+						"statements may hold one each and the plain one left %d", c.name, blocked,
+						writes+blocked, writerWait, brief, plainBlocked)
 				}
 
 				t.Logf("plain: %d writes blocked; rewritten: %d of %d", plainBlocked, blocked, writes+blocked)
@@ -195,7 +219,8 @@ func TestARewrittenOperationLetsWritesThroughWhereThePlainOneBlocksThem(t *testi
 
 	t.Log("The control is the plain statement on the same table: it holds a lock that blocks writes")
 	t.Log("for its whole scan, which the writer sees as lock timeouts. The rewritten sequence's only")
-	t.Log("long statement -- VALIDATE, or the concurrent build -- runs bare under a lock writes pass.")
+	t.Log("long statement -- VALIDATE, or the concurrent build -- runs bare under a lock writes pass;")
+	t.Log("its ADD ... NOT VALID is brief_exclusive, so on a slow server it may hold one write past the bound.")
 }
 
 func TestARewriteLeavesTheSchemaThePlainOperationWouldHave(t *testing.T) {

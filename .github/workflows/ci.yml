@@ -110,6 +110,12 @@ jobs:
       - name: Smoke run
         run: ./bin/migr
 
+      # The site deploys from main alone, so a dead link or a page Vue cannot compile fails here, on the
+      # change that broke it. One OS is enough: the build reads files.
+      - name: Docs
+        if: matrix.os == 'ubuntu-latest'
+        run: make docs
+
       # The release job runs .goreleaser.yaml only on a tag, so a config it would refuse is caught here,
       # on the change that broke it. One OS is enough: the check reads a file.
       - name: Release config

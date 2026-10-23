@@ -23,10 +23,10 @@ The reference implementation is `internal/ir`.
   statements is the driver contract, and each driver's output is pinned by golden files.
 - **Capabilities and lock impact.** Whether an engine supports an operation, and what it costs a
   live database, are separate axes owned by the capability model. *Destructive* is not the same
-  claim as *unsafe* or *unsupported* — see [ADR 0004](adr/0004-safety-model.md).
+  claim as *unsafe* or *unsupported* — see ADR 0004.
 - **Policy.** The IR carries a destructiveness classification; refusing to run one belongs to the
   validator and to the engine, and what a project permits belongs to `migr.yaml`
-  ([ADR 0063](adr/0063-destructive-operations.md)).
+  (ADR 0063).
 - **Transport.** How a document reaches the engine is `docs/protocol.md`.
 - **Engine limits.** PostgreSQL caps decimal precision at 1000 and MySQL at 65. Those belong to
   the capability model, not to a type system that has to hold for every engine at once.
@@ -81,13 +81,13 @@ document of schema operations alone, `2` for one holding a data operation, `3` f
 well as of its kind. A version-1 document keeps its exact bytes, and an engine that reads only 1
 keeps reading it. A document stating a version that does not carry one of its operations —
 `irVersion` 1 holding `data_copy`, or `2` holding `"no_transaction": true` — is refused, naming the
-operation and the version it needs ([ADR 0077](adr/0077-data-operations.md),
-[ADR 0084](adr/0084-transaction-opt-out.md)).
+operation and the version it needs (ADR 0077,
+ADR 0084).
 
 It is the one `camelCase` key in an otherwise `snake_case` format. That is deliberate rather than
 an oversight: the decision records that established the envelope name it that way, and those
 records are immutable, so renaming the key would leave a committed document describing a key that
-does not exist. See [ADR 0007](adr/0007-ir-document-envelope.md).
+does not exist. See ADR 0007.
 
 ### 2.3 The version is read before the operations
 
@@ -124,7 +124,7 @@ so the tag and the operation's identity cannot disagree. The name `op` is reserv
 whole format, permanently.
 
 Operations are flat rather than nested under an arguments object. See
-[ADR 0006](adr/0006-ir-operation-shape.md).
+ADR 0006.
 
 ### 3.2 Key order and whitespace
 
@@ -152,7 +152,7 @@ escapes both whatever it is told — `SetEscapeHTML(false)` does not reach them 
 do so with a scanner that tells an escape from the text of one: a blind replacement over the encoder's
 output also matches the tail of a doubled backslash, which is how a string whose author wrote that
 escape as six literal characters is encoded. The `create_view` section carries a checked vector, and
-[ADR 0047](adr/0047-line-separator-escaping.md) records the decision.
+ADR 0047 records the decision.
 
 An IR string is well-formed UTF-8 — Unicode scalar values only. A lone surrogate is not expressible,
 and an implementation that emits one has it replaced with U+FFFD by any decoder that reads scalar
@@ -229,7 +229,7 @@ Emit members in the order this document lists them. Omit optional members that a
 pretty-print. Treat a change to any of that as a change to the format, requiring a decision
 record — not as a refactor.
 
-See [ADR 0009](adr/0009-migration-checksum.md).
+See ADR 0009.
 
 ---
 
@@ -246,7 +246,7 @@ type := ident [ "(" arg { "," arg } ")" ]
 
 A type is encoded as this string — not as a nested object. One representation means golden files
 stay readable, plan output needs no translation, and there is a single code path that can be
-wrong. See [ADR 0005](adr/0005-logical-type-encoding.md).
+wrong. See ADR 0005.
 
 ### 5.2 The eighteen kinds
 
@@ -365,7 +365,7 @@ columns. That is type reuse, not three spellings of one fact.
 **ColumnState** carries `no_default: true` to record that the column *had no default*, which is a
 different statement from saying nothing about defaults at all. Without it, an `alter_column` that
 sets a default on a column that had none could not be reversed without recording some unrelated
-field as padding. See [ADR 0010](adr/0010-recorded-absence-of-a-default.md).
+field as padding. See ADR 0010.
 
 ```jsonc
 { "type": "string(255)", "nullable": false }
@@ -424,12 +424,12 @@ makes six kinds an operator may permit by name. `data_copy` only inserts and `da
 fills NULLs, so neither overwrites a value. `ir.DestructiveKinds()` is that list, and a test holds it to
 `Destructive()` over the whole fixture set so the two cannot disagree.
 
-> [ADR 0006](adr/0006-ir-operation-shape.md) settled the *shape* of an operation and named
-> seventeen. [ADR 0008](adr/0008-reverse-operations.md) added `drop_unique`, `drop_check`, and
+> ADR 0006 settled the *shape* of an operation and named
+> seventeen. ADR 0008 added `drop_unique`, `drop_check`, and
 > `drop_primary_key`, and records why the set was asymmetric without them. Decision records are
 > immutable snapshots of a decision at a point in time, so 0006 is earlier, not wrong. `irVersion`
-> 1's set is twenty; [ADR 0077](adr/0077-data-operations.md) added the three data operations in
-> version 2, making twenty-three. [ADR 0084](adr/0084-transaction-opt-out.md)'s version 3 added a
+> 1's set is twenty; ADR 0077 added the three data operations in
+> version 2, making twenty-three. ADR 0084's version 3 added a
 > field to `raw` and no operation.
 
 ### 7.2 Conventions the format does not enforce
@@ -547,7 +547,7 @@ record exactly what two differing by an unrelated drop and create record, so `in
 this as a *candidate* and emits it only once a confirmation reaches it as a parameter. The reason is
 the one asymmetry in these two operations: both are `Destructive: no` and nothing gates them, while
 the drop and create a declined rename becomes are gated by invariant #7. See
-[ADR 0072](adr/0072-rename-detection.md).
+ADR 0072.
 
 **Every engine repoints the references itself.** Measured on PostgreSQL 16/17, MySQL 8.0,
 MariaDB 11.4 and SQLite: another table's foreign key follows the renamed table, and an index over a
@@ -1058,7 +1058,7 @@ into a validation failure. It does not make the statement portable; nothing can.
 than an instruction about the migration: the engine runs the operations before it in one
 transaction, runs this one on its own, and runs the ones after it in another. Each of those
 commits separately, so a failure partway leaves the migration between states, and the history
-says how far it got ([ADR 0084](adr/0084-transaction-opt-out.md)). A document carrying it states
+says how far it got (ADR 0084). A document carrying it states
 `irVersion` 3.
 
 ```json
@@ -1075,12 +1075,12 @@ says how far it got ([ADR 0084](adr/0084-transaction-opt-out.md)). A document ca
 The three operations below are **`irVersion` 2's**. Each writes rows rather than schema, names its
 tables and columns, and compiles to one statement. None of them has an inverse, because each
 overwrites or adds what nothing records; a migration that uses one authors its `Down`
-([ADR 0077](adr/0077-data-operations.md)).
+(ADR 0077).
 
 **How one runs is the engine's, and changes nothing here.** A migration holding nothing but data
 operations runs each one a keyed chunk at a time over the table's primary key — `data_copy`'s over
 its source — each chunk committed with a checkpoint, and an interrupted run carries on after the
-last one ([ADR 0078](adr/0078-chunked-data-operations.md)). A migration that also changes the schema
+last one (ADR 0078). A migration that also changes the schema
 runs them as the one statement this section describes, in its own transaction. Neither is a
 property of the operation: the bytes a migration emits, and so its checksum, are the same either
 way, and no SDK can tell which it will be.
@@ -1210,7 +1210,7 @@ The rollback executor consumes that guarantee one level up: it inverts every mig
 before running any of them, so an operation with no inverse halts the run before the first statement
 rather than after the newer migrations have already been undone. A list is inverted only for a
 migration whose source authored no `Down` of its own; an authored one is run as written. See
-[ADR 0022](adr/0022-rollback-executor.md).
+ADR 0022.
 
 ### 8.4 Reversing twice is not the identity
 
@@ -1313,11 +1313,11 @@ The reasoning behind this format, including the options that were rejected:
 
 | # | Decision |
 |---|---|
-| [0001](adr/0001-architecture.md) | Go core with an operation IR in the middle |
-| [0003](adr/0003-ir-versioning.md) | Version the operation IR explicitly |
-| [0005](adr/0005-logical-type-encoding.md) | Encode logical types as canonical strings |
-| [0006](adr/0006-ir-operation-shape.md) | Flat discriminated operations, one representation per schema fact |
-| [0007](adr/0007-ir-document-envelope.md) | A versioned document envelope, outside the checksum boundary |
-| [0008](adr/0008-reverse-operations.md) | Every operation declares an inverse or a reason it has none |
-| [0009](adr/0009-migration-checksum.md) | A migration checksum is a scheme-versioned pair |
-| [0010](adr/0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" |
+| 0001 | Go core with an operation IR in the middle |
+| 0003 | Version the operation IR explicitly |
+| 0005 | Encode logical types as canonical strings |
+| 0006 | Flat discriminated operations, one representation per schema fact |
+| 0007 | A versioned document envelope, outside the checksum boundary |
+| 0008 | Every operation declares an inverse or a reason it has none |
+| 0009 | A migration checksum is a scheme-versioned pair |
+| 0010 | Recorded prior state distinguishes "no default" from "nothing recorded" |

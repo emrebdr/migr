@@ -1,0 +1,14 @@
+{
+  "name": "migr-docs",
+  "private": true,
+  "type": "module",
+  "description": "The migr documentation site, built by VitePress from this directory.",
+  "scripts": {
+    "docs:build": "vitepress build",
+    "docs:dev": "vitepress dev",
+    "docs:preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  }
+}

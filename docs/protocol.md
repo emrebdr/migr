@@ -267,7 +267,7 @@ beneath it, and refuses — with [`unsupported_ir`](#73-the-application-band), a
 `migration.execute` that tried — only an operation newer than the stated version, naming the
 operation and both versions. A stated version below 1 fails `initialize` with the same code. So an
 SDK newer than the engine runs every migration that does not use what is newer, and an SDK older
-than the engine runs everything it can express ([ADR 0077](adr/0077-data-operations.md)). The two
+than the engine runs everything it can express (ADR 0077). The two
 versions are independent lines ([§10.3](#103-four-independent-version-lines)), and before this rule
 an IR addition was a protocol break in all but name: an exact-match runtime refused every engine
 that had added an operation.
@@ -330,17 +330,17 @@ Three things this deliberately is not:
   by its extension and holds this result against what it routed here — in **both** directions, so a
   migration two runtimes both claim is a failure as surely as one nothing loaded. That reconciliation
   is what lets a loader skip anything at all: nothing is quietly ignored by every runtime at once.
-  See [ADR 0048](adr/0048-multi-language-projects.md).
+  See ADR 0048.
 - **It is not an ordering.** The result's order carries no meaning. The engine sorts by version and
   overlays the declared dependencies itself — over **every** runtime's answer at once, so an edge may
   name a version another runtime loaded, and a cycle or an edge naming nothing fails the command
   before any migration runs. Ordering therefore settles after every session has been started, which
   is why a command that starts none prints version order and says so. See
-  [ADR 0049](adr/0049-reading-a-declared-dependency.md).
+  ADR 0049.
 - **It is not a computation.** `dependencies` is read from the migration, never derived from a
   query. A graph that could branch on live data would let `migr plan` and `migr up` order the same
   migrations differently, and would put `migr status` behind a language toolchain. See
-  [ADR 0018](adr/0018-declared-dependencies.md).
+  ADR 0018.
 
 `dependencies` names **versions**, not filenames. The version is the key the engine proved unique,
 and the one `--to` and a history row already use.
@@ -360,7 +360,7 @@ the one its prior step was applied under — so the steps of one change cannot l
 `dependencies` it is read from the migration and never computed. It was added as an optional result
 member, which [§10.2](#102-what-is-a-breaking-change) makes no break: an engine that does not know it
 ignores it, and an SDK that does not send it declares no step. See
-[ADR 0087](adr/0087-release-gated-phases.md).
+ADR 0087.
 
 A migration that runs against a live table **through a shadow table** rather than as a plain `ALTER`
 reports `online`, naming the strategy, and a migration that does not omits the member. The one
@@ -374,7 +374,7 @@ replication log, and swapped in only once someone confirms the cutover:
 The engine refuses a strategy it does not know at discovery, naming the migration, and a server that
 cannot read its own log is refused before anything is created. Like `phase` it is an optional result
 member, read from the migration and never computed. See
-[ADR 0089](adr/0089-shadow-table-lifecycle.md).
+ADR 0089.
 
 ### `migration.execute`
 
@@ -436,7 +436,7 @@ A migration that considers itself invalid fails the call with
 This is the migration's self-check, and it is **not** `migr validate`. That command reads every
 migration, compiles both directions for the configured engine, and checks that something can undo
 each one, reporting every problem rather than the first — see
-[ADR 0028](adr/0028-validation-report.md). This call is one of the things it may ask.
+ADR 0028. This call is one of the things it may ask.
 
 `Validate()` must not emit operations. A `host.schema.apply` during `migration.validate` is a
 protocol error: the engine has nothing to do with them and recording them would make validation
@@ -578,7 +578,7 @@ Asks what the target engine makes of an operation, before emitting it.
 
 The parameter is a **whole operation**, not an operation kind. A driver refuses payloads rather than
 kinds — MySQL's answer for `alter_column` depends on the column's type — so a question phrased as a
-kind cannot be answered. See [ADR 0015](adr/0015-payload-dependent-refusals.md).
+kind cannot be answered. See ADR 0015.
 
 A migration is not obliged to ask. This exists so one can adapt — take a different route when an
 engine would rewrite a table — not so that every operation must be cleared first.
@@ -646,7 +646,7 @@ Only the escape hatch differs, because it is the only callback that reaches the 
 count and takes one of two paths, the plan reflects the state at plan time and the apply reflects
 the state at apply time. That is inherent to the expressiveness this transport was chosen for. It is
 documented rather than hidden, because a preview that could be wrong in a way a user cannot detect
-is worse than no preview. See [ADR 0002](adr/0002-runtime-protocol.md).
+is worse than no preview. See ADR 0002.
 
 ---
 
@@ -733,7 +733,7 @@ operations instead and inverts them through the IR's own reversal rules, so the 
 rollback without writing one. An operation with no inverse then halts the **whole** rollback before
 its first statement, because a rollback runs newest first and one that stopped partway would leave
 migrations whose successors were already undone. See
-[ADR 0022](adr/0022-rollback-executor.md).
+ADR 0022.
 
 **`declared_irreversible`** — the author stated, in the migration, that nothing can undo it, and
 gave a reason. `data.reason` carries it, and the engine refuses the rollback with **that** reason
@@ -746,7 +746,7 @@ rather than with a generic one:
 Every SDK owes both. Without `no_down_authored` a migration would have to author an inverse the
 framework could have derived; without `declared_irreversible` a legitimately one-way migration could
 never pass validation, since there would be no way to say so. That second hole was found and closed
-for `.sql` migrations in [ADR 0028](adr/0028-validation-report.md), and this is the same hole on
+for `.sql` migrations in ADR 0028, and this is the same hole on
 the wire.
 
 An SDK that reports a missing `Down` as `migration_failed` is not merely imprecise: it turns every
@@ -756,7 +756,7 @@ derivable rollback into a failed one.
 ordinary one carrying no operations, and the engine records the rollback with nothing run: the
 author is saying there is nothing to undo, as the backfill phase of a column replacement does. An
 `up` that emits nothing is still refused, as is a `down` the engine would have had to derive. See
-[ADR 0079](adr/0079-expand-contract-helper.md).
+ADR 0079.
 
 ---
 
@@ -1055,13 +1055,13 @@ The reasoning behind this protocol, including the options that were rejected:
 
 | # | Decision |
 |---|---|
-| [0002](adr/0002-runtime-protocol.md) | Bidirectional JSON-RPC over stdio for language runtimes |
-| [0018](adr/0018-declared-dependencies.md) | A dependency is declared by a migration, never computed |
-| [0022](adr/0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it |
-| [0028](adr/0028-validation-report.md) | A validator reports in phases |
-| [0030](adr/0030-runtime-protocol-specification.md) | The runtime protocol, specified |
-| [0031](adr/0031-protocol-codec-and-framing.md) | The codec, and what ends a session |
-| [0032](adr/0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote |
-| [0033](adr/0033-where-the-mode-lives.md) | The mode belongs to the call, and the engine owns it |
-| [0034](adr/0034-runtime-process-lifecycle.md) | The runtime process, and what outlives what |
-| [0049](adr/0049-reading-a-declared-dependency.md) | A declared dependency is read once the runtimes are up |
+| 0002 | Bidirectional JSON-RPC over stdio for language runtimes |
+| 0018 | A dependency is declared by a migration, never computed |
+| 0022 | A rollback inverts the whole batch before it runs any of it |
+| 0028 | A validator reports in phases |
+| 0030 | The runtime protocol, specified |
+| 0031 | The codec, and what ends a session |
+| 0032 | The host callback server, and the SQL a migration wrote |
+| 0033 | The mode belongs to the call, and the engine owns it |
+| 0034 | The runtime process, and what outlives what |
+| 0049 | A declared dependency is read once the runtimes are up |

@@ -55,7 +55,7 @@ sends the database a statement itself has no inverse to derive, so it owes one o
 
 A `down` that emits nothing says there is nothing to undo, and the rollback is recorded with no
 statement run. An `up` that emits nothing is still refused
-([ADR 0079](../../docs/adr/0079-expand-contract-helper.md)).
+(ADR 0079).
 
 ### `dependencies` is data, not a method
 
@@ -122,7 +122,7 @@ literal emit the same bytes, which is asserted for all twenty.
 `JSON.stringify` happens to escape exactly what
 [`docs/ir.md` §3.3](../../docs/ir.md) asks for, including U+2028 and U+2029, which Go's encoder
 escapes whatever it is told — so this SDK is the conforming one there and the Go copies undo their
-own encoder ([ADR 0047](../../docs/adr/0047-line-separator-escaping.md)). A test holds the line
+own encoder (ADR 0047). A test holds the line
 `host.schema.apply` writes to that, because the bytes on the wire come from the envelope's
 `stringify` rather than from the operation codec the spec test exercises.
 
@@ -165,8 +165,9 @@ through a copy of the table rather than as a plain `ALTER`:
 3. it swaps the copy in, keeping the original under a derived name.
 
 The wait is indefinite by design. A server that cannot read its own log is refused before anything
-is created, naming what it lacks. No driver reads a log yet: MySQL's binlog reader and PostgreSQL's
-logical decoding are still to come. Any other value of `online` is refused when the file is loaded.
+is created, naming what it lacks: MySQL and MariaDB read their binary log, PostgreSQL decodes its WAL
+through a replication slot, and SQLite has no log to read. Any other value of `online` is refused
+when the file is loaded.
 
 ```ts
 import { columns, defineMigration, SHADOW_TABLE } from "@migr/sdk";
@@ -311,7 +312,7 @@ extension this runtime does not load — `20260727T153000_add_users.go` — belo
 is skipped, because one directory may hold more than one language. A `README.md` is not that, and is
 still refused. Nothing is skipped by everything in silence: migr routed every file by its extension
 and holds what each runtime reports here against what it sent
-([ADR 0048](../../docs/adr/0048-multi-language-projects.md)).
+(ADR 0048).
 
 ## The version means something
 
@@ -324,7 +325,7 @@ nothing anywhere reads this package's version to decide behaviour.
 It has a cost worth knowing before you read a changelog: a protocol bump forces a major release of
 a package whose API may not have changed, and a breaking change to _this API_ cannot take the major
 without misreporting the protocol. See
-[ADR 0041](../../docs/adr/0041-typescript-package-scaffold.md).
+ADR 0041.
 
 Three tests hold the claim up rather than leaving it to a release checklist: `VERSION` matches
 `package.json`, its major matches `PROTOCOL_VERSION`, and `PROTOCOL_VERSION` matches the version
@@ -381,7 +382,7 @@ r.down.is(...); // empty exactly when the engine derives the inverse
 ```
 
 It does not invert anything. Every inverse lives in the engine, so that two SDKs cannot reach two
-answers for one migration ([ADR 0022](../../docs/adr/0022-rollback-executor.md)) — whether an
+answers for one migration (ADR 0022) — whether an
 operation can be inverted at all is reported by `migr validate` below. The one rollback this can see
 is impossible it throws over: an up that sends statements of its own and authors no down, since a
 statement has no inverse to derive.
@@ -408,7 +409,7 @@ is `MIGR_BIN`, or `migr` on `PATH`; when there is neither this **fails rather th
 
 `roundTrip()` catches residue: a down that left a table behind makes the second up fail, and the
 server is what says so. It is not a comparison of two schema snapshots — that needs introspection the
-engine does not expose yet. See [ADR 0068](../../docs/adr/0068-sdk-test-helpers.md).
+engine does not expose yet. See ADR 0068.
 
 **The test file does not go in the migrations directory.** Discovery is strict and dotfiles are its
 only exemption, so a `migrations.test.ts` sitting beside the migrations is refused by name and every

@@ -33,7 +33,7 @@ GOLANGCI_CONFIG  := $(CURDIR)/.golangci.yml
 FUZZTIME         ?= 30s
 
 .PHONY: help build test test-integration test-conformance test-zerodowntime fuzz lint golden-update tools fmt vet \
-        tidy check clean release-check release-snapshot npm-snapshot docker-image test-docker
+        tidy check clean release-check release-snapshot npm-snapshot docker-image test-docker docs docs-dev
 
 # Run a command in every Go module. The subshell cd means any tool path passed in
 # must be absolute -- a relative ./bin/tool resolves at the root and vanishes in sdk/go.
@@ -97,6 +97,8 @@ help:
 	@echo "  tools             install pinned dev tools into ./bin, and the SDK's npm deps"
 	@echo "  fmt vet tidy      formatting, vet, and go mod tidy across both modules"
 	@echo "  check             lint + test, the CLAUDE.md §10 gate"
+	@echo "  docs              build the documentation site into docs/.vitepress/dist (dead links fail it)"
+	@echo "  docs-dev          serve the documentation site locally, rebuilding as pages change"
 	@echo "  clean             remove build output and tear down containers"
 	@echo ""
 	@echo "  release-check     validate .goreleaser.yaml (needs goreleaser $(GORELEASER_VERSION))"
@@ -115,6 +117,15 @@ build:
 	@echo "==> go build -o $(BIN) ./cmd/migr  ($(VERSION))"
 	@go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/migr
 	$(call ts_run,npm run build)
+
+# The documentation site (M14-T5): VitePress over docs/ in place, its own npm project so building it
+# never touches the SDK's dependencies. A dead in-site link fails the build.
+docs:
+	@echo "==> npm ci && vitepress build  (docs)"
+	@cd docs && npm ci --silent --no-audit --no-fund && npx vitepress build
+
+docs-dev:
+	@cd docs && npm ci --silent --no-audit --no-fund && npx vitepress dev
 
 # A release is .github/workflows/release.yml, never a laptop (ADR 0098): signing needs that job's OIDC
 # token. These two prove the configuration and the six archives locally, signing skipped.

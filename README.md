@@ -5,6 +5,10 @@
 [![CI](https://github.com/emrebdr/migr/actions/workflows/ci.yml/badge.svg)](https://github.com/emrebdr/migr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+**Documentation: [emrebdr.github.io/migr](https://emrebdr.github.io/migr/)** — getting started, the
+Go, TypeScript and SQL guides, each driver's capabilities and lock costs, the zero-downtime guide,
+and the IR and protocol specifications.
+
 Describe a schema change once, in the language you already write, and run it against any
 supported engine. A migration says *what* changes — `CreateTable("users")` — never *how* a
 particular database performs it. `migr up` behaves the same whether the target is PostgreSQL or
@@ -396,11 +400,13 @@ test/
   golden/              per-driver, per-operation expected SQL
   conformance/         shared driver, runtime, and zero-downtime suites
   integration/         Docker-backed end-to-end tests
-docs/
+docs/                  the documentation site, built by VitePress (make docs)
+  getting-started.md   install, a first migration, the commands
+  guides/              writing migrations in Go, TypeScript and SQL
+  drivers/             each driver: what it supports, what it costs, what it refuses
   zero-downtime.md     what each engine can change under live traffic, and how to run it
   ir.md                the operation IR wire format, specified
   protocol.md          the runtime protocol between the engine and an SDK, specified
-  adr/                 architecture decision records
 ```
 
 Most of these are currently a `doc.go` recording the package's purpose and the milestone that
@@ -423,123 +429,13 @@ each engine's lock cost per operation — tables generated from the drivers and 
 test — what cannot be made zero-downtime, shadow tables and their cutover, expand/contract across
 deploys, and gating CI on lock cost.
 
-The reasoning behind each contract — including the options that were rejected and why — lives in
-[`docs/adr/`](docs/adr/README.md):
-
-| # | Decision |
-|---|---|
-| [0001](docs/adr/0001-architecture.md) | Go core with an operation IR in the middle |
-| [0002](docs/adr/0002-runtime-protocol.md) | Bidirectional JSON-RPC over stdio for language runtimes |
-| [0003](docs/adr/0003-ir-versioning.md) | Version the operation IR explicitly |
-| [0004](docs/adr/0004-safety-model.md) | Lock impact as a capability axis; zero-downtime as a v0.1 property |
-| [0005](docs/adr/0005-logical-type-encoding.md) | Encode logical types as canonical strings in the IR |
-| [0006](docs/adr/0006-ir-operation-shape.md) | Flat discriminated operations, one representation per schema fact |
-| [0007](docs/adr/0007-ir-document-envelope.md) | A versioned document envelope, outside the checksum boundary |
-| [0008](docs/adr/0008-reverse-operations.md) | Every operation declares an inverse or a reason it has none |
-| [0009](docs/adr/0009-migration-checksum.md) | A migration checksum is a scheme-versioned pair |
-| [0010](docs/adr/0010-recorded-absence-of-a-default.md) | Recorded prior state distinguishes "no default" from "nothing recorded" |
-| [0011](docs/adr/0011-driver-contract.md) | The driver contract: a session-scoped connection and an explicitly wired registry |
-| [0012](docs/adr/0012-capability-resolution.md) | Capability resolution: one rule per operation, resolved against one server |
-| [0013](docs/adr/0013-migration-history.md) | Migration history is an append-only log, keyed by the run rather than by the row |
-| [0014](docs/adr/0014-online-change-capture.md) | Online change capture reads the write-ahead log, and cutover waits for a human |
-| [0015](docs/adr/0015-payload-dependent-refusals.md) | A driver refuses payloads, not operation kinds |
-| [0016](docs/adr/0016-lock-impact-is-a-duration.md) | Lock impact is a duration, not a lock level |
-| [0017](docs/adr/0017-transaction-boundaries.md) | A transaction is a closure the driver brackets, not a handle the caller holds |
-| [0018](docs/adr/0018-declared-dependencies.md) | A dependency is declared by a migration, never computed by one |
-| [0019](docs/adr/0019-history-reconciliation.md) | Reconciliation replays the whole log, and a half-applied migration is a fifth state |
-| [0020](docs/adr/0020-lock-contention.md) | Lock contention: one budget, no retry, and a holder read after the fact |
-| [0021](docs/adr/0021-apply-executor.md) | The apply queue reconciles under the lock, and a batch belongs to one database |
-| [0022](docs/adr/0022-rollback-executor.md) | A rollback inverts the whole batch before it runs any of it |
-| [0023](docs/adr/0023-batch-narrowing.md) | `--to` names the state to end in, and narrowing is a prefix of the run order |
-| [0024](docs/adr/0024-dirty-runs.md) | A run is dirty when its statements outlived the failure |
-| [0025](docs/adr/0025-sql-source-language.md) | SQL is a source language, and `migr create` writes what `Parse` reads |
-| [0026](docs/adr/0026-dry-run-and-sql-sources.md) | A dry run reads what an apply ensures |
-| [0027](docs/adr/0027-read-only-reports.md) | A read-only report takes no lock |
-| [0028](docs/adr/0028-validation-report.md) | A validator reports in phases |
-| [0029](docs/adr/0029-failure-presentation.md) | A failure is a document too |
-| [0030](docs/adr/0030-runtime-protocol-specification.md) | The runtime protocol, specified |
-| [0031](docs/adr/0031-protocol-codec-and-framing.md) | The codec, and what ends a session |
-| [0032](docs/adr/0032-host-callback-server.md) | The host callback server, and the SQL a migration wrote |
-| [0033](docs/adr/0033-where-the-mode-lives.md) | The mode belongs to the call, and the engine owns it |
-| [0034](docs/adr/0034-runtime-process-lifecycle.md) | The runtime process, and what outlives what |
-| [0035](docs/adr/0035-generated-go-runner.md) | Running a Go migration |
-| [0036](docs/adr/0036-escape-hatch-statements-in-a-preview.md) | An escape-hatch statement in a preview |
-| [0037](docs/adr/0037-go-migration-contract.md) | The Go migration contract |
-| [0038](docs/adr/0038-go-schema-builder.md) | The Go schema builder |
-| [0039](docs/adr/0039-runtime-conformance-fixtures.md) | The runtime conformance fixtures |
-| [0040](docs/adr/0040-running-a-go-migration.md) | Running a Go migration from the CLI |
-| [0041](docs/adr/0041-typescript-package-scaffold.md) | The TypeScript package and its version policy |
-| [0042](docs/adr/0042-typescript-migration-contract.md) | The TypeScript migration contract |
-| [0043](docs/adr/0043-typescript-schema-builder.md) | The TypeScript schema builder |
-| [0044](docs/adr/0044-typescript-protocol-client.md) | The TypeScript protocol client |
-| [0045](docs/adr/0045-node-runtime-binary.md) | The Node runtime binary |
-| [0046](docs/adr/0046-node-runtime-adapter.md) | The Node runtime adapter |
-| [0047](docs/adr/0047-line-separator-escaping.md) | U+2028 and U+2029 are emitted as UTF-8, and a scanner undoes Go's escape |
-| [0048](docs/adr/0048-multi-language-projects.md) | One directory, several languages: route each migration by its own extension |
-| [0049](docs/adr/0049-reading-a-declared-dependency.md) | A declared dependency is read once the runtimes are up, and a report names the order it has |
-| [0050](docs/adr/0050-sqlite-session-and-pragmas.md) | The SQLite session: one pinned connection, three pragmas, and what an in-process engine changes |
-| [0051](docs/adr/0051-sqlite-type-map-and-the-rebuild-boundary.md) | SQLite's type map, and where the table rebuild begins |
-| [0052](docs/adr/0052-sqlite-lock-verdicts.md) | SQLite's lock verdicts, and why an emulation cannot be declared before it can be compiled |
-| [0053](docs/adr/0053-expanding-an-operation-against-a-session.md) | An operation a driver compiles against the database, rather than against nothing |
-| [0054](docs/adr/0054-the-sqlite-table-rebuild.md) | The SQLite table rebuild, as the measurements made it |
-| [0055](docs/adr/0055-the-sqlite-file-lock.md) | The SQLite file lock: flock decides, the record reports, and nothing wedges |
-| [0056](docs/adr/0056-the-sqlite-history-store.md) | The SQLite history store: asking the catalog where PostgreSQL reads a code |
-| [0057](docs/adr/0057-the-mysql-session.md) | The MySQL session: what a read-only transaction does not refuse |
-| [0058](docs/adr/0058-compiling-mysql.md) | Compiling MySQL |
-| [0059](docs/adr/0059-mysql-lock-verdicts.md) | MySQL's lock verdicts, and the two things a server will say about its own ALTER |
-| [0060](docs/adr/0060-the-mysql-migration-lock.md) | The MySQL migration lock, and a holder duration that says what it measures |
-| [0061](docs/adr/0061-refusing-a-dirty-database.md) | Refusing a dirty database, and what the row may be asked to say |
-| [0062](docs/adr/0062-resolving-a-dirty-migration.md) | Resolving a dirty migration is an append, and a resume is an index into one list |
-| [0063](docs/adr/0063-destructive-operations.md) | Destructive operations: who refuses, and what a project may permit |
-| [0064](docs/adr/0064-capability-preflight.md) | Capability preflight: who reads the declaration, and when |
-| [0065](docs/adr/0065-the-schema-snapshot.md) | The schema snapshot: what a driver-neutral schema can honestly claim |
-| [0066](docs/adr/0066-lint-rules.md) | Lint rules: what a severity may decide, and what it may not |
-| [0067](docs/adr/0067-the-shipped-lint-rules.md) | The shipped lint rules: what each reports, and what each declines |
-| [0068](docs/adr/0068-sdk-test-helpers.md) | SDK test helpers: capture the IR, read the undo answer, and let the engine judge the rest |
-| [0069](docs/adr/0069-per-driver-introspection.md) | Per-driver introspection, and what a live schema is allowed to refuse |
-| [0070](docs/adr/0070-the-snapshot-differ.md) | The snapshot differ, and what it declines to propose |
-| [0071](docs/adr/0071-expanding-as-the-run-reaches-it.md) | Expanding an emulated operation as the run reaches it |
-| [0072](docs/adr/0072-rename-detection.md) | Detecting a rename, and asking before acting on one |
-| [0073](docs/adr/0073-the-schema-projection.md) | Folding operations onto a schema, writing them back out, and `migr diff` |
-| [0074](docs/adr/0074-the-neutral-round-trip.md) | Comparing two moments of a schema through the snapshot rather than the catalog |
-| [0075](docs/adr/0075-reference-integrity.md) | Judging the references migrations make against two projections rather than one |
-| [0076](docs/adr/0076-seed-migrations.md) | Seeds: a second history on the same session, scoped by directory, run after every migration |
-| [0077](docs/adr/0077-data-operations.md) | Data operations, and irVersion 2 as a superset of 1 |
-| [0078](docs/adr/0078-chunked-data-operations.md) | Running a data-only migration in chunks, and carrying it on after an interruption |
-| [0079](docs/adr/0079-expand-contract-helper.md) | Replacing a column through four migrations, each a phase of one declared change |
-| [0080](docs/adr/0080-seed-listing-and-rollback.md) | Listing, rolling back and settling seeds, as subcommands over the seed history |
-| [0081](docs/adr/0081-lock-verdicts-resolved-against-the-table.md) | Lock verdicts are pessimistic where they depend on the table, and a session may lower them |
-| [0082](docs/adr/0082-statement-lock-retry.md) | A statement that gave up on a lock is tried again, after a jittered backoff, a bounded number of times |
-| [0083](docs/adr/0083-server-side-cancellation.md) | A statement whose context ends is stopped on the server, and two bounds end it |
-| [0084](docs/adr/0084-transaction-opt-out.md) | A statement may declare it runs outside a transaction, and the migration runs in parts around it |
-| [0085](docs/adr/0085-rewriting-unsafe-operations.md) | A session performs an operation more safely than its plain compile, and the plan says so |
-| [0086](docs/adr/0086-lock-impact-gate.md) | A plan shows each operation's lock cost, and `--require-safe` fails one above the ceiling |
-| [0087](docs/adr/0087-release-gated-phases.md) | A step of a change across deploys runs under a release after its prior step's |
-| [0088](docs/adr/0088-replica-lag-pacing.md) | A chunk waits while a replica trails, and a replica migr cannot read counts as trailing |
-| [0089](docs/adr/0089-shadow-table-lifecycle.md) | A shadow-table migration is four recorded stages, and the hold between copy and cutover has no end of its own |
-| [0090](docs/adr/0090-capture-capability.md) | Whether a server permits log-based capture is read from it at Open, and an unread answer permits nothing |
-| [0091](docs/adr/0091-mysql-binlog-shadow.md) | MySQL keeps a shadow table current from its binary log and swaps it in by RENAME under LOCK TABLES |
-| [0092](docs/adr/0092-postgres-online-indexes.md) | PostgreSQL builds and drops every index concurrently, and migr repairs what a stopped one leaves |
-| [0093](docs/adr/0093-operator-confirmed-cutover.md) | A held shadow table is a sixth state, its lag is recorded by the run holding it, and `migr cutover` confirms it |
-| [0094](docs/adr/0094-postgres-logical-shadow.md) | PostgreSQL keeps a shadow table current through a replication slot, and no slot outlives the migration that made it |
-| [0095](docs/adr/0095-mariadb-binlog-shadow.md) | MariaDB keeps a shadow table current from its binary log, and swaps it in through a rename queued behind a write lock |
-| [0096](docs/adr/0096-zero-downtime-suite.md) | Every operation's lock verdict is held to what a client under load actually waits |
-| [0097](docs/adr/0097-unattended-cutover-lag.md) | An unattended cutover counts a stream within safety.cutover_lag as caught up, and the guide's lock tables are generated |
-| [0098](docs/adr/0098-release-signing.md) | A release is signed once, keyless, on its checksum file, and every archive carries a provenance attestation |
-| [0099](docs/adr/0099-homebrew-cask.md) | Homebrew installs migr from a cask in emrebdr/homebrew-tap, written by each release with a token scoped to that repository |
-| [0100](docs/adr/0100-npm-wrapper.md) | npm installs migr as @migr/cli, which pins one optional package per platform to its own version |
-| [0101](docs/adr/0101-docker-images.md) | Each release publishes a minimal distroless image and a Node one to ghcr.io, signed keyless |
-
-Worth reading before proposing a change to any of the three contracts. The rejected options are
-usually the part that answers "why is it like this?".
-
 ---
 
 ## Contributing
 
 > The project's full engineering contract lives in a `CLAUDE.md` that is deliberately not
 > committed, and comments throughout this repository cite it by section. Everything that binds
-> a contributor is restated below or in [`docs/adr/`](docs/adr/README.md), and the rules that
+> a contributor is restated below, and the rules that
 > can be mechanically enforced are — `make lint` fails the build on them rather than leaving
 > them to a reviewer's memory.
 
@@ -573,8 +469,8 @@ modules, then unit and golden tests. CI runs the identical targets on Linux and 
 inside a function body**, and **a doc comment is one line** — for functions, types, and struct
 fields alike. If a block needs a comment to be understood, extract it into a named function —
 the name is visible at every call site, and a name that stops fitting the code is obvious in a
-way a stale comment never is. Multi-line context belongs in the package `doc.go`, in `docs/`,
-or in an ADR. Tooling directives (`//nolint:`, `//go:`, `// Deprecated:`) are exempt.
+way a stale comment never is. Multi-line context belongs in the package `doc.go`, or in `docs/`.
+Tooling directives (`//nolint:`, `//go:`, `// Deprecated:`) are exempt.
 
 These two are enforced by [`internal/lint`](internal/lint/), a small `go/ast` check that
 `make lint` runs before `golangci-lint`. It walks the filesystem rather than loading packages,
@@ -585,10 +481,6 @@ reason, or suppresses nothing cannot be used to smuggle prose into a function bo
 
 **Errors.** Wrap with `%w`. No `panic` in library code. Every user-facing error names the
 migration and the offending operation.
-
-**When to write an ADR.** Any change to the IR, the runtime protocol, the driver contract, or
-the capability model. See [`docs/adr/README.md`](docs/adr/README.md) for the template and the
-practice — the Considered Options section is not optional.
 
 **Commits.** Conventional commits, scoped where useful: `feat(driver/postgres): ...`.
 

@@ -23,7 +23,7 @@ func (r rewritingAt) Rewrite(op ir.Operation) (driver.Rewrite, bool) {
 	return rewriteFor(r.version, op)
 }
 
-func TestTheGuidesLockTableIsWhatPostgreSQLDeclares(t *testing.T) {
+func TestTheLockTablesAreWhatPostgreSQLDeclares(t *testing.T) {
 	tables := make([]string, 0, 2)
 
 	for _, server := range []serverFacts{composed16, modernServer} {
@@ -37,6 +37,9 @@ func TestTheGuidesLockTableIsWhatPostgreSQLDeclares(t *testing.T) {
 		tables = append(tables, table.Render())
 
 		if server.version == modernServer.version {
+			table.Run(t)
+
+			table.Page = "docs/drivers/postgres.md"
 			table.Run(t)
 		}
 	}

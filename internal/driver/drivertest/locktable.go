@@ -101,6 +101,8 @@ type LockTable struct {
 	Capabilities capability.Set
 	// Rewriter is how a session of that server performs an operation more safely, nil where it never does.
 	Rewriter driver.Rewriter
+	// Page names the document the table is held in, relative to the repository root, defaulting to the guide.
+	Page string
 	// Doc overrides the guide's path, so a test can use a file it owns.
 	Doc string
 }
@@ -173,6 +175,10 @@ func (l LockTable) path() (string, error) {
 	repo, err := repositoryRoot(start)
 	if err != nil {
 		return "", err
+	}
+
+	if l.Page != "" {
+		return filepath.Join(repo, filepath.FromSlash(l.Page)), nil
 	}
 
 	return filepath.Join(repo, guide), nil

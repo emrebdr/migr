@@ -37,6 +37,7 @@ go.work.sum
 /bin/
 dist/
 /completions/
+docs/.vitepress/cache/
 .migr/
 
 # Node dependencies. package-lock.json is committed: npm ci is what the Makefile and CI

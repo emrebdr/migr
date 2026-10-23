@@ -594,6 +594,11 @@
 // transaction and is rerun alone. Nothing is written to the history between attempts; the last
 // failure is recorded as any failure is, wrapped in a LockRetryError saying how often it was tried.
 //
+// Creating the history tables, before any migration runs, is retried the same way, with Retry.History
+// set. Every driver's Ensure can run again after a failed attempt, and on SQLite, which has no lock
+// queue, it is a BEGIN IMMEDIATE that can spend its whole busy_timeout without once finding the lock
+// free under steady writers: the zero-downtime suite's first case failed that way on a CI runner.
+//
 // # Two bounds, each a deadline with a cause of its own
 //
 // timeout.go holds safety.statement_timeout, around each statement and each chunk, and

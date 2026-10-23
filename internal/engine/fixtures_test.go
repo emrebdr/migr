@@ -229,18 +229,20 @@ var _ driver.Conn = (*recorder)(nil)
 
 // journal is a history store with no database, recording what the executor asked of it.
 type journal struct {
-	session  *recorder
-	runs     []history.Record
-	table    bool
-	ensure   error
-	list     error
-	latest   error
-	record   error
-	failed   error
-	dirty    error
-	resolved error
-	cps      []history.Checkpoint
-	releases []history.Release
+	session *recorder
+	runs    []history.Record
+	table   bool
+	ensure  error
+	// ensureBusy is how many more times Ensure gives up waiting for a lock before it succeeds.
+	ensureBusy int
+	list       error
+	latest     error
+	record     error
+	failed     error
+	dirty      error
+	resolved   error
+	cps        []history.Checkpoint
+	releases   []history.Release
 }
 
 // RecordRelease records the release of one batch, noting whether a transaction was open.
@@ -268,6 +270,12 @@ func (j *journal) Releases(context.Context) ([]history.Release, error) {
 // Ensure records the call and creates the table, unless a test staged a failure.
 func (j *journal) Ensure(context.Context) error {
 	j.session.note("ensure")
+
+	if j.ensureBusy > 0 {
+		j.ensureBusy--
+
+		return fmt.Errorf("creating the history table: %w", driver.ErrStatementLockTimeout)
+	}
 
 	if j.ensure != nil {
 		return j.ensure

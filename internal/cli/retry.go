@@ -60,6 +60,9 @@ func logRetry(log *slog.Logger, retries int) func(engine.Retry) {
 		}
 
 		switch {
+		case r.History:
+			attrs = []any{"preparing", "the migration history", "retry", r.Retry, "of", retries,
+				"backoff", r.Wait.Round(time.Millisecond).String()}
 		case r.Chunk > 0:
 			attrs = append(attrs, "chunk", r.Chunk)
 		case r.Statement > 0:

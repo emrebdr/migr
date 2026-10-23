@@ -104,11 +104,32 @@ func locked[T any](ctx context.Context, e *executor, work invocation[T]) (result
 
 // reconcile ensures the history table, reads it, and folds it against the migrations it was given.
 func (e *executor) reconcile(ctx context.Context) (history.Report, error) {
-	if err := e.store.Ensure(ctx); err != nil {
+	if err := e.ensure(ctx); err != nil {
 		return history.Report{}, fmt.Errorf("preparing the migration history: %w", err)
 	}
 
 	return e.fold(ctx)
+}
+
+// ensure creates the history tables, backing off and trying again where it gave up waiting for a lock.
+func (e *executor) ensure(ctx context.Context) error {
+	var tried attempts
+
+	for {
+		err := e.store.Ensure(ctx)
+		if err == nil {
+			return nil
+		}
+
+		again, waitErr := e.backoff(ctx, &tried, Retry{History: true, Err: err})
+		if waitErr != nil {
+			return errors.Join(err, waitErr)
+		}
+
+		if !again {
+			return tried.exhausted(err)
+		}
+	}
 }
 
 // fold reads the history and folds it against the migrations it was given, creating nothing.

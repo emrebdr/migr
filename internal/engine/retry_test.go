@@ -146,6 +146,53 @@ func TestALockWaitThatOutlastsEveryRetryFailsNamingHowLongItWasTried(t *testing.
 	}
 }
 
+func TestALockWaitSpentPreparingTheHistoryIsTriedAgain(t *testing.T) {
+	w := &waits{}
+	conn := newRecorder(t, true)
+	conn.store.ensureBusy = 2
+	opts, notices := retrying(t, w, "abc")
+
+	if _, err := Apply(t.Context(), conn, opts); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	if !slices.Equal(w.asked, []time.Duration{100 * time.Millisecond, 200 * time.Millisecond}) {
+		t.Errorf("backed off %v, want 100ms then 200ms", w.asked)
+	}
+
+	if len(*notices) != 2 || !(*notices)[0].History || (*notices)[1].Retry != 2 {
+		t.Errorf("retries reported %+v, want two naming the history", *notices)
+	}
+
+	if row := onlyRun(t, conn); row.Outcome != history.Applied {
+		t.Errorf("the history holds a %s row, want the migration applied", row.Outcome)
+	}
+
+	t.Log("SQLite has no lock queue: under steady writers a BEGIN IMMEDIATE can spend its whole")
+	t.Log("busy_timeout without once finding the lock free, and that is a wait to back off from like any other.")
+}
+
+func TestALockWaitPreparingTheHistoryThatOutlastsEveryRetryStopsTheRun(t *testing.T) {
+	conn := newRecorder(t, true)
+	conn.store.ensureBusy = 10
+	opts, _ := retrying(t, &waits{}, "abc")
+
+	_, err := Apply(t.Context(), conn, opts)
+
+	var exhausted *LockRetryError
+	if !errors.As(err, &exhausted) || exhausted.Attempts != 4 {
+		t.Fatalf("Apply returned %v, want a LockRetryError after 4 attempts", err)
+	}
+
+	if !errors.Is(err, driver.ErrStatementLockTimeout) {
+		t.Error("the exhausted failure no longer reaches the lock timeout, which is what exit 3 reads")
+	}
+
+	if len(conn.store.runs) != 0 {
+		t.Errorf("the history holds %+v, want nothing: no migration ran", conn.store.runs)
+	}
+}
+
 func TestAFailureThatIsNotALockWaitIsNotRetried(t *testing.T) {
 	w := &waits{}
 	conn := stopping(t, true, "b1")

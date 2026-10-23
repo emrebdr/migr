@@ -71,8 +71,10 @@ func (x Exponential) jitter(span time.Duration) time.Duration {
 
 // Retry is one statement lock timeout a run is about to try again, reported before it waits.
 type Retry struct {
-	// Migration is the migration whose statement gave up waiting.
+	// Migration is the migration whose statement gave up waiting, zero where History is set.
 	Migration migration.Migration
+	// History is set where the wait was spent creating the history tables, before any migration ran.
+	History bool
 	// Direction is the direction that migration is running in.
 	Direction ir.Direction
 	// Retry is which retry is about to run, counting from one.
